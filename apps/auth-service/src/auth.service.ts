@@ -3,6 +3,8 @@ import { connectToDatabase } from '@journeyax/database';
 import { Db, Collection } from 'mongodb';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
+import { checkSelfServiceTenant } from '@journeyax/shared-types';
+import type { PublicRegistration } from './public-registration';
 
 // ── Constants ─────────────────────────────────────────────────────────
 const DB_NAME = 'journeyx';
@@ -104,13 +106,19 @@ export class AuthService {
   }
 
   // ── Register ───────────────────────────────────────────────────────
-  async register(params: {
-    email: string;
-    password: string;
-    tenantId: string;
-    fullName: string;
-    role?: 'admin' | 'buyer' | 'manager';
-  }): Promise<{ success: boolean; message: string; user?: Partial<User> }> {
+  /**
+   * The open sign-up: reachable without signing in, so it creates a plain customer (`buyer`) and nothing else. The role is not a
+   * parameter and the document is built from the named fields only, so nothing the caller sends can choose a role, switch the account
+   * off or on, or set a hash. The tenant must be a customer-facing project id, never one of the platform's own (see `checkSelfServiceTenant`).
+   * Staff and admin logins are made by the seed scripts (`seed-admin.ts`, `scripts/placemakers/seed-demo-staff.ts`), never through here.
+   */
+  async register(params: PublicRegistration): Promise<{ success: boolean; message: string; user?: Partial<User> }> {
+    // The route has already checked the shape; the tenant rule is the one that must hold for every caller of this method.
+    const tenant = checkSelfServiceTenant(params.tenantId);
+    if (tenant.status === 'refused') {
+      return { success: false, message: 'tenantId must name a customer-facing project.' };
+    }
+
     const users = await this.getUsersCollection();
 
     // Check duplicate
@@ -129,8 +137,8 @@ export class AuthService {
     const newUser: User = {
       email: params.email.toLowerCase(),
       passwordHash,
-      tenantId: params.tenantId.toLowerCase(),
-      role: params.role || 'buyer',
+      tenantId: tenant.tenantId,
+      role: 'buyer',
       fullName: params.fullName,
       isActive: true,
       createdAt: new Date(),

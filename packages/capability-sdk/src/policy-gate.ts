@@ -11,9 +11,15 @@ export class PolicyGate {
     ctx: ExecutionContext
   ): PolicyCheckResult {
     const policy = binding.policy || (tool as any)?.policy || {};
+    const state = request.policyState;
 
-    // 1. Role / Permission Check
-    if (policy.requiredRole) {
+    // 0. An explicit connector policy state (allow / ask first / blocked) was worked out for this person by the access layer.
+    if (state === 'blocked') {
+      return { allowed: false, reason: `Tool '${tool.toolId}' is blocked for you.` };
+    }
+
+    // 1. Role / Permission Check (replaced by the group rules when a policy state was given)
+    if (policy.requiredRole && !state) {
       const userRole = ctx.principalRole || 'customer';
       if (!this.roleSatisfies(userRole, policy.requiredRole)) {
         return {
@@ -30,6 +36,21 @@ export class PolicyGate {
         allowed: false,
         reason: `Tool '${tool.toolId}' requires an idempotencyKey for safe execution.`,
       };
+    }
+
+    // 2b. The administrator's explicit choice decides whether a person must confirm; the side-effect heuristics below do not apply.
+    if (state === 'ask') {
+      if (!request.userConfirmationConfirmed) {
+        return {
+          allowed: false,
+          requiresApproval: true,
+          reason: `Tool '${tool.toolId}' asks first: a person must approve this exact call before it runs.`,
+        };
+      }
+      return { allowed: true };
+    }
+    if (state === 'allow') {
+      return { allowed: true };
     }
 
     // 3. Human Confirmation / Approval Check

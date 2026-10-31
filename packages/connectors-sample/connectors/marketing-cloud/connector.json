@@ -1,0 +1,228 @@
+{
+  "connectorId": "marketing-cloud",
+  "title": "Salesforce Marketing Cloud (sample)",
+  "standsInFor": "Salesforce Marketing Cloud: messages to customers and the in-app inbox",
+  "description": "Messages sent to trade accounts and the templates they come from.",
+  "minimums": {
+    "messages": 25,
+    "contacts": 25,
+    "templates": 6
+  },
+  "tools": [
+    {
+      "name": "list_messages",
+      "description": "Messages sent to an account (or all accounts), newest first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "Optional account id."
+          },
+          "channel": {
+            "type": "string",
+            "description": "Optional channel.",
+            "enum": [
+              "email",
+              "sms",
+              "in_app"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional status."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "$first:messages.accountId"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "messages",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          },
+          {
+            "arg": "channel",
+            "field": "channel"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          }
+        ],
+        "sort": {
+          "field": "sentAt",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "get_message",
+      "description": "One message with its delivery status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The message id, for example MSG-20001."
+          }
+        },
+        "required": [
+          "messageId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "messageId": "$first:messages.messageId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "messages",
+        "key": "messageId",
+        "arg": "messageId"
+      }
+    },
+    {
+      "name": "list_templates",
+      "description": "The message templates that can be sent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {},
+      "op": {
+        "kind": "find",
+        "collection": "templates",
+        "limit": {
+          "arg": "limit",
+          "default": 25,
+          "max": 25
+        },
+        "sort": {
+          "field": "name"
+        }
+      }
+    },
+    {
+      "name": "send_message",
+      "description": "Queue a message to an account from a template. This sends something to a customer, so it asks first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account to send to."
+          },
+          "channel": {
+            "type": "string",
+            "description": "Channel.",
+            "enum": [
+              "email",
+              "sms",
+              "in_app"
+            ]
+          },
+          "templateId": {
+            "type": "string",
+            "description": "A template id from list_templates."
+          },
+          "subject": {
+            "type": "string",
+            "description": "Optional subject line.",
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "accountId",
+          "channel",
+          "templateId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "example": {
+        "accountId": "$first:contacts.accountId",
+        "channel": "email",
+        "templateId": "$first:templates.templateId",
+        "subject": "A note about your order"
+      },
+      "op": {
+        "kind": "create",
+        "collection": "messages",
+        "idField": "messageId",
+        "idPrefix": "MSG-",
+        "idWidth": 5,
+        "fields": {
+          "accountId": {
+            "arg": "accountId",
+            "required": true
+          },
+          "channel": {
+            "arg": "channel",
+            "required": true
+          },
+          "templateId": {
+            "arg": "templateId",
+            "required": true
+          },
+          "subject": {
+            "arg": "subject"
+          }
+        },
+        "defaults": {
+          "status": "queued"
+        },
+        "stamp": [
+          "queuedAt"
+        ],
+        "validate": [
+          {
+            "arg": "accountId",
+            "collection": "contacts",
+            "field": "accountId",
+            "message": "No contact for account {value}.",
+            "copy": {
+              "contactName": "name",
+              "contactEmail": "email"
+            }
+          },
+          {
+            "arg": "templateId",
+            "collection": "templates",
+            "field": "templateId",
+            "message": "No template {value}.",
+            "copy": {
+              "campaign": "name"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

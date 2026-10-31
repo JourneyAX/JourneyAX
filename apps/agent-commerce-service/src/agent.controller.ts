@@ -13,6 +13,7 @@ import { ConfigLoader } from './pipeline/config-loader';
 import { SessionStore } from './pipeline/session-store';
 import { BusinessPackLoader } from '@journeyax/business-pack';
 import { publicEmitter, publicErrorMessage } from '@journeyax/journey-core';
+import { cleanDisabledConnectors, verifiedIdentity } from './identity';
 
 @Controller('api/v1/:projectId/commerce')
 export class JourneyAXController {
@@ -223,11 +224,14 @@ export class JourneyAXController {
     if (!pricing?.currency) {
       throw new HttpException(`Pricing configuration is required for tenant "${tenantId}" - failing closed`, HttpStatus.BAD_REQUEST);
     }
+    // A quote nobody titled is the shop's own order ("PlaceMakers order"), not a leftover name from another shop's kit.
+    const shop: any = body?.title ? null : await this.configLoader.loadProjectConfig(tenantId).catch(() => null);
+    const shopName = String(shop?.companyName || '').replace(/\(.*?\)/g, '').trim();
     const quote = await this.quoteService.build({
       tenantId,
       sessionId: body?.sessionId,
       idempotencyKey,
-      title: body?.title || 'Team kit',
+      title: body?.title || (shopName ? `${shopName} order` : 'Your order'),
       items,
       roomType: (body as any)?.roomType,
       plannerContext: (body as any)?.plannerContext,
@@ -269,11 +273,40 @@ export class JourneyAXController {
    * 
    * Flow: Client → API Gateway → JourneyAXController → AgentService → ProductService → MongoDB
    */
+  /**
+   * The connectors the signed-in person may use, for the chat's "+" menu. The person is whoever the gateway signed; a call without a
+   * valid signature is a shopper. Returns an empty list rather than an error when anything is unavailable.
+   */
+  @Get('connectors')
+  async connectors(
+    @Param('projectId') projectId: string,
+    @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-gateway-assertion') gatewayAssertion: string | undefined,
+  ) {
+    const tenantId = (projectId || tenantHeader || '').toLowerCase().trim();
+    return this.agentService.listConnectors(tenantId, verifiedIdentity(gatewayAssertion, tenantId));
+  }
+
+  /**
+   * The corner tile and dashboard of the signed-in person (their team's pack setting, figures read as them). A shopper, or a team with no
+   * dashboard, gets an empty answer and the page shows no tile.
+   */
+  @Get('dashboard')
+  async dashboard(
+    @Param('projectId') projectId: string,
+    @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-gateway-assertion') gatewayAssertion: string | undefined,
+  ) {
+    const tenantId = (projectId || tenantHeader || '').toLowerCase().trim();
+    return this.agentService.getDashboard(tenantId, verifiedIdentity(gatewayAssertion, tenantId));
+  }
+
   @Post('chat')
   @UseGuards(ChatThrottleGuard)
   async chat(
     @Param('projectId') projectId: string,
     @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-gateway-assertion') gatewayAssertion: string | undefined,
     @Body() body: {
       message?: string;
       messages?: any[];
@@ -297,6 +330,15 @@ export class JourneyAXController {
       journeyId?: string;
       environment?: string;
       environmentId?: string;
+      /** What the customer did on a card (view, compare, add): the agent is told the action itself, not only the line the thread shows. */
+      customerEvent?: unknown;
+      customer_event?: unknown;
+      /** Which of the tenant's agents the customer chose to talk to (the runtime ignores an id the pack does not define). */
+      agentId?: string;
+      /** The earlier message this one continues from (try again, edit): 'root' for the first message; the newest one when absent. */
+      parentMessageId?: string;
+      /** Connectors the person switched off for this chat. */
+      disabledConnectors?: string[];
     }
   ) {
     const tenantId = (projectId || tenantHeader || body.tenantId || '').toLowerCase().trim();
@@ -324,6 +366,12 @@ export class JourneyAXController {
         journeyId: body.journeyId,
         environment: body.environment || body.environmentId,
         environmentId: body.environmentId || body.environment,
+        customerEvent: body.customerEvent,
+        customer_event: body.customer_event,
+        agentId: body.agentId,
+          parentMessageId: body.parentMessageId,
+        verifiedIdentity: verifiedIdentity(gatewayAssertion, tenantId),
+        disabledConnectors: cleanDisabledConnectors(body.disabledConnectors),
       });
 
       return result;
@@ -369,6 +417,7 @@ export class JourneyAXController {
   async chatStream(
     @Param('projectId') projectId: string,
     @Headers('x-tenant-id') tenantHeader: string,
+    @Headers('x-gateway-assertion') gatewayAssertion: string | undefined,
     @Headers('x-internal-key') internalKey: string | undefined,
     @Body() body: {
       message?: string;
@@ -388,6 +437,15 @@ export class JourneyAXController {
       journeyId?: string;
       environment?: string;
       environmentId?: string;
+      /** What the customer did on a card (view, compare, add): the agent is told the action itself, not only the line the thread shows. */
+      customerEvent?: unknown;
+      customer_event?: unknown;
+      /** Which of the tenant's agents the customer chose to talk to (the runtime ignores an id the pack does not define). */
+      agentId?: string;
+      /** The earlier message this one continues from (try again, edit): 'root' for the first message; the newest one when absent. */
+      parentMessageId?: string;
+      /** Connectors the person switched off for this chat. */
+      disabledConnectors?: string[];
     },
     @Res() res: Response,
   ) {
@@ -454,6 +512,12 @@ export class JourneyAXController {
           journeyId: body.journeyId,
           environment: body.environment || body.environmentId,
           environmentId: body.environmentId || body.environment,
+          customerEvent: body.customerEvent,
+          customer_event: body.customer_event,
+          agentId: body.agentId,
+          parentMessageId: body.parentMessageId,
+        verifiedIdentity: verifiedIdentity(gatewayAssertion, tenantId),
+        disabledConnectors: cleanDisabledConnectors(body.disabledConnectors),
         },
         emit,
       );
@@ -525,7 +589,7 @@ export class JourneyAXController {
   @UseGuards(ChatThrottleGuard)
   async createOrder(
     @Param('projectId') projectId: string,
-    @Body() body: { quoteId: string; idempotencyKey?: string; customer?: { email?: string; name?: string }; successUrl?: string; cancelUrl?: string },
+    @Body() body: { quoteId: string; idempotencyKey?: string; customer?: { email?: string; name?: string }; successUrl?: string; cancelUrl?: string; embedded?: boolean; collect?: { shipping?: boolean; countries?: string[] } },
   ) {
     const tenantId = (projectId || '').toLowerCase().trim();
     if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
@@ -543,6 +607,11 @@ export class JourneyAXController {
       successUrl: body.successUrl || `${base}/?project=${tenantId}&order={ORDER_ID}&status=success`,
       cancelUrl: body.cancelUrl || `${base}/?project=${tenantId}&status=cancelled`,
       stripe: { secretKey: cfg.stripe?.secretKey },
+      embedded: body.embedded === true,
+      collect: {
+        shipping: body.collect?.shipping === true,
+        countries: (Array.isArray(body.collect?.countries) ? body.collect!.countries! : []).map((code) => String(code).trim().toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)).slice(0, 20),
+      },
     });
     if (result.status === 'failed') return { success: false, ...result };
     if (result.status === 'paid') await this.quoteService.markStatus(quote.quoteId, 'ordered');
@@ -583,6 +652,13 @@ export class JourneyAXController {
       paidAt: o.paidAt ?? null,
       leadTimeSummary: o.leadTimeSummary ?? quote?.leadTimeSummary,
       lines,
+      subtotal: o.subtotal ?? quote?.subtotal,
+      discount: o.discount ?? quote?.discount,
+      tax: o.tax ?? quote?.tax,
+      taxRate: o.taxRate ?? quote?.taxRate,
+      billing: o.billing ?? null,
+      shipping: o.shipping ?? null,
+      createdAt: o.createdAt ?? null,
     };
   }
 

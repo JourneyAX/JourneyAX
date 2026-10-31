@@ -22,6 +22,17 @@ export const ComponentCategoryRuleSchema = z.object({
   deny: z.array(z.string().min(1)).optional(),
 }).strict();
 
+export const AttributeDefinitionSchema = z.object({
+  description: z.string().optional(),
+  type: z.string().optional(),
+  examples: z.array(z.string()).optional(),
+  extractionPatterns: z.array(z.string()).optional(),
+  normalizer: z.string().optional(),
+  equivalenceTable: z.record(z.string(), z.array(z.string())).optional(),
+}).passthrough();
+
+export type AttributeDefinition = z.infer<typeof AttributeDefinitionSchema>;
+
 export const CatalogMappingSchema = z.object({
   version: z.string().optional(),
   tenantFields: Paths.optional(),
@@ -35,6 +46,17 @@ export const CatalogMappingSchema = z.object({
   searchPaths: Paths.optional(),
   pricing: z.object({
     sources: z.array(PriceSourceSchema).optional(),
+    /**
+     * For a demo or a catalogue that does not publish prices: a product with NO real price gets a made-up one, the same every time for
+     * the same product, between `min` and `max` (mostly toward `min`, as a real range of building products is). A real price always wins,
+     * and a product marked as having no price (an unpriced status) stays unpriced. Never switch this on for a shop that sells for real.
+     */
+    demoFallback: z.object({
+      enabled: z.boolean(),
+      currency: z.string().length(3),
+      min: z.number().positive(),
+      max: z.number().positive(),
+    }).refine((value) => value.max >= value.min, { message: 'max must not be below min' }).optional(),
     /** When true (platform default) a price without a declared currency is treated as unpriced. */
     requireDeclaredCurrency: z.boolean().optional(),
   }).optional(),
@@ -46,10 +68,25 @@ export const CatalogMappingSchema = z.object({
     unpricedStatuses: z.array(z.string().min(1)).optional(),
   }).optional(),
   attributeAliases: z.record(z.string(), z.array(z.string().min(1))).optional(),
+  attributeDefinitions: z.record(z.string(), AttributeDefinitionSchema).optional(),
   attributeContainers: Paths.optional(),
   imagePaths: Paths.optional(),
   certificationPaths: Paths.optional(),
   quantityPaths: Paths.optional(),
+  /** Lists of other products' SKUs the shop itself suggests with a product ("have you considered"), as SKU strings or objects carrying `sku`. */
+  accessoryPaths: Paths.optional(),
+  /** Lists of short feature statements on a product, shown on its card as why it fits. */
+  highlightPaths: Paths.optional(),
+  /** Patterns (case-insensitive) marking a feature statement as a warning ("should not be used where..."): shown as a caution, never as a reason to buy. */
+  cautionPatterns: z.array(z.string().min(1).max(200)).optional(),
+  ratingValuePaths: Paths.optional(),
+  ratingCountPaths: Paths.optional(),
+  /** Branches holding the product, and the branches asked, for an availability line. */
+  branchAvailablePaths: Paths.optional(),
+  branchTotalPaths: Paths.optional(),
+  /** A flag that is true when the product can only be collected, and the list of ways it can be fulfilled (codes the tenant words in its own labels). */
+  pickupOnlyPaths: Paths.optional(),
+  deliveryOptionPaths: Paths.optional(),
   candidateLimit: z.number().int().min(1).max(1000).optional(),
   /** Which catalogue categories may fill which planner component categories (publication-time integrity). */
   componentCategoryRules: z.record(z.string().min(1), ComponentCategoryRuleSchema).optional(),
@@ -69,14 +106,24 @@ export interface ResolvedCatalogMapping {
   categoryScopePaths: string[];
   categoryHierarchyPaths: string[];
   searchPaths: string[];
-  pricing: { sources: PriceSource[]; requireDeclaredCurrency: boolean };
+  pricing: { sources: PriceSource[]; requireDeclaredCurrency: boolean; demoFallback?: { enabled: boolean; currency: string; min: number; max: number } };
   stock: { booleanPaths: string[]; countPaths: string[] };
   availability: { excludeFlagPaths: string[]; statusPaths: string[]; excludedStatuses: string[]; unpricedStatuses: string[] };
   attributeAliases: Record<string, string[]>;
+  attributeDefinitions: Record<string, AttributeDefinition>;
   attributeContainers: string[];
   imagePaths: string[];
   certificationPaths: string[];
   quantityPaths: string[];
+  accessoryPaths: string[];
+  highlightPaths: string[];
+  cautionPatterns: string[];
+  ratingValuePaths: string[];
+  ratingCountPaths: string[];
+  branchAvailablePaths: string[];
+  branchTotalPaths: string[];
+  pickupOnlyPaths: string[];
+  deliveryOptionPaths: string[];
   candidateLimit: number;
   componentCategoryRules: Record<string, { allow?: string[]; deny?: string[] }>;
 }
@@ -94,9 +141,11 @@ export function resolveCatalogMapping(tenant?: unknown): ResolvedCatalogMapping 
     pricing: {
       sources: parsed.pricing?.sources ?? base.pricing.sources,
       requireDeclaredCurrency: parsed.pricing?.requireDeclaredCurrency ?? base.pricing.requireDeclaredCurrency,
+      ...(parsed.pricing?.demoFallback ? { demoFallback: parsed.pricing.demoFallback } : {}),
     },
     stock: { ...base.stock, ...stripUndefined(parsed.stock) },
     availability: { ...base.availability, ...stripUndefined(parsed.availability) },
+    attributeDefinitions: parsed.attributeDefinitions ?? base.attributeDefinitions ?? {},
   } as ResolvedCatalogMapping;
 }
 
@@ -132,6 +181,25 @@ export interface NormalizedPrice {
   currency?: string;
   /** True when a numeric price exists but no declared currency could be established. */
   currencyUndeclared: boolean;
+  /** True when the price is a made-up demo price (see `pricing.demoFallback`), not one the catalogue holds. */
+  demo?: boolean;
+}
+
+/** A small stable hash (FNV-1a), so the same product always gets the same demo price. */
+function stableFraction(text: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) { hash ^= text.charCodeAt(i); hash = Math.imul(hash, 0x01000193) >>> 0; }
+  return hash / 0x100000000;
+}
+
+/** The demo price of one product, in cents: between min and max, skewed toward min, and written like a shelf price (ends in .90, .50 or .00). */
+export function demoPriceCents(key: string, range: { min: number; max: number }): number {
+  const fraction = stableFraction(key);
+  const raw = range.min + (range.max - range.min) * fraction * fraction * fraction;
+  const step = raw < 20 ? 0.1 : raw < 100 ? 0.5 : 1;
+  const stepped = Math.max(range.min, Math.round(raw / step) * step);
+  const shelf = stepped < 100 ? Math.floor(stepped) + (stepped - Math.floor(stepped) >= 0.5 ? 0.9 : 0.5) : Math.round(stepped);
+  return Math.round(Math.min(range.max, Math.max(range.min, shelf)) * 100);
 }
 
 export function extractPrice(doc: unknown, mapping: ResolvedCatalogMapping): NormalizedPrice {
@@ -144,6 +212,11 @@ export function extractPrice(doc: unknown, mapping: ResolvedCatalogMapping): Nor
     if (!declared && mapping.pricing.requireDeclaredCurrency) { undeclared = true; continue; }
     const priceCents = source.unit === 'minor' ? Math.round(raw) : Math.round(raw * 100);
     return { priceCents, currency: declared ? declared.toUpperCase() : undefined, currencyUndeclared: false };
+  }
+  const demo = mapping.pricing.demoFallback;
+  if (demo?.enabled) {
+    const key = String(firstValue(doc, mapping.identifierPaths) ?? (doc as any)?._id ?? '');
+    if (key) return { priceCents: demoPriceCents(key, demo), currency: demo.currency.toUpperCase(), currencyUndeclared: false, demo: true };
   }
   return { priceCents: null, currencyUndeclared: undeclared };
 }
@@ -185,18 +258,92 @@ export interface NormalizedCatalogProduct {
   price?: number;
   currency?: string;
   currencyUndeclared: boolean;
+  /** True when `price` is a made-up demo price rather than the catalogue's own. */
+  priceIsDemo?: boolean;
   inStock?: boolean;
   availableQuantity?: number;
   certifications: string[];
   imageUrl: string;
   availability: CatalogAvailabilityState;
   attributes: Record<string, unknown>;
+  /** Short feature statements the catalogue lists for this product (at most eight). */
+  highlights: string[];
+  /** Feature statements that read as warnings (at most two), kept apart from the highlights. */
+  cautions: string[];
+  rating?: number;
+  ratingCount?: number;
+  branchesAvailable?: number;
+  branchesTotal?: number;
+  /** True when the record says the product can only be collected. Undefined when the record does not say. */
+  pickupOnly?: boolean;
+  /** The ways the record says the product can be fulfilled, as the record writes them (empty when it lists none). */
+  deliveryOptions: string[];
+  /** The product's shelf, from the broadest group down to the one it sits in (empty when the record carries none). */
+  categoryTrail: string[];
+  /** SKUs the shop itself suggests with this product (empty when the record carries none). */
+  accessorySkus: string[];
+}
+
+const MAX_HIGHLIGHTS = 8;
+const HIGHLIGHT_LENGTH = { min: 3, max: 160 };
+
+function firstNumber(doc: unknown, paths: string[]): number | undefined {
+  for (const path of paths) {
+    const value = readPath(doc, path);
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function highlightsOf(doc: unknown, paths: string[], cautionPatterns: string[]): { highlights: string[]; cautions: string[] } {
+  const cautionTests = cautionPatterns.flatMap((source) => { try { return [new RegExp(source, 'i')]; } catch { return []; } });
+  for (const path of paths) {
+    const value = readPath(doc, path);
+    if (!Array.isArray(value)) continue;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const entry of value) {
+      const text = typeof entry === 'string' ? entry.replace(/\s+/g, ' ').trim() : '';
+      if (text.length < HIGHLIGHT_LENGTH.min || text.length > HIGHLIGHT_LENGTH.max || seen.has(text.toLowerCase())) continue;
+      seen.add(text.toLowerCase());
+      out.push(text);
+      if (out.length >= MAX_HIGHLIGHTS) break;
+    }
+    if (out.length > 0) {
+      const isCaution = (text: string) => cautionTests.some((test) => test.test(text));
+      return { highlights: out.filter((text) => !isCaution(text)), cautions: out.filter(isCaution).slice(0, 2) };
+    }
+  }
+  return { highlights: [], cautions: [] };
 }
 
 function declaredCurrency(doc: unknown, mapping: ResolvedCatalogMapping): string | undefined {
   const paths = mapping.pricing.sources.map((source) => source.currencyPath).filter((path): path is string => !!path);
   const value = firstString(doc, paths);
   return value ? value.toUpperCase() : undefined;
+}
+
+/** The SKUs the record lists as suggested with it: a list of SKU strings, a list of objects with `sku`, or an object whose `items` is one of those. */
+function accessorySkusOf(doc: unknown, mapping: ResolvedCatalogMapping): string[] {
+  const skus: string[] = [];
+  for (const path of mapping.accessoryPaths) {
+    const value: any = readPath(doc, path);
+    const list: unknown[] = Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : [];
+    for (const entry of list) {
+      const sku = typeof entry === 'string' ? entry : typeof (entry as any)?.sku === 'string' ? (entry as any).sku : '';
+      if (sku.trim() && !skus.includes(sku.trim())) skus.push(sku.trim());
+    }
+    if (skus.length > 0) break;
+  }
+  return skus.slice(0, 12);
+}
+
+function categoryTrailOf(doc: unknown, mapping: ResolvedCatalogMapping): string[] {
+  for (const path of mapping.categoryHierarchyPaths) {
+    const value = readPath(doc, path);
+    if (Array.isArray(value) && value.length > 0 && value.every((segment) => typeof segment === 'string')) return value as string[];
+  }
+  return [];
 }
 
 export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMapping, labels: { title: string; category: string }): NormalizedCatalogProduct {
@@ -224,12 +371,22 @@ export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMappin
     // A priced item carries the currency it was priced in; an unpriced one only a currency the product itself declares.
     currency: priceCents != null ? priced.currency : declaredCurrency(doc, mapping),
     currencyUndeclared: priceCents == null && priced.currencyUndeclared,
+    ...(priceCents != null && priced.demo ? { priceIsDemo: true } : {}),
     inStock: extractStock(doc, mapping),
     availableQuantity: typeof quantity === 'number' ? quantity : undefined,
     certifications: Array.isArray(certifications) ? certifications.filter((c): c is string => typeof c === 'string') : [],
     imageUrl: typeof imageValue === 'string' ? imageValue : '',
     availability,
     attributes,
+    ...highlightsOf(doc, mapping.highlightPaths, mapping.cautionPatterns),
+    rating: firstNumber(doc, mapping.ratingValuePaths),
+    ratingCount: firstNumber(doc, mapping.ratingCountPaths),
+    branchesAvailable: firstNumber(doc, mapping.branchAvailablePaths),
+    branchesTotal: firstNumber(doc, mapping.branchTotalPaths),
+    pickupOnly: (() => { const value = firstValue(doc, mapping.pickupOnlyPaths); return typeof value === 'boolean' ? value : undefined; })(),
+    deliveryOptions: (() => { const value = firstValue(doc, mapping.deliveryOptionPaths); return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0).map((entry) => entry.trim()).slice(0, 8) : []; })(),
+    categoryTrail: categoryTrailOf(doc, mapping),
+    accessorySkus: accessorySkusOf(doc, mapping),
   };
 }
 

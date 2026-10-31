@@ -7,6 +7,8 @@ const ai = { provider: 'openai', model: 'gpt-5.5', temperature: 0.4 };
 const policy = (aiConfig: any = ai) => compileModelPolicy({ projectId: 'acme', aiConfig });
 const item = (compiled: ReturnType<typeof policy>, id: string) => compiled.policies.find((entry) => entry.policyId === id)!;
 
+const policyDefaultsOutput = (policyId: string, compiled: any) => compiled.policies.find((p: any) => p.policyId === policyId).maxOutputTokens;
+
 async function main() {
   await suite.test('without overrides the four policies are exactly what the platform always compiled', () => {
     const compiled = policy();
@@ -26,6 +28,16 @@ async function main() {
     assert.deepEqual([item(compiled, 'tool_selection').timeoutMs, item(compiled, 'tool_selection').candidates[0].model], [9000, 'gpt-5.5']);
     assert.deepEqual([item(compiled, 'response_generation').timeoutMs, item(compiled, 'response_generation').candidates[0].model], [15000, 'gpt-5.5']);
     assert.equal(item(compiled, 'fast_intent').candidates[0].temperature, 0, 'a deterministic step stays deterministic');
+  });
+
+  await suite.test('an override may raise how much a policy may write, for a model that thinks before it answers', () => {
+    const compiled = policy({ ...ai, policyOverrides: { complex_reasoning: { model: 'gemini-pro', maxOutputTokens: 8000, timeoutMs: 60000 } } });
+    assert.deepEqual([item(compiled, 'complex_reasoning').maxOutputTokens, item(compiled, 'complex_reasoning').timeoutMs], [8000, 60000]);
+    assert.equal(item(compiled, 'tool_selection').maxOutputTokens, policyDefaultsOutput('tool_selection', compiled), 'the other policies keep their limit');
+    assert.deepEqual(validatePolicyOverrides({ complex_reasoning: { maxOutputTokens: 8000 } }), []);
+    assert.match(validatePolicyOverrides({ complex_reasoning: { maxOutputTokens: 100 } }).join(';'), /maxOutputTokens must be a whole number between 500 and 16000/);
+    assert.match(validatePolicyOverrides({ complex_reasoning: { maxOutputTokens: 99999 } }).join(';'), /maxOutputTokens/);
+    assert.match(validatePolicyOverrides({ complex_reasoning: { maxOutputTokens: 2500.5 } }).join(';'), /maxOutputTokens/);
   });
 
   await suite.test('an override never touches the explicit fallback', () => {

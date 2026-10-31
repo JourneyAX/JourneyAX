@@ -1,0 +1,39 @@
+{
+  "forbiddenIndustryTerms": [
+    "trade",
+    "decking",
+    "plasterboard",
+    "tapware",
+    "hoodie",
+    "tee",
+    "fleece",
+    "jeans",
+    "joggers",
+    "sportswear",
+    "timber",
+    "cladding",
+    "framing",
+    "insulation",
+    "fasteners",
+    "screw",
+    "screws",
+    "nails",
+    "toilet",
+    "basin",
+    "load-bearing",
+    "structural beam",
+    "timber bearer",
+    "subfloor bearer",
+    "lintel",
+    "joist",
+    "dwang",
+    "paling",
+    "waterproofing",
+    "electrical wiring",
+    "power outlet"
+  ],
+  "forbiddenAttributeNames": [
+    "treatment",
+    "rValue"
+  ]
+}

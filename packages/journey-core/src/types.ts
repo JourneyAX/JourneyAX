@@ -208,8 +208,51 @@ export interface WorkspaceState {
   pinsRebound?: boolean;
 }
 
+export interface CustomerContext {
+  isSignedIn?: boolean;
+  customerId?: string;
+  customerType?: string;
+  branch?: string;
+  store?: string;
+  region?: string;
+  locale?: string;
+  cart?: {
+    itemCount?: number;
+    total?: string | number;
+    items?: Array<{ sku: string; title?: string; quantity?: number; price?: number }>;
+    summary?: string;
+  } | string | Record<string, unknown>;
+  quote?: {
+    quoteId?: string;
+    itemCount?: number;
+    total?: string | number;
+    items?: Array<{ sku: string; title?: string; quantity?: number; price?: number }>;
+    summary?: string;
+  } | string | Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CustomerEventSourceCard {
+  id?: string;
+  cardType?: string;
+  actionId?: string;
+  [key: string]: any;
+}
+
+export interface CustomerEvent {
+  type: string;
+  payload?: any;
+  sourceCard?: CustomerEventSourceCard | string;
+  timestamp?: string;
+  metadata?: Record<string, any>;
+}
+
 export interface TurnCommand {
   tenantId: string;
+  /** The agent the customer chose to talk to; the router honours it only when the pack defines that agent. */
+  agentId?: string;
+  /** The message this turn answers; an earlier message starts a branch of the conversation. Absent: the newest message. */
+  parentMessageId?: string;
   environmentId: EnvironmentId;
   workspaceId: string;
   sessionId: string;
@@ -217,11 +260,19 @@ export interface TurnCommand {
   turnId?: string;
   principalId?: string;
   principalRole?: string;
+  /** The staff groups the gateway signed for this person; empty or absent for a shopper. Set only by the server, never from the request body. */
+  principalGroups?: string[];
+  /** Connectors the person switched off for this chat. It can only narrow what their role allows, never widen it. */
+  disabledConnectors?: string[];
   correlationId: string;
 
   message?: string;
   event?: ChannelEvent;
+  customerEvent?: CustomerEvent;
+  customer_event?: CustomerEvent;
   inputFacts?: Record<string, unknown>;
+
+  customerContext?: CustomerContext;
 
   approvalRequestId?: string;
   idempotencyKey?: string;
@@ -236,6 +287,8 @@ export interface TurnResult {
   decision: Decision;
   assistantMessage?: string;
   uiInstructions: UIInstruction[];
+  engine?: string;
+  agentId?: string;
   executedCapabilities: {
     toolId: string;
     status: 'success' | 'failure' | 'requires_approval' | 'denied';
@@ -256,6 +309,11 @@ export interface TurnResult {
     };
     errors?: any[];
     events?: any[];
+    timing?: any;
+    engine?: 'react' | 'legacy' | 'canonical' | 'agent' | string;
+    agentId?: string;
+    agentMode?: boolean;
+    [key: string]: any;
   };
 }
 

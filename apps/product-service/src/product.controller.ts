@@ -9,6 +9,12 @@ import { TryOnService, TryOnInput } from './tryon.service';
 // undefined and reject every internal caller (the quote engine's pricebook call).
 const internalKey = () => process.env.INTERNAL_API_KEY;
 
+// Shape of the demo-only branch stock answers (see `inventory` below): about this share of branch/sku pairs are in stock,
+// with a quantity between DEMO_MIN_QTY and DEMO_MIN_QTY + DEMO_QTY_SPREAD - 1.
+const DEMO_IN_STOCK_PERCENT = 88;
+const DEMO_MIN_QTY = 3;
+const DEMO_QTY_SPREAD = 118;
+
 @Controller('api/v1/:projectId/products')
 export class ProductController {
   constructor(
@@ -35,6 +41,31 @@ export class ProductController {
    * its host allowlist from. Read-only and non-secret: hosts, id patterns,
    * palette and zone names. No credentials live here.
    */
+  /**
+   * Demo-only branch stock, for a project with no inventory connector yet. It is OFF unless the project is named in
+   * DEMO_INVENTORY_TENANTS, and every answer is labelled source "demo". The numbers come from a fixed function of sku and branch,
+   * so the same question always gets the same answer; they are not real stock.
+   */
+  @Get('inventory')
+  async inventory(@Param('projectId') projectId: string, @Query('sku') sku?: string, @Query('branch') branch?: string) {
+    const demoTenants = String(process.env.DEMO_INVENTORY_TENANTS || '').split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+    if (!demoTenants.includes(String(projectId || '').toLowerCase())) {
+      throw new HttpException('No inventory connector is configured for this project', HttpStatus.NOT_FOUND);
+    }
+    if (!sku || !branch) throw new HttpException('sku and branch are required', HttpStatus.BAD_REQUEST);
+    let hash = 5381;
+    for (const ch of `${sku}|${String(branch).toLowerCase()}`) hash = ((hash << 5) + hash + ch.charCodeAt(0)) >>> 0;
+    const inStock = hash % 100 < DEMO_IN_STOCK_PERCENT;
+    const stockQty = inStock ? DEMO_MIN_QTY + (hash % DEMO_QTY_SPREAD) : 0;
+    // The pickup wording is configuration, not code. Unset, the field is left out and the caller's own fallback applies.
+    const collectionTimeframe = String(process.env.DEMO_INVENTORY_COLLECTION_TIMEFRAME || '').trim();
+    return {
+      sku,
+      source: 'demo',
+      branches: [{ branchName: branch, branchCode: branch, inStock, stockQty, clickAndCollectReady: inStock, ...(collectionTimeframe ? { collectionTimeframe } : {}) }],
+    };
+  }
+
   /** What else can hang in this kit, grouped by the catalogue's garment types. */
   @Get('rack')
   async rack(@Param('projectId') projectId: string) {
@@ -154,6 +185,28 @@ export class ProductController {
     const brand = (projectId || '').toLowerCase().trim();
     if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
     return this.productService.getBySkus(brand, body?.skus || []);
+  }
+
+  /**
+   * One product as a customer reads it: description, features, specifications, documents, what goes with it and its branch
+   * availability. Called by the storefront's own server route when a customer opens a product, so it takes the internal key.
+   */
+  @Get('detail')
+  async detail(
+    @Param('projectId') projectId: string,
+    @Headers('x-internal-key') internalKeyHeader: string,
+    @Query('sku') sku?: string,
+  ) {
+    const key = internalKey();
+    if (!key || internalKeyHeader !== key) {
+      throw new HttpException('product detail is internal-only', HttpStatus.FORBIDDEN);
+    }
+    const brand = (projectId || '').toLowerCase().trim();
+    if (!brand) throw new HttpException('projectId parameter is required', HttpStatus.BAD_REQUEST);
+    if (!sku || !String(sku).trim()) throw new HttpException('sku is required', HttpStatus.BAD_REQUEST);
+    const detail = await this.productService.getProductDetail(brand, String(sku));
+    if (!detail) throw new HttpException('No such product in this catalogue', HttpStatus.NOT_FOUND);
+    return detail;
   }
 
   /** Find the school / athletic programme a customer is buying for (AUG-15). */

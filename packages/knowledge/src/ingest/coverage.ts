@@ -206,7 +206,7 @@ export function renderCoverageMarkdown(report: CoverageReport): string {
     `- Products carrying neither a catalogue path nor a category (counted in a concept, but unreachable by any scope): ${n(t.productsWithoutScope)}`, '',
   );
   if (report.familySuggestions.length) {
-    lines.push('## Family suggestions (for the authored layer)', '', 'Customer terms that name several categories. A family concept would let "screws" reach all of them.', '');
+    lines.push('## Family suggestions (for the authored layer)', '', 'Customer terms that name several categories. A family concept would let broad terms reach all of them.', '');
     for (const entry of report.familySuggestions.slice(0, 25)) lines.push(`- **${entry.term}** — ${entry.categories.join(', ')}`);
     lines.push('');
   }

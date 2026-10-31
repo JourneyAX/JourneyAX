@@ -12,6 +12,10 @@ import {
   mapWarrantyCard, mapFitmentCard, mapPlanCard, mapOrderStatusCard, mapHeroCard, mapComparisonCard, mapBundleCard,
 } from '@/lib/cards/mappers';
 import { activeSessionId } from '@/lib/conversations';
+import { buildReviewEvent, reviewFingerprint } from '@/lib/cards/reviewEvent';
+import { closeCanvas, openCanvas } from '@/lib/shell/sidePanelStore';
+import { keepCardsUpTo } from '@/lib/chat/branching';
+import { keepsOwnPlace } from '@/lib/cards/appendOnly';
 
 type Action =
   | { type: 'SET_PHASE'; phase: Phase }
@@ -23,7 +27,7 @@ type Action =
   | { type: 'ADD_MESSAGE'; role: 'ai' | 'user' | 'note'; text: string; head?: string }
   | { type: 'SET_CLARIFY'; key: keyof ClarifyAnswers; value: string }
   | { type: 'SET_DYNAMIC_QUESTIONS'; questions: DynamicQuestion[] }
-  | { type: 'SET_DYNAMIC_ANSWER'; questionId: string; value: string }
+  | { type: 'SET_DYNAMIC_ANSWER'; questionId: string; value: string; kept?: boolean }
   | { type: 'SET_RECOMMENDED_PRODUCTS'; products: RecommendedProduct[] }
   | { type: 'SET_COMPARISON'; comparison: ComparisonData | null }
   | { type: 'SET_BUNDLE'; bundle: BundleData | null }
@@ -69,7 +73,9 @@ type Action =
   | { type: 'POP_CARD'; id?: string }
   | { type: 'PATCH_CARD'; id: string; state: Record<string, unknown> }
   | { type: 'SET_WORKING'; working: JourneyState['working'] }
-  | { type: 'CLEAR_CARDS' };
+  | { type: 'CLEAR_CARDS' }
+  /** A message was replaced (edit, try again): the cards of that turn and of the turns after it leave the thread. */
+  | { type: 'TRIM_CARDS_AFTER'; count: number };
 
 function reducer(state: JourneyState, action: Action): JourneyState {
   switch (action.type) {
@@ -167,9 +173,9 @@ function reducer(state: JourneyState, action: Action): JourneyState {
         ...(action.key === 'finishQ' ? { finish: action.value } : {}),
       };
     case 'SET_DYNAMIC_QUESTIONS':
-      return { ...state, dynamicQuestions: action.questions, dynamicAnswers: {} };
+      return { ...state, dynamicQuestions: action.questions, dynamicAnswers: {}, dynamicKept: {} };
     case 'SET_DYNAMIC_ANSWER':
-      return { ...state, dynamicAnswers: { ...state.dynamicAnswers, [action.questionId]: action.value } };
+      return { ...state, dynamicAnswers: { ...state.dynamicAnswers, [action.questionId]: action.value }, dynamicKept: { ...state.dynamicKept, [action.questionId]: action.kept === true } };
     case 'SET_COMPARISON':
       return { ...state, comparison: action.comparison };
     case 'SET_BUNDLE':
@@ -301,7 +307,7 @@ function reducer(state: JourneyState, action: Action): JourneyState {
 
     // ── Card CMS (v3) ──────────────────────────────────────────────────
     case 'PUSH_CARD': {
-      const append = action.card.variant === 'append';
+      const append = keepsOwnPlace(action.card);
       // If a card with the same ID already exists, update it in place
       const existingIdx = state.cards.findIndex((c) => c.id === action.card.id);
       if (existingIdx !== -1) {
@@ -353,6 +359,12 @@ function reducer(state: JourneyState, action: Action): JourneyState {
       return { ...state, working: action.working };
     case 'CLEAR_CARDS':
       return { ...state, cards: [], activeCardId: undefined };
+    case 'TRIM_CARDS_AFTER': {
+      const cards = keepCardsUpTo(state.cards, action.count);
+      if (cards.length === state.cards.length) return state;
+      const activeCardId = cards.some((c) => c.id === state.activeCardId) ? state.activeCardId : cards[cards.length - 1]?.id;
+      return { ...state, cards, activeCardId };
+    }
 
     case 'RESET':
       return { ...INITIAL_STATE };
@@ -384,6 +396,8 @@ interface JourneyContextType {
   quoteTitle: string;
   isDynamicClarifyComplete: boolean;
   handleApprove: () => void;
+  /** The cart's checkout button: a last look first when the shop has it on, payment straight away otherwise. */
+  requestCheckout: () => void;
   handleRestart: () => void;
   handleTryRemove: () => void;
   addToCart: (sku: string, qty?: number, title?: string, product?: any) => Promise<void>;
@@ -784,12 +798,33 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     }
     dispatch({ type: 'SET_ORDERING', ordering: true });
     try {
+      // Paying inside the side panel when the shop has it on: the payment form opens there and the page is never left.
+      const inPanel = !!cfg.payment?.embedded;
       const res = await fetch('/api/order' + (typeof window !== 'undefined' ? window.location.search : ''), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quoteId: quote.quoteId, idempotencyKey: quote.quoteId, quote }),
+        body: JSON.stringify({
+          quoteId: quote.quoteId, idempotencyKey: quote.quoteId, quote,
+          ...(inPanel ? { embedded: true, collect: { shipping: cfg.payment?.collectShipping === true, countries: cfg.payment?.shippingCountries || [] } } : {}),
+        }),
       });
       const data = await res.json();
+      if (inPanel && data?.success && data?.clientSecret && data?.publishableKey && data?.orderId) {
+        dispatch({ type: 'SET_ORDERING', ordering: false });
+        setCartOpen(false);
+        openCanvas({ kind: 'checkout', orderId: data.orderId, payment: { clientSecret: data.clientSecret, publishableKey: data.publishableKey } });
+        return;
+      }
+      if (inPanel && data?.success && data?.status === 'paid' && data?.orderId) {
+        // No payment provider is switched on for this shop (a demo or a credit account): the order stands as placed.
+        dispatch({ type: 'SET_ORDERING', ordering: false });
+        try {
+          const done = await (await fetch(`/api/order?orderId=${encodeURIComponent(data.orderId)}&${window.location.search.slice(1)}`, { cache: 'no-store' })).json();
+          if (done?.found) dispatch({ type: 'SET_PLACED_ORDER', order: done });
+        } catch { /* the order still opens below */ }
+        openCanvas({ kind: 'order', orderId: data.orderId });
+        return;
+      }
       if (data?.success && data?.checkoutUrl) {
         window.location.href = data.checkoutUrl; // hosted Stripe Checkout (PCI stays with Stripe)
         return;
@@ -798,7 +833,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     } catch {
       dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Network error starting checkout. Please try again.' });
     }
-  }, []);
+  }, [cfg.payment, dispatch]);
 
   const handleTryRemove = useCallback(() => {
     dispatch({
@@ -848,6 +883,23 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state, dispatch]);
 
+  // The last look before payment (see lib/cards/reviewEvent.ts): asked once per order; the card's own button goes on to payment.
+  const reviewedRef = useRef<string>('');
+  const requestCheckout = useCallback(() => {
+    const quote = stateRef.current.serverQuote;
+    const fingerprint = reviewFingerprint(quote?.lines as any, stateRef.current.selectedBranch);
+    const event = cfg.checkoutReview && quote && reviewedRef.current !== fingerprint
+      ? buildReviewEvent(quote.lines as any, { id: stateRef.current.selectedBranch, name: stateRef.current.selectedBranchName })
+      : null;
+    const send = typeof window !== 'undefined' ? (window as any).__journeySendEvent : undefined;
+    if (!event || typeof send !== 'function') { void handleApprove(); return; }
+    reviewedRef.current = fingerprint;
+    setCartOpen(false);
+    // The cart panel steps aside so the review can be read in the conversation.
+    closeCanvas();
+    send(event);
+  }, [cfg.checkoutReview, handleApprove]);
+
   return (
     <JourneyContext.Provider
       value={{
@@ -858,6 +910,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         quoteTitle,
         isDynamicClarifyComplete,
         handleApprove,
+        requestCheckout,
         handleRestart,
         handleTryRemove,
         addToCart,

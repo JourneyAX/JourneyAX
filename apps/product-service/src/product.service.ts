@@ -38,6 +38,7 @@ import { resolveNeeds, isReliableCharacter } from './needs-vocabulary';
 import { getDomainGlossary, expandWithGlossary } from './domain-glossary';
 import { fuzzyWordMatch, emphasizePrimaryClause } from './query-shaping';
 import { RenderService } from './render.service';
+import { buildProductDetail, isRetired, MAX_RELATED, type ProductDetail } from './product-detail';
 
 const VECTOR_INDEX_NAME = 'vector_index';
 const EMBEDDING_MODEL = 'text-embedding-3-small';
@@ -2864,13 +2865,15 @@ export class ProductService {
       const db = await this.getDb();
       const rows = await db.collection('products').find(
         { projectId: brand, parentSku: { $in: styles } },
-        { projection: { parentSku: 1, leadTimeDays: 1, colors: 1, sizes: 1, rating: 1, completeTheLook: 1, originalPrice: 1 } },
+        { projection: { parentSku: 1, leadTimeDays: 1, colors: 1, sizes: 1, rating: 1, completeTheLook: 1, originalPrice: 1, imageUrl: 1 } },
       ).toArray();
       const byStyle = new Map(rows.map((r: any) => [String(r.parentSku).toUpperCase(), r]));
       for (const [sku, item] of bySku) {
         const r: any = byStyle.get(styleOf(sku));
         if (!r) continue;
         if (typeof r.leadTimeDays === 'number') item.leadTimeDays = r.leadTimeDays;
+        // The product record is the authority for its picture; the search corpus keeps whatever link it was indexed with.
+        if (typeof r.imageUrl === 'string' && r.imageUrl) item.imageUrl = r.imageUrl;
         // ANF-98: the variant axis lives on the products collection — surface it so
         // grounded cards get real colour swatches + size pills.
         if (Array.isArray(r.colors) && r.colors.length) item.colors = r.colors;
@@ -3024,6 +3027,33 @@ export class ProductService {
    * `documents` for any tenant/item not present there — so tenants that were
    * already working this way keep working unchanged.
    */
+  /**
+   * One product as a customer reads it: its description, features, specifications, documents, the products bought with it and
+   * its branch availability, taken from the catalogue record and cleaned for display (see product-detail.ts). Null when the
+   * SKU is not in this tenant's catalogue or is no longer sold. Cached per project like the pricebook, and dropped with it.
+   */
+  async getProductDetail(projectId: string, sku: string): Promise<ProductDetail | null> {
+    const brand = (projectId || '').toLowerCase().trim();
+    const clean = String(sku || '').trim();
+    if (!brand || !clean) return null;
+    return getOrSet(cacheKey(brand, 'product-detail', { sku: clean }), async () => {
+      const db = await this.getDb();
+      const products = db.collection('products');
+      const doc = await products.findOne({ projectId: brand, $or: [{ parentSku: clean }, { sku: clean }] });
+      if (!doc || isRetired(doc)) return null;
+      const skusOf = (list: unknown): string[] => (Array.isArray(list) ? list : []).map((entry: any) => String(typeof entry === 'string' ? entry : entry?.sku ?? '')).filter((s: string) => s && s !== clean).slice(0, MAX_RELATED * 3);
+      const suggestedSkus = skusOf(doc.accessories);
+      const relatedSkus = skusOf(doc.related);
+      const wanted = [...new Set([...suggestedSkus, ...relatedSkus])];
+      const found = wanted.length
+        ? await products.find({ projectId: brand, parentSku: { $in: wanted } }, { projection: { parentSku: 1, name: 1, priceUSD: 1, currency: 1, imageUrl: 1, discontinued: 1, delisted: 1, status: 1 } }).toArray()
+        : [];
+      // Each list keeps the order the record gives it in.
+      const inOrder = (skus: string[]) => skus.map((sku) => found.find((d: any) => d.parentSku === sku)).filter(Boolean);
+      return buildProductDetail(doc, { suggested: inOrder(suggestedSkus), related: inOrder(relatedSkus) });
+    }, { ttlSeconds: 600 });
+  }
+
   async getCatalogueItem(projectId: string, url: string) {
     const db = await this.getDb();
     const p = await db.collection('products').findOne({ projectId, url });

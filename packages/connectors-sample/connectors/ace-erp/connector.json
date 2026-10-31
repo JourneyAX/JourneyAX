@@ -1,0 +1,372 @@
+{
+  "connectorId": "ace-erp",
+  "title": "SAP ERP (sample)",
+  "standsInFor": "SAP ERP: stock, trade prices, deliveries and account balances",
+  "description": "Stock by branch, trade prices, deliveries and account balances.",
+  "minimums": {
+    "branches": 25,
+    "stock": 100,
+    "deliveries": 25,
+    "price_list": 25,
+    "account_balances": 25
+  },
+  "tools": [
+    {
+      "name": "stock_by_branch",
+      "description": "Stock on hand for a product, branch by branch. Narrow it to one branch with branchCode.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          },
+          "branchCode": {
+            "type": "string",
+            "description": "Optional branch code."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sku": "$first:stock.sku"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "stock",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "sku",
+            "field": "sku"
+          },
+          {
+            "arg": "branchCode",
+            "field": "branchCode"
+          }
+        ],
+        "sort": {
+          "field": "available",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "trade_price",
+      "description": "The retail price and the trade prices by tier (bronze, silver, gold) for a product.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sku": "$first:price_list.sku"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "price_list",
+        "key": "sku",
+        "arg": "sku"
+      }
+    },
+    {
+      "name": "delivery_status",
+      "description": "Where a delivery is. Give the delivery id or the order id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "deliveryId": {
+            "type": "string",
+            "description": "The delivery id, for example DEL-30001."
+          },
+          "orderId": {
+            "type": "string",
+            "description": "The order the delivery is for."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "deliveryId": "$first:deliveries.deliveryId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "deliveries",
+        "key": "deliveryId",
+        "arg": "deliveryId",
+        "altKeys": [
+          {
+            "key": "orderId",
+            "arg": "orderId"
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_deliveries",
+      "description": "The deliveries of one trade account, newest first. Give the account id; optionally only one status (scheduled, out_for_delivery, delivered, failed_attempt).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0028."
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional: only deliveries in this status."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "ACC-0028"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "deliveries",
+        "filters": [
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "scheduledDate",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "find_account",
+      "description": "Find a trade account by part of its name: returns its ERP account number (such as ACC-0028), its name, price tier and payment terms. Use the number with the other tools. No balances.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Part of the account name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 10).",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "query": "Talbot"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "account_balances",
+        "text": {
+          "arg": "query",
+          "fields": [
+            {
+              "field": "name",
+              "weight": 3
+            },
+            {
+              "field": "accountId",
+              "weight": 2
+            }
+          ],
+          "mode": "all"
+        },
+        "limit": {
+          "arg": "limit",
+          "default": 5,
+          "max": 10
+        },
+        "sort": {
+          "field": "name",
+          "order": "asc"
+        },
+        "select": [
+          "accountId",
+          "name",
+          "tier",
+          "terms"
+        ]
+      }
+    },
+    {
+      "name": "account_balance",
+      "description": "The balance, credit limit and overdue amount of a trade account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0001."
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "$first:account_balances.accountId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "account_balances",
+        "key": "accountId",
+        "arg": "accountId"
+      }
+    },
+    {
+      "name": "list_account_balances",
+      "description": "Trade accounts with their balance, credit limit and overdue amount, most overdue first. Give minOverdue to list only the accounts overdue by at least that much.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "minOverdue": {
+            "type": "number",
+            "description": "Only accounts overdue by at least this much, for example 0.01 for every overdue account."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 30).",
+            "minimum": 1,
+            "maximum": 30
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "minOverdue": 0.01
+      },
+      "op": {
+        "kind": "find",
+        "collection": "account_balances",
+        "filters": [
+          {
+            "arg": "minOverdue",
+            "field": "overdue",
+            "match": "gte"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 30
+        },
+        "sort": {
+          "field": "overdue",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "list_branches",
+      "description": "List branches, or find one by name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional words from the branch name."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "query": "dunedin"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "branches",
+        "limit": {
+          "arg": "limit",
+          "default": 25,
+          "max": 25
+        },
+        "text": {
+          "arg": "query",
+          "fields": [
+            {
+              "field": "name",
+              "weight": 3
+            },
+            {
+              "field": "code",
+              "weight": 3
+            }
+          ]
+        },
+        "sort": {
+          "field": "name"
+        }
+      }
+    }
+  ]
+}

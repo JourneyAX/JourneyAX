@@ -28,6 +28,8 @@
   "howTo": { "maxSentences": 3, "maxChars": 320 },
   "browsePhrases": ["show me","show all","see all","see everything","browse","list all","what do you have","what have you got","what do you sell","everything you have"],
   "modelReading": { "skipForTappedAnswers": true, "skipForBrowse": true, "browseMaxWords": 8, "maxHeaderWords": 3 },
+  "history": { "maxTurns": 6, "maxChars": 4000 },
+  "streaming": true,
   "wording": "template",
   "templates": {
     "ask": ["A quick question first, so I can point you to the right ones.", "One quick question so I get you the right thing."],

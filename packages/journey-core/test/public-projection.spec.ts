@@ -31,6 +31,13 @@ async function main() {
     }
   });
 
+  await suite.test('the ids the turn\'s two messages are kept under reach the browser, so it can name one to continue from', () => {
+    const ids = { customer: 'turn-7:customer', assistant: 'turn-7:assistant' };
+    const projected = projectPublicEvent('done', { ...done, messageIds: ids })!;
+    assert.deepEqual((projected.data as any).messageIds, ids);
+    assert.ok(!text(projected).includes('concept://'), 'and still nothing else');
+  });
+
   await suite.test('internal-only events never reach the browser', () => {
     assert.equal(projectPublicEvent('trace', internalTrace), null);
     assert.equal(projectPublicEvent('data', { decision: done.decision, trace: internalTrace }), null);
@@ -47,6 +54,11 @@ async function main() {
   await suite.test('a capability event says which step ran and whether it worked, never what it was given or returned', () => {
     const projected = projectPublicEvent('capability', { toolId: 'catalog.search', status: 'success', input: { query: 'x' }, output: { items: [{ sku: '1' }] }, error: 'stack', approvalRequestId: 'a1' })!;
     assert.deepEqual(projected.data, { toolId: 'catalog.search', status: 'success' });
+  });
+
+  await suite.test('a connector step also names the system and the tool (so the page can say what is being looked at), still not what it was given', () => {
+    const projected = projectPublicEvent('capability', { toolId: 'call_connector_tool', callId: 'call_1', connector: 'salesforce', tool: 'list_cases', arguments: { accountId: '001xx' }, input: { accountId: '001xx' } })!;
+    assert.deepEqual(projected.data, { toolId: 'call_connector_tool', connector: 'salesforce', tool: 'list_cases' });
   });
 
   await suite.test('an error shows a message chosen from its code, never the error\'s own text (which may name a host, a collection or a stack)', () => {

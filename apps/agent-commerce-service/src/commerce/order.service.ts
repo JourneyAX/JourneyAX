@@ -21,6 +21,8 @@ import { Quote } from './quote.types';
 const DB_NAME = 'journeyx';
 const ORDERS = 'orders';
 
+import { mirrorIsOn, mirrorPaidOrder, type MirroredOrder, type MirrorDeps } from './order-mirror';
+
 export type OrderStatus = 'pending_payment' | 'paid' | 'failed' | 'cancelled';
 
 export interface OrderDoc {
@@ -34,8 +36,32 @@ export interface OrderDoc {
   customer?: { email?: string; name?: string };
   checkoutUrl?: string;
   stripeSessionId?: string;
+  /** What was bought, as the quote priced it when the order was made (the order is the record of it, not the browser). */
+  title?: string;
+  symbol?: string;
+  lines?: Array<{ sku: string; name: string; quantity: number; unitPrice: number | null; lineTotal: number; imageUrl?: string }>;
+  subtotal?: number;
+  discount?: number;
+  tax?: number;
+  taxRate?: number;
+  /** Who is billed and where it goes, as the payment page collected them (set once the payment is confirmed). */
+  billing?: OrderParty;
+  shipping?: OrderParty;
+  paidAt?: string;
+  /** The same order recorded in the business's commerce system (commercetools), under the same number, once it is paid. */
+  externalOrder?: MirroredOrder;
+  /** Why the last attempt to record it failed (empty when it worked), and when it was last tried. */
+  mirrorError?: string;
+  mirrorTriedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OrderParty {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: { line1?: string; line2?: string; city?: string; state?: string; postalCode?: string; country?: string };
 }
 
 export interface CreateOrderArgs {
@@ -45,13 +71,20 @@ export interface CreateOrderArgs {
   customer?: { email?: string; name?: string };
   successUrl: string;
   cancelUrl: string;
-  stripe?: { secretKey?: string };
+  stripe?: { secretKey?: string; publishableKey?: string };
+  /** Take the payment inside the storefront (Stripe's embedded form) instead of sending the customer to Stripe's own page. */
+  embedded?: boolean;
+  /** What the payment page asks for besides the card: a delivery address, and the countries it may be in. */
+  collect?: { shipping?: boolean; countries?: string[] };
 }
 
 export interface CreateOrderResult {
   orderId: string;
   status: OrderStatus;
   checkoutUrl?: string;
+  /** Embedded payment: what the storefront's payment form needs to open (the key is the public one). */
+  clientSecret?: string;
+  publishableKey?: string;
   total: number;
   currency: string;
   error?: string;
@@ -83,6 +116,41 @@ export class OrderService {
     return new Stripe(key, { apiVersion: '2025-01-27.acacia' as any });
   }
 
+  /** Orders being recorded right now in this process, so a webhook and a page opening do not both try. */
+  private mirroring = new Set<string>();
+  /** For tests: the settings, fetch and clock the recording uses. */
+  mirrorDeps: MirrorDeps = {};
+
+  /**
+   * Records a paid order in the commerce system, if that is switched on. Never throws and never touches the order's status: the customer
+   * has paid and keeps their order whatever happens here. The outcome is written on the order; a failure is retried when it is next opened.
+   */
+  async mirror(orderId: string): Promise<void> {
+    if (this.mirroring.has(orderId)) return;
+    this.mirroring.add(orderId);
+    try {
+      const col = await this.getCol();
+      if (!col) return;
+      const order = await col.findOne({ orderId });
+      if (!order || order.status !== 'paid' || order.externalOrder) return;
+      const result = await mirrorPaidOrder(order, this.mirrorDeps);
+      if (result === null) return;
+      const at = (this.mirrorDeps.now ?? (() => new Date()))().toISOString();
+      if (result.ok) {
+        await col.updateOne({ orderId }, { $set: { externalOrder: result.mirrored, mirrorError: '', mirrorTriedAt: at } });
+        console.log(`[OrderService] recorded ${orderId} in commercetools as #${result.mirrored.orderNumber}`);
+      } else {
+        const reason = 'reason' in result ? result.reason : 'unknown';
+        await col.updateOne({ orderId }, { $set: { mirrorError: reason, mirrorTriedAt: at } });
+        console.warn(`[OrderService] could not record ${orderId} in commercetools: ${reason}`);
+      }
+    } catch (error: any) {
+      console.warn('[OrderService] recording the order failed:', error?.message);
+    } finally {
+      this.mirroring.delete(orderId);
+    }
+  }
+
   async create(args: CreateOrderArgs): Promise<CreateOrderResult> {
     const { tenantId, quote, idempotencyKey } = args;
     const col = await this.getCol();
@@ -91,7 +159,18 @@ export class OrderService {
     if (col) {
       const existing = await col.findOne({ tenantId, idempotencyKey });
       if (existing) {
-        return { orderId: existing.orderId, status: existing.status, checkoutUrl: existing.checkoutUrl, total: existing.total, currency: existing.currency };
+        const again: CreateOrderResult = { orderId: existing.orderId, status: existing.status, checkoutUrl: existing.checkoutUrl, total: existing.total, currency: existing.currency };
+        // An embedded payment that was opened and not finished is opened again from the same Stripe session.
+        if (args.embedded && existing.status === 'pending_payment' && existing.stripeSessionId) {
+          const stripeAgain = this.stripeClient(args.stripe?.secretKey);
+          if (stripeAgain) {
+            try {
+              const open = await stripeAgain.checkout.sessions.retrieve(existing.stripeSessionId);
+              if (open.status === 'open' && open.client_secret) return { ...again, clientSecret: open.client_secret, publishableKey: args.stripe?.publishableKey || process.env.STRIPE_PUBLISHABLE_KEY };
+            } catch { /* the session is gone: fall through to the order as it stands */ }
+          }
+        }
+        return again;
       }
     }
 
@@ -117,6 +196,13 @@ export class OrderService {
       currency: quote.currency,
       total: quote.total,
       customer: args.customer,
+      title: quote.title,
+      symbol: quote.symbol,
+      lines: payableLines.map((l) => ({ sku: l.sku, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice, lineTotal: l.lineTotal, ...(l.imageUrl ? { imageUrl: l.imageUrl } : {}) })),
+      subtotal: quote.subtotal,
+      discount: quote.discount,
+      tax: quote.tax,
+      taxRate: quote.taxRate,
       createdAt: now,
       updatedAt: now,
     };
@@ -127,6 +213,7 @@ export class OrderService {
       // Demo / Trade Credit mode: persist approved order and redirect to success
       const confirmedOrder: OrderDoc = { ...order, status: 'paid' };
       if (col) await col.insertOne(confirmedOrder).catch(() => {});
+      void this.mirror(order.orderId);
       const redirectUrl = args.successUrl.replace('{ORDER_ID}', order.orderId);
       return {
         orderId: order.orderId,
@@ -162,14 +249,21 @@ export class OrderService {
               unit_amount: Math.round(quote.total * 100),
             },
           }],
-          // Carry OUR order id on the return URL so the storefront can poll status.
-          success_url: args.successUrl.replace('{ORDER_ID}', order.orderId),
-          cancel_url: args.cancelUrl,
+          ...(args.embedded
+            // Paid inside the storefront: the form is Stripe's own (no card data touches us) and nothing redirects afterwards.
+            ? { ui_mode: 'embedded', redirect_on_completion: 'never' }
+            // Carry OUR order id on the return URL so the storefront can poll status.
+            : { success_url: args.successUrl.replace('{ORDER_ID}', order.orderId), cancel_url: args.cancelUrl }),
+          billing_address_collection: 'required',
+          phone_number_collection: { enabled: true },
+          ...(args.collect?.shipping && args.collect.countries && args.collect.countries.length > 0
+            ? { shipping_address_collection: { allowed_countries: args.collect.countries } }
+            : {}),
           client_reference_id: order.orderId,
           ...(args.customer?.email ? { customer_email: args.customer.email } : {}),
           metadata: { orderId: order.orderId, quoteId: quote.quoteId, tenantId },
           payment_intent_data: { metadata: { orderId: order.orderId, quoteTotal: String(quote.total) } },
-        } as Stripe.Checkout.SessionCreateParams,
+        } as unknown as Stripe.Checkout.SessionCreateParams,
         { idempotencyKey: `checkout_${order.orderId}` },
       );
 
@@ -183,7 +277,10 @@ export class OrderService {
         } else { throw e; }
       });
 
-      return { orderId: order.orderId, status: order.status, checkoutUrl: order.checkoutUrl, total: quote.total, currency: quote.currency };
+      return {
+        orderId: order.orderId, status: order.status, checkoutUrl: order.checkoutUrl, total: quote.total, currency: quote.currency,
+        ...(args.embedded && (session as any).client_secret ? { clientSecret: (session as any).client_secret as string, publishableKey: args.stripe?.publishableKey || process.env.STRIPE_PUBLISHABLE_KEY } : {}),
+      };
     } catch (e: any) {
       console.error('[OrderService] Stripe checkout failed', e?.message || e);
       if (col) await col.insertOne({ ...order, status: 'failed' }).catch(() => {});
@@ -210,7 +307,9 @@ export class OrderService {
       const s = event.data.object as Stripe.Checkout.Session;
       const orderId = (s.metadata?.orderId as string) || (s.client_reference_id as string);
       if (orderId) {
-        await col.updateOne({ orderId }, { $set: { status: 'paid', updatedAt: new Date().toISOString() } });
+        const stamp = new Date().toISOString();
+        await col.updateOne({ orderId }, { $set: { status: 'paid', paidAt: stamp, updatedAt: stamp, ...partiesFromSession(s) } });
+        void this.mirror(orderId);
         // TODO(outbox): emit order.created / order.paid event here (event-bus).
         return { ok: true, handled: 'paid:' + orderId };
       }
@@ -228,6 +327,7 @@ export class OrderService {
     const filter: any = { orderId };
     if (tenantId) filter.tenantId = tenantId;
     const order = await col.findOne(filter);
+    if (order && order.status === 'paid' && !order.externalOrder && mirrorIsOn(this.mirrorDeps.env) && !(order.mirrorTriedAt && Date.now() - Date.parse(order.mirrorTriedAt) < 30_000)) void this.mirror(order.orderId);
     if (!order || order.status !== 'pending_payment') return order;
     return (await this.confirmWithStripe(order, tenantKeyFor(order))) || order;
   }
@@ -260,11 +360,13 @@ export class OrderService {
       const col = await this.getCol();
       if (!col) return null;
       const updatedAt = new Date().toISOString();
-      await col.updateOne({ orderId: order.orderId }, { $set: { status: 'paid', paidAt: updatedAt, updatedAt } });
+      const details = partiesFromSession(s);
+      await col.updateOne({ orderId: order.orderId }, { $set: { status: 'paid', paidAt: updatedAt, updatedAt, ...details } });
       console.log(`[OrderService] confirmed with Stripe (no webhook): paid ${order.orderId}`);
+      void this.mirror(order.orderId);
       // Return exactly what was written — a caller reading `paidAt` from this
       // response must not see null for an order we just stamped as paid.
-      return { ...order, status: 'paid', paidAt: updatedAt, updatedAt } as OrderDoc;
+      return { ...order, status: 'paid', paidAt: updatedAt, updatedAt, ...details } as OrderDoc;
     } catch (e: any) {
       console.warn('[OrderService] Stripe confirmation failed:', e?.message);
       return null;
@@ -275,4 +377,18 @@ export class OrderService {
 /** The project's own Stripe key travels on the order (per-project credentials). */
 function tenantKeyFor(order: OrderDoc): string | undefined {
   return (order as any).stripeKey || undefined;
+}
+
+/** Who pays and where it goes, as Stripe's payment page collected them. Only what was collected is returned. */
+function partiesFromSession(session: Stripe.Checkout.Session): { billing?: OrderParty; shipping?: OrderParty } {
+  const s: any = session;
+  const address = (raw: any): OrderParty['address'] | undefined => (raw && typeof raw === 'object'
+    ? { line1: raw.line1 || undefined, line2: raw.line2 || undefined, city: raw.city || undefined, state: raw.state || undefined, postalCode: raw.postal_code || undefined, country: raw.country || undefined }
+    : undefined);
+  const details = s.customer_details;
+  const shipping = s.shipping_details || s.collected_information?.shipping_details;
+  return {
+    ...(details ? { billing: { name: details.name || undefined, email: details.email || undefined, phone: details.phone || undefined, address: address(details.address) } } : {}),
+    ...(shipping ? { shipping: { name: shipping.name || undefined, address: address(shipping.address) } } : {}),
+  };
 }

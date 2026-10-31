@@ -13,6 +13,44 @@ export const VALID_GATEWAY_ROLES = [
 
 export type GatewayRole = (typeof VALID_GATEWAY_ROLES)[number];
 
+/**
+ * The gateway role a sign-in role is signed as. The user type has its own words for staff (`cs`, `rep`) that are not gateway roles, and a
+ * login of that type used to be signed as a shopper, which dropped its teams and every staff-only thing with them. A word not named here
+ * (`buyer`, `guest`, anything unknown) is a shopper, so a role nobody planned for can only ever lower what a person gets.
+ */
+const SIGN_IN_TO_GATEWAY_ROLE: ReadonlyMap<string, GatewayRole> = new Map<string, GatewayRole>([
+  ['admin', 'admin'],
+  ['manager', 'manager'],
+  ['operator', 'operator'],
+  ['consultant', 'consultant'],
+  ['cs', 'consultant'],
+  ['rep', 'operator'],
+  ['customer', 'customer'],
+]);
+
+export function gatewayRoleFor(signInRole: unknown): GatewayRole {
+  const key = typeof signInRole === 'string' ? signInRole.trim().toLowerCase() : '';
+  return SIGN_IN_TO_GATEWAY_ROLE.get(key) ?? 'customer';
+}
+
+/** The most groups an assertion may carry, and the longest group id. Mirrors `MAX_GROUPS` and `MAX_GROUP_ID_LENGTH` in shared-types `principal.ts`. */
+export const ASSERTION_MAX_GROUPS = 50;
+export const ASSERTION_MAX_GROUP_ID_LENGTH = 64;
+/** A group id as `normaliseGroupId` (shared-types) writes it: lower case letters, digits and `-`, `.`, `:`, starting and ending with a letter or digit. */
+const GROUP_ID_PATTERN = /^[a-z0-9](?:[a-z0-9\-.:]*[a-z0-9])?$/;
+
+/** The groups an assertion may carry: valid ids only, no duplicates, at most {@link ASSERTION_MAX_GROUPS}. */
+export function cleanAssertionGroups(groups: unknown): string[] {
+  if (!Array.isArray(groups)) return [];
+  const out: string[] = [];
+  for (const value of groups) {
+    if (typeof value !== 'string' || value.length > ASSERTION_MAX_GROUP_ID_LENGTH || !GROUP_ID_PATTERN.test(value) || out.includes(value)) continue;
+    out.push(value);
+    if (out.length >= ASSERTION_MAX_GROUPS) break;
+  }
+  return out;
+}
+
 export interface GatewayAssertionPayload {
   iss: typeof GATEWAY_ASSERTION_ISSUER;
   aud: typeof GATEWAY_ASSERTION_AUDIENCE;
@@ -20,6 +58,8 @@ export interface GatewayAssertionPayload {
   environmentId: string;
   sub: string;
   role: GatewayRole;
+  /** The staff groups the person belongs to in this tenant (for example `customer-service`). Absent for a shopper and for an older gateway. */
+  groups?: string[];
   iat: number;
   exp: number;
   jti: string;
@@ -55,6 +95,7 @@ export function signGatewayAssertion(
     environmentId?: string;
     sub: string;
     role: GatewayRole;
+    groups?: string[];
   },
   secret: string,
   options: SignGatewayAssertionOptions = {}
@@ -75,6 +116,7 @@ export function signGatewayAssertion(
     environmentId: (claims.environmentId || 'production').toLowerCase(),
     sub: claims.sub,
     role: claims.role,
+    ...(cleanAssertionGroups(claims.groups).length > 0 ? { groups: cleanAssertionGroups(claims.groups) } : {}),
     iat: nowSec,
     exp,
     jti,
@@ -160,6 +202,14 @@ export function verifyGatewayAssertion(
       `Invalid role '${payload.role}': must be one of ${VALID_GATEWAY_ROLES.join(', ')}`,
       'INVALID_ROLE'
     );
+  }
+
+  // 5b. Groups (optional claim): when present they must be a clean list, exactly as the gateway writes them.
+  if (payload.groups !== undefined) {
+    const cleaned = cleanAssertionGroups(payload.groups);
+    if (!Array.isArray(payload.groups) || cleaned.length !== payload.groups.length) {
+      throw new GatewayAssertionError('Invalid groups claim in assertion', 'INVALID_GROUPS');
+    }
   }
 
   // 6. Tenant and environment binding

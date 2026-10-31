@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next-preview/
 .env.local
 .env
 .DS_Store
@@ -18,6 +19,8 @@ dist/
 .env.bak.*
 setup-vercel-envs.js
 .env*
+!/.env.example
+!apps/agent-commerce-service/.env.example
 scratch/
 tmp/
 artifacts/

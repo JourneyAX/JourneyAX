@@ -1,0 +1,330 @@
+{
+  "connectorId": "sap-commerce",
+  "title": "SAP Commerce Cloud (sample)",
+  "standsInFor": "SAP Commerce Cloud (Hybris): products, carts, checkout and orders",
+  "description": "Products, carts and orders of the online shop.",
+  "minimums": {
+    "products": 40,
+    "carts": 25,
+    "cart_lines": 25,
+    "orders": 25,
+    "order_lines": 25
+  },
+  "tools": [
+    {
+      "name": "find_product",
+      "description": "Search the shop's products by words (name, brand, type). Returns price, unit, category and the product page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words to look for, for example a product type or brand."
+          },
+          "department": {
+            "type": "string",
+            "description": "Optional top-level department to stay inside."
+          },
+          "brand": {
+            "type": "string",
+            "description": "Optional brand."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "query": "$first:products.brand"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "products",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "text": {
+          "arg": "query",
+          "fields": [
+            {
+              "field": "title",
+              "weight": 3
+            },
+            {
+              "field": "brand",
+              "weight": 2
+            },
+            {
+              "field": "keywords",
+              "weight": 2
+            },
+            {
+              "field": "categoryPath",
+              "weight": 1
+            },
+            {
+              "field": "description",
+              "weight": 1
+            }
+          ]
+        },
+        "filters": [
+          {
+            "arg": "department",
+            "field": "department"
+          },
+          {
+            "arg": "brand",
+            "field": "brand"
+          }
+        ],
+        "sort": {
+          "field": "title"
+        }
+      }
+    },
+    {
+      "name": "get_product",
+      "description": "Get one product by SKU: price, unit, category, product page and image.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          }
+        },
+        "required": [
+          "sku"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "sku": "$first:products.sku"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "products",
+        "key": "sku",
+        "arg": "sku"
+      }
+    },
+    {
+      "name": "get_cart",
+      "description": "Get a cart with its lines.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cartId": {
+            "type": "string",
+            "description": "The cart id, for example CART-0001."
+          }
+        },
+        "required": [
+          "cartId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "cartId": "$first:carts.cartId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "carts",
+        "key": "cartId",
+        "arg": "cartId",
+        "include": [
+          {
+            "collection": "cart_lines",
+            "foreignKey": "cartId",
+            "as": "lines",
+            "limit": 50
+          }
+        ]
+      }
+    },
+    {
+      "name": "add_to_cart",
+      "description": "Add a product to a cart. This changes the cart, so it asks first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cartId": {
+            "type": "string",
+            "description": "The cart id."
+          },
+          "sku": {
+            "type": "string",
+            "description": "The product SKU."
+          },
+          "quantity": {
+            "type": "number",
+            "description": "How many.",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "cartId",
+          "sku",
+          "quantity"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "example": {
+        "cartId": "$first:carts.cartId",
+        "sku": "$first:products.sku",
+        "quantity": 2
+      },
+      "op": {
+        "kind": "create",
+        "collection": "cart_lines",
+        "idField": "lineId",
+        "idPrefix": "CL-",
+        "idWidth": 5,
+        "fields": {
+          "cartId": {
+            "arg": "cartId",
+            "required": true
+          },
+          "sku": {
+            "arg": "sku",
+            "required": true
+          },
+          "quantity": {
+            "arg": "quantity",
+            "required": true
+          }
+        },
+        "stamp": [
+          "addedAt"
+        ],
+        "validate": [
+          {
+            "arg": "cartId",
+            "collection": "carts",
+            "field": "cartId",
+            "message": "No cart {value}."
+          },
+          {
+            "arg": "sku",
+            "collection": "products",
+            "field": "sku",
+            "message": "No product {value}.",
+            "copy": {
+              "title": "title",
+              "unitPrice": "price"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_order",
+      "description": "Get an order with its lines: status, delivery type, branch and totals.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "The order id, for example ORD-100001."
+          }
+        },
+        "required": [
+          "orderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "orderId": "$first:orders.orderId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "orders",
+        "key": "orderId",
+        "arg": "orderId",
+        "include": [
+          {
+            "collection": "order_lines",
+            "foreignKey": "orderId",
+            "as": "lines",
+            "limit": 50
+          }
+        ]
+      }
+    },
+    {
+      "name": "order_history",
+      "description": "List the orders of a trade account, newest first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0001."
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional status to filter by."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "$firstWith:orders.accountId"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "orders",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          }
+        ],
+        "sort": {
+          "field": "placedAt",
+          "order": "desc"
+        }
+      }
+    }
+  ]
+}

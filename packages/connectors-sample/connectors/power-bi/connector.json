@@ -1,0 +1,164 @@
+{
+  "connectorId": "power-bi",
+  "title": "Power BI (sample)",
+  "standsInFor": "Power BI: sales and service reports",
+  "description": "Sales and service reports: which reports exist and their figures.",
+  "minimums": {
+    "reports": 6,
+    "report_rows": 150
+  },
+  "tools": [
+    {
+      "name": "list_reports",
+      "description": "The reports that exist, with what each shows.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {},
+      "op": {
+        "kind": "find",
+        "collection": "reports",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "name"
+        }
+      }
+    },
+    {
+      "name": "get_report_figures",
+      "description": "The figures of one report, period by period. Narrow by period numbers or by what the figures are split by.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "description": "The report id, from list_reports."
+          },
+          "fromPeriod": {
+            "type": "integer",
+            "description": "First period number.",
+            "minimum": 1
+          },
+          "toPeriod": {
+            "type": "integer",
+            "description": "Last period number.",
+            "minimum": 1
+          },
+          "dimension": {
+            "type": "string",
+            "description": "Optional: only rows for this split (for example one branch)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 50).",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "reportId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "reportId": "$first:reports.reportId",
+        "limit": 10
+      },
+      "op": {
+        "kind": "find",
+        "collection": "report_rows",
+        "limit": {
+          "arg": "limit",
+          "default": 25,
+          "max": 50
+        },
+        "filters": [
+          {
+            "arg": "reportId",
+            "field": "reportId"
+          },
+          {
+            "arg": "fromPeriod",
+            "field": "periodIndex",
+            "match": "gte"
+          },
+          {
+            "arg": "toPeriod",
+            "field": "periodIndex",
+            "match": "lte"
+          },
+          {
+            "arg": "dimension",
+            "field": "dimension"
+          }
+        ],
+        "sort": {
+          "field": "periodIndex"
+        }
+      }
+    },
+    {
+      "name": "report_totals",
+      "description": "The total of a report's figures for each split (for example for each branch).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "description": "The report id, from list_reports."
+          }
+        },
+        "required": [
+          "reportId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "reportId": "$first:reports.reportId"
+      },
+      "op": {
+        "kind": "aggregate",
+        "collection": "report_rows",
+        "groupBy": "dimension",
+        "filters": [
+          {
+            "arg": "reportId",
+            "field": "reportId"
+          }
+        ],
+        "metrics": [
+          {
+            "name": "total",
+            "op": "sum",
+            "field": "value"
+          },
+          {
+            "name": "periods",
+            "op": "count"
+          }
+        ],
+        "sort": {
+          "field": "total",
+          "order": "desc"
+        },
+        "limit": {
+          "arg": "limit",
+          "default": 25,
+          "max": 50
+        }
+      }
+    }
+  ]
+}

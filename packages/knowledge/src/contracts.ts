@@ -318,8 +318,8 @@ export const AcceptanceScenarioSchema = z.object({
     recommendation: z.enum(['blocked', 'category_examples', 'matched_to_stated_needs', 'verified_recommendation']).optional(),
     clarificationFactKey: FactKeySchema.optional(),
     noClarification: z.boolean().optional(),
-    claimsIncluded: z.array(ClaimClassSchema).max(10).optional(),
-    claimsExcluded: z.array(ClaimClassSchema).max(10).optional(),
+    claimsIncluded: z.array(ClaimClassSchema).max(11).optional(),
+    claimsExcluded: z.array(ClaimClassSchema).max(11).optional(),
     commerce: z.object({
       addToCart: z.enum(['allowed', 'allowed_with_warning', 'blocked']).optional(),
       checkout: z.enum(['allowed', 'requires_compatibility_resolution', 'requires_professional_confirmation', 'blocked']).optional(),

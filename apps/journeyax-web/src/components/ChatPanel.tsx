@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { Fragment, useRef, useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
 import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
@@ -10,12 +10,42 @@ import {
   deleteConversation, messagesKey, sessionKey, journeyKey, newId, summarise,
 } from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
-import WorkingStrip from './shell/WorkingStrip';
+import { WorkingLive } from './shell/WorkedFold';
+import AppShell from './shell/AppShell';
+import { useShell } from './shell/ShellContext';
+import Composer from './shell/Composer';
+import PlusMenu from './shell/PlusMenu';
+import { useOverview } from './customize/useOverview';
+import { plusMenuModel, skillPrompt } from '@/lib/shell/plusMenu';
+import { startersFor } from '@/lib/shell/starters';
+import { takePrefill } from '@/lib/shell/prefill';
+import { parseConnectorList, readOff, toggled, writeOff, type ConnectorItem } from '@/lib/connectors/connectors';
+import SidePanelHost, { PanelNote, useShownPanelCard } from './shell/SidePanel';
+import { BagIcon, SidebarIcon, UserIcon } from './shell/icons';
 import CartDrawer from './CartDrawer';
 import ProjectPanel from './ProjectPanel';
 import { uiActionToCards } from '@/lib/cards/uiActionToCards';
 import { CardTile, useCardActions } from './cards/CardStage';
+import CompareTray from './cards/CompareTray';
+import QuantityStepHost from './cards/QuantityStep';
 import type { CardInstance } from '@/lib/types';
+import { isPanelCardType } from '@/lib/shell/panelCards';
+import { orderRef, rememberOrder } from '@/components/canvas/money';
+import { closeCanvas, closePanelCard, getCanvas, openCanvas, openPanelCard } from '@/lib/shell/sidePanelStore';
+import { attachTrace, buildTrace, isWorkedTrace } from '@/lib/shell/worked';
+import { resolveHero } from '@/lib/shell/greeting';
+import { connectorStepLabel, isCompletionNotice, UNKNOWN_STEP } from '@/lib/shell/stepLabel';
+import { fillGreeting, parseWelcome, welcomeOffer, type Welcome } from '@/lib/shell/welcome';
+import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } from '@/lib/shell/capabilities';
+import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
+import { takePendingAgent } from '@/lib/shell/pendingAgent';
+import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
+import { CARE_ENTRIES, useCareAccess } from '@/components/canvas/care/careAccess';
+import { registerAskHandler } from '@/lib/shell/askInChat';
+import { SHEET_BREAKPOINT } from '@/lib/shell/panel';
+import MyDayTile from './shell/MyDayTile';
+import DashboardHome from './shell/DashboardHome';
+import { useDashboardState } from '@/lib/shell/dashboardStore';
 
 /** Tool name → plain-language trace line for the WorkingStrip (v3 Card CMS).
  *  Deliberately generic — a tenant's own vocabulary lives in the card's own
@@ -46,9 +76,37 @@ const TOOL_TRACE_LABEL: Record<string, string> = {
   researchSchool: 'Researching your school',
   showConfigurator: 'Opening the designer',
   readRoster: 'Reading your roster',
+  // The consultant agent's own tools, in the words a customer would use for what is happening.
+  consult_business_knowledge: 'Checking what we know about this',
+  search_products: 'Looking through the product range',
+  browse_range: 'Seeing how the range is organised',
+  get_product: 'Reading the product details',
+  get_related_products: 'Checking what goes with it',
+  search_guides: 'Looking up installation guidance',
+  read_product_guide: 'Reading the product guide',
+  read_content_page: 'Reading the PlaceMakers page',
+  open_form: 'Opening the form',
+  get_warranty: 'Checking warranty information',
+  explore_options: 'Seeing what the range comes in',
+  estimate_quantity: 'Working out how many you need',
+  generate_visual: 'Making a picture for you',
+  use_skill: 'Reading how best to help with this',
+  quantity_card: 'Showing how many to buy',
+  visual_card: 'Showing the picture',
+  accessories_card: 'Showing what goes with it',
+  calculate_quantity: 'Working out how much you need',
+  check_stock: 'Checking stock at your branch',
+  present_card: 'Putting the options together',
+  create_quote: 'Building your quote',
+  update_quote: 'Updating your quote',
+  add_to_quote: 'Adding to your quote',
+  get_cart: 'Checking your quote so far',
+  update_cart: 'Updating your quote',
+  get_journey_checklist: 'Checking what is left to cover',
+  hand_off_to_human: 'Getting a person to help',
 };
-function traceLabel(name: string): string {
-  return TOOL_TRACE_LABEL[name] || `Running ${name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()}`;
+function traceLabel(name: string, aim?: { connector?: string; tool?: string }): string {
+  return connectorStepLabel(name, aim?.connector, aim?.tool) || TOOL_TRACE_LABEL[name] || UNKNOWN_STEP;
 }
 
 /**
@@ -61,11 +119,16 @@ async function streamChat(
   newMessages: any[],
   setMessages: (m: any[]) => void,
   tenantId?: string,
-  dispatch?: (action: any) => void,
+  panelDispatch?: (action: any) => void,
   heardText?: string,
   signal?: AbortSignal,
   startedAt: number = Date.now(),
+  isCurrent: () => boolean = () => true,
 ): Promise<any> {
+  // Every panel update this stream makes goes through here, so a reply for a
+  // thread the customer has already left cannot paint its cards, phase or
+  // working strip onto the thread they are in now.
+  const dispatch = panelDispatch ? (action: any) => { if (isCurrent()) panelDispatch(action); } : undefined;
   const res = await fetch('/api/chat/stream', {
     method: 'POST',
     // Pin the chat to the tenant this storefront resolved (multi-storefront routing).
@@ -80,9 +143,9 @@ async function streamChat(
   // `startedAt` is the caller's value (sendToAI) so the elapsed timer and the
   // post-turn auto-clear compare the same instant, not two different clocks.
   const workingSteps: { title: string; detail?: string; status?: 'done' | 'running' | 'pending' }[] = [];
-  const pushStep = (name: string) => {
+  const pushStep = (name: string, aim?: { connector?: string; tool?: string }) => {
     if (workingSteps.length) workingSteps[workingSteps.length - 1].status = 'done';
-    workingSteps.push({ title: traceLabel(name), status: 'running' });
+    workingSteps.push({ title: traceLabel(name, aim), status: 'running' });
     dispatch?.({ type: 'SET_WORKING', working: { startedAt, heard: heardText, steps: [...workingSteps] } });
   };
 
@@ -90,6 +153,7 @@ async function streamChat(
   const decoder = new TextDecoder();
   let buffer = '';
   let streamText = '';
+  let sawStartedStep = false;
   let doneData: any = null;
   let capturedSessionId: string | null = null;
   let sentSessionId: string | undefined;
@@ -114,7 +178,10 @@ async function streamChat(
       capturedSessionId = payload.sessionId;
     } else if (ev === 'capability') {
       const toolId = payload.toolId || payload.name;
-      if (toolId) pushStep(toolId);
+      // A notice that a step has finished (it carries a status) says nothing new when the steps were already shown as they began.
+      const finished = isCompletionNotice(payload);
+      if (!finished) sawStartedStep = true;
+      if (toolId && !(finished && sawStartedStep)) pushStep(toolId, { connector: typeof payload.connector === 'string' ? payload.connector : undefined, tool: typeof payload.tool === 'string' ? payload.tool : undefined });
     } else if (ev === 'token') {
       streamText += payload.delta || '';
       setMessages([...newMessages, { role: 'assistant', content: streamText }]);
@@ -145,10 +212,13 @@ async function streamChat(
         } else if (payload.name === 'presentCard' && payload.arguments?.card) {
           const c = payload.arguments.card;
           const journeyCount = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
+          const pushedId = c.id || `${c.cardType}-${Date.now()}`;
+          // Product details and comparisons the agent presents open in the side panel (the thread keeps a one-line note).
+          if (isPanelCardType(c.cardType)) openPanelCard(pushedId, c.cardType);
           dispatch({
             type: 'PUSH_CARD',
             card: {
-              id: c.id || `${c.cardType}-${Date.now()}`,
+              id: pushedId,
               cardType: c.cardType,
               state: c.state || {},
               variant: c.variant,
@@ -167,6 +237,8 @@ async function streamChat(
                 inputType: q.inputType,
                 placeholder: q.placeholder,
                 unit: q.unit,
+                min: typeof q.min === 'number' ? q.min : undefined,
+                max: typeof q.max === 'number' ? q.max : undefined,
               })),
             });
           } else if (c.cardType === 'products' && Array.isArray(c.state?.products)) {
@@ -184,6 +256,7 @@ async function streamChat(
         // enriched `card` to the frame directly (docs §5), render it too.
         if (payload.card && payload.name !== 'presentCard') {
           for (const card of uiActionToCards(payload)) {
+            if (isPanelCardType(card.cardType)) openPanelCard(card.id, card.cardType);
             dispatch({
               type: 'PUSH_CARD',
               card: {
@@ -196,6 +269,9 @@ async function streamChat(
       }
     } else if (ev === 'done') {
       doneData = payload;
+      const engine = payload.engine || payload.trace?.engine;
+      const agentId = payload.agentId || payload.trace?.agentId;
+      setMessages([...withMessageIds(newMessages, payload.messageIds), answerWithId({ role: 'assistant', content: streamText || payload.message?.content || '', engine, agentId }, payload.messageIds)]);
       if (payload.sessionId) capturedSessionId = payload.sessionId;
       if (workingSteps.length) workingSteps[workingSteps.length - 1].status = 'done';
       dispatch?.({
@@ -234,7 +310,7 @@ async function streamChat(
     const keyOf = (a: any) => `${a?.name}:${typeof a?.arguments === 'string' ? a.arguments : JSON.stringify(a?.arguments ?? {})}`;
     const seen = new Set(doneUi.map(keyOf));
     const merged = [...doneUi, ...streamedUiActions.filter((a) => !seen.has(keyOf(a)))];
-    return { ...doneData, sessionId: effectiveSessionId, uiActions: merged };
+    return { ...doneData, sessionId: effectiveSessionId, uiActions: merged, workedSteps: workingSteps.map((step) => step.title) };
   }
   // No clean `done` — reconstruct from what streamed. As long as we got text or a
   // UI action (e.g. the quote), render it rather than throwing into the buffered
@@ -245,6 +321,7 @@ async function streamChat(
       message: { role: 'assistant', content: streamText },
       uiActions: streamedUiActions,
       conversation: [],
+      workedSteps: workingSteps.map((step) => step.title),
     };
   }
   throw new Error('stream produced no output');
@@ -260,7 +337,7 @@ function personaliseGreeting(greeting: string, name?: string | null): string {
   return `Hi ${name}! ${body.charAt(0).toUpperCase()}${body.slice(1)}`;
 }
 
-export default function ChatPanel() {
+export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   const { state, dispatch, bom, cartOpen, setCartOpen } = useJourney();
   const cfg = useStorefrontConfig();
   // Retail bag affordance: a cart brand always needs a way BACK to its bag. Once
@@ -299,14 +376,32 @@ export default function ChatPanel() {
   }, [state]);
 
   const [messages, setMessages] = useState<any[]>([]);
+  const messagesRef = useRef<any[]>([]);
+  messagesRef.current = messages;
+  const pickedAgentRef = useRef('');
   const [prompt, setPrompt] = useState('');
+  // "Try in chat" on the Customize page leaves a question for the next new chat: it is typed in the box (not sent), once.
+  useEffect(() => {
+    const waiting = takePrefill(cfg.projectId);
+    if (waiting) { setPrompt(waiting); window.requestAnimationFrame(() => document.getElementById('chat-input-field')?.focus()); }
+  }, [cfg.projectId]);
   const [isLoading, setIsLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string>('');
-  const { user: authUser, logout } = useAuth();
+  const { user: authUser } = useAuth();
+  const careAccess = useCareAccess(authUser?.email);
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // The agent that answered the latest turn (named by the composer's agent chip).
+  const [answeringAgentId, setAnsweringAgentId] = useState('');
+  // Picker mode only: the agent the customer chose, sent with each turn once the chat request can carry one.
+  const [pickedAgentId, setPickedAgentId] = useState('');
+  useEffect(() => { pickedAgentRef.current = pickedAgentId; }, [pickedAgentId]);
+  // Arriving from "Try" on an agent in Customize: talk to that agent.
+  useEffect(() => { if (CHAT_REQUEST_ACCEPTS_AGENT_ID) { const pending = takePendingAgent(); if (pending) setPickedAgentId(pending); } }, []);
+  // Panel cards the customer asked to see inline in the thread as well ("Show here").
+  const [inlineCardIds, setInlineCardIds] = useState<Set<string>>(() => new Set());
+  const panelEnabled = !embed;
   // Sample-customer demo (config-driven: cfg.demoCustomers). The chosen profile
   // is remembered per project and sent with every turn; changing it starts a
   // fresh conversation so one thread never mixes two identities.
@@ -318,15 +413,21 @@ export default function ChatPanel() {
     try { setDemoPrincipalId(localStorage.getItem(demoKey(cfg.projectId)) || ''); } catch { setDemoPrincipalId(''); }
   }, [cfg.projectId]);
   const demoProfile = cfg.demoCustomers?.profiles.find((p) => p.id === demoPrincipalId) || null;
-  // A broken theme.logoUrl (real example: Caroma's /assets/caroma-logo.svg
-  // 404s) used to just vanish — onError hid the <img> with no fallback,
-  // leaving the header with NO brand identity at all. Fall back to the text
-  // wordmark instead, same as the "no logo configured" case already does.
-  const [logoFailed, setLogoFailed] = useState(false);
-  useEffect(() => { setLogoFailed(false); }, [cfg.theme?.logoUrl]);
+  // (A broken theme.logoUrl falls back to the text wordmark inside the sidebar — see shell/AppSidebar.)
   // sendToAI is a stable closure; reading convoId directly would pin whichever
   // thread was open when it was created.
   const convoIdRef = useRef('');
+  // The connectors the signed-in person may use (the server decides), and which of them this conversation has switched off.
+  const [connectorItems, setConnectorItems] = useState<ConnectorItem[]>([]);
+  // What the pack says to this person's team on the empty chat (arrives with the connector list); until it has, the greeting is not shown at all.
+  const [welcome, setWelcome] = useState<Welcome | undefined>(undefined);
+  const [welcomeLoaded, setWelcomeLoaded] = useState(false);
+  const [connectorsOff, setConnectorsOff] = useState<string[]>([]);
+  // The assistant's skills and plugins for the "+" menu (shown to people who manage it only; see lib/shell/plusMenu.ts).
+  const { data: overview } = useOverview();
+  const plusModel = useMemo(() => plusMenuModel(overview), [overview]);
+  const connectorsOffRef = useRef<string[]>([]);
+  connectorsOffRef.current = connectorsOff;
   convoIdRef.current = convoId;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -394,6 +495,22 @@ export default function ChatPanel() {
     } catch { setMessages([]); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.projectId]);
+  // What the signed-in person may use is the server's call (their role and staff groups); load it for the "+" menu when the project or
+  // the person changes. No list, or a failure, simply means the menu has no connector section.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !authUser) { setConnectorItems([]); setWelcome(undefined); setWelcomeLoaded(true); return; }
+    let cancelled = false;
+    fetch('/api/connectors', { credentials: 'same-origin', cache: 'no-store', headers: cfg.projectId ? { 'X-Tenant-ID': cfg.projectId } : {} })
+      .then((res) => (res.ok ? res.json() : { connectors: [] }))
+      .catch(() => ({ connectors: [] }))
+      .then((json) => { if (!cancelled) { setConnectorItems(parseConnectorList(json)); setWelcome(parseWelcome(json)); setWelcomeLoaded(true); } });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.projectId, authUser?.email]);
+  // Each conversation keeps its own switches.
+  useEffect(() => {
+    setConnectorsOff(convoId ? readOff(cfg.projectId, convoId, connectorItems) : []);
+  }, [cfg.projectId, convoId, connectorItems]);
   const restoredRef = useRef(false);
   useEffect(() => {
     if (typeof window === 'undefined' || !msgKey || !convoId) return;
@@ -448,7 +565,23 @@ export default function ChatPanel() {
 
   /* Start a clean thread: new conversation id, so the next turn opens a NEW
    * server session and the agent begins with no memory of the last brief. */
-  const startNewConversation = useCallback(() => {
+  const startNewConversation = useCallback((opts?: { force?: boolean }) => {
+    // A reply still streaming belongs to the thread being left: stop it, so its
+    // cards cannot land here and the new thread is free to send straight away.
+    abortControllerRef.current?.abort();
+    closePanelCard();
+    setInlineCardIds(new Set());
+    setAnsweringAgentId('');
+    // Already on a blank thread: "new chat" IS this thread. Opening another would only stack empty entries in the list.
+    const onBlankListedThread = convoIdRef.current && convos.some((c) => c.id === convoIdRef.current)
+      && messagesRef.current.length === 0 && stateRef.current.cards.length === 0;
+    if (onBlankListedThread && !opts?.force) {
+      dispatch({ type: 'RESET' });
+      journeyReadyRef.current = true;
+      clearCheckoutParams();
+      setConvoMenuOpen(false);
+      return;
+    }
     const id = newId();
     const next = [{ id, title: 'New conversation', updatedAt: Date.now() }, ...convos];
     saveConversations(cfg.projectId, next);
@@ -470,6 +603,9 @@ export default function ChatPanel() {
    * would belong to a different conversation. */
   const openConversation = useCallback((id: string) => {
     if (id === convoId) { setConvoMenuOpen(false); return; }
+    abortControllerRef.current?.abort(); // same reason as startNewConversation
+    closePanelCard();
+    setInlineCardIds(new Set());
     setActiveConversation(cfg.projectId, id);
     setConvoId(id);
     let restored: any[] = [];
@@ -479,6 +615,7 @@ export default function ChatPanel() {
       if (Array.isArray(parsed)) restored = parsed;
     } catch { /* ignore corrupt storage */ }
     setMessages(restored);
+    setAnsweringAgentId([...restored].reverse().find((m: any) => m?.role === 'assistant' && m?.agentId)?.agentId || '');
     // AUG-89: replay THIS thread's saved panel journey instead of resetting to
     // intro — the whole point of switching back to a conversation.
     restoreJourney(cfg.projectId, id);
@@ -486,26 +623,20 @@ export default function ChatPanel() {
     setConvoMenuOpen(false);
   }, [convoId, cfg.projectId, dispatch, restoreJourney]);
 
-  const handleDeleteConversation = useCallback((e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
+  const handleDeleteConversation = useCallback((id: string) => {
     if (typeof window !== 'undefined' && !window.confirm('Delete this conversation?')) return;
     const next = deleteConversation(cfg.projectId, id);
     setConvos(next);
     if (id === convoId) {
       if (next.length > 0) openConversation(next[0].id);
-      else startNewConversation();
+      else startNewConversation({ force: true });
     }
   }, [cfg.projectId, convoId, openConversation, startNewConversation]);
 
-  // Real sign-in (cookie session via the BFF). The header shows who's signed in;
-  // clicking it signs out — the gate in page.tsx then shows the login screen.
-  const onSignIn = useCallback(async () => {
-    if (!authUser) return;
-    if (typeof window !== 'undefined' && !window.confirm(`Sign out ${authUser.fullName || authUser.email}?`)) return;
-    await logout();
-  }, [authUser, logout]);
+  // Sign-in is a cookie session via the BFF; signing out lives in the sidebar's account menu (shell/AppSidebar), and the
+  // gate (shell/AppGate) then shows the login screen.
 
-  const sendToAI = useCallback(async (newMessages: any[]) => {
+  const sendToAI = useCallback(async (newMessages: any[], opts: { parentMessageId?: string } = {}) => {
     setIsLoading(true);
     // The user can switch/start a new conversation while this turn is still in
     // flight (e.g. impatient-retry during a slow "busy" turn). Pin the thread
@@ -523,7 +654,9 @@ export default function ChatPanel() {
       // CLIENT-MINIMAL CONTRACT: the browser sends only the NEW user message + the
       // sessionId. The server owns the transcript and journey state and
       // reconstructs everything (no conversation/state is shipped from the client).
-      const newUserMessage = [...newMessages].reverse().find(m => m.role === 'user')?.content || '';
+      const lastUserMsg = [...newMessages].reverse().find(m => m.role === 'user');
+      const newUserMessage = lastUserMsg?.content || '';
+      const customerEvent = (lastUserMsg as any)?.customerEvent;
 
       // Session id is the only durable handle the client keeps, per tenant.
       // Per CONVERSATION, not per project: each thread carries its own server
@@ -534,24 +667,33 @@ export default function ChatPanel() {
 
       const requestBody = JSON.stringify({
         message: newUserMessage,
+        customer_event: customerEvent,
+        customerEvent: customerEvent,
         sessionId: existingSessionId,
         // Sample-customer demo: the profile picked in the header binds the
         // server-side identity the history tools read by (a demo stand-in
         // for real sign-in; the agent never trusts an id typed into chat).
         ...(demoPrincipalRef.current ? { demoPrincipalId: demoPrincipalRef.current } : {}),
+        // The chat request cannot carry an agent id yet (lib/shell/capabilities); when it can, the picked agent rides along.
+        ...(CHAT_REQUEST_ACCEPTS_AGENT_ID && pickedAgentRef.current ? { agentId: pickedAgentRef.current } : {}),
+        // Try again / edit: the earlier message this one continues from, so the assistant reads only the conversation up to there.
+        ...(CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE && opts.parentMessageId ? { parentMessageId: opts.parentMessageId } : {}),
+        // Connectors switched off for this conversation (it can only narrow what the person's role allows).
+        ...(connectorsOffRef.current.length ? { disabledConnectors: connectorsOffRef.current } : {}),
         // customerId will be attached here once storefront auth lands (long-term memory key).
       });
 
       // Working strip (v3 Card CMS): visible the instant the turn starts, not
       // only once the first tool call streams back.
-      dispatch({ type: 'SET_WORKING', working: { startedAt: myWorkingStartedAt, heard: newUserMessage, steps: [] } });
+      const heardText = customerEvent ? `Action: ${customerEvent.type}` : newUserMessage;
+      dispatch({ type: 'SET_WORKING', working: { startedAt: myWorkingStartedAt, heard: heardText, steps: [] } });
       abortControllerRef.current = new AbortController();
 
       // Try streaming first; on ANY failure fall back to the buffered endpoint
       // so the storefront keeps working exactly as before.
       let data: any;
       try {
-        data = await streamChat(requestBody, newMessages, guardedSetMessages, cfgRef.current.projectId, dispatch, newUserMessage, abortControllerRef.current.signal, myWorkingStartedAt);
+        data = await streamChat(requestBody, newMessages, guardedSetMessages, cfgRef.current.projectId, dispatch, newUserMessage, abortControllerRef.current.signal, myWorkingStartedAt, isCurrent);
       } catch (streamErr) {
         if ((streamErr as any)?.name === 'AbortError') {
           if (isCurrent()) { dispatch({ type: 'SET_THINKING', thinking: false }); dispatch({ type: 'SET_WORKING', working: null }); }
@@ -574,6 +716,7 @@ export default function ChatPanel() {
       if (data.sessionId && typeof window !== 'undefined') {
         localStorage.setItem(sKey, data.sessionId);
       }
+      const answeredBy = data.agentId || data.trace?.agentId;
 
       // A response for an abandoned thread must not touch messages or the
       // journey panel — the sessionId above is still written (it's keyed to
@@ -587,10 +730,17 @@ export default function ChatPanel() {
       } else {
         const aiText = data.message?.content || '';
         if (aiText) {
-          const updatedMessages = [...newMessages, { role: 'assistant', content: aiText }];
+          const engine = data.engine || data.trace?.engine;
+          const agentId = data.agentId || data.trace?.agentId;
+          const updatedMessages = [...withMessageIds(newMessages, data.messageIds), answerWithId({ role: 'assistant', content: aiText, engine, agentId }, data.messageIds)];
           guardedSetMessages(updatedMessages);
         }
       }
+
+      // "Worked for N s": keep what this turn did on its reply, so the thread folds the live steps into one quiet line.
+      const trace = buildTrace(myWorkingStartedAt, Date.now(), data.workedSteps || []);
+      if (trace) setMessages((prev) => attachTrace(prev, trace));
+      if (answeredBy) setAnsweringAgentId(String(answeredBy));
 
       let hasPhaseChange = false;
       // Process UI actions from the backend
@@ -792,6 +942,19 @@ export default function ChatPanel() {
     await sendToAI(newMessages);
   }, [messages, sendToAI, isLoading, state.isThinking]);
 
+  // A line on the dashboard or on a card can put a question to the assistant for the person. If an answer is still being written the
+  // question is typed into the box instead, so it never lands on top of a reply; on a phone the panel steps aside to show the answer.
+  useEffect(() => registerAskHandler((text) => {
+    if (isLoading || state.isThinking) {
+      setPrompt(text);
+      window.requestAnimationFrame(() => document.getElementById('chat-input-field')?.focus());
+      return false;
+    }
+    if (window.innerWidth <= SHEET_BREAKPOINT) closeCanvas();
+    void append({ role: 'user', content: text });
+    return true;
+  }), [append, isLoading, state.isThinking]);
+
   // Clarify submission state machine:
   // Completing every chip reliably sends one continuation request,
   // survives streaming-state transitions (isLoading / isThinking),
@@ -828,7 +991,7 @@ export default function ChatPanel() {
     const fingerprint = qs.map((q: any) => `${q.id}:${answers[q.id] ?? q.answer ?? ''}`).join('|');
     if (submittedClarificationsRef.current.has(fingerprint)) return;
 
-    const clarificationText = `My answers:\n${answerSummary(qs, answers)}`;
+    const clarificationText = `My answers:\n${answerSummary(qs, answers, stateRef.current.dynamicKept)}`;
 
     if (isLoading || state.isThinking) {
       pendingClarificationRef.current = { fingerprint, message: clarificationText };
@@ -843,7 +1006,16 @@ export default function ChatPanel() {
   // warranty) can send a follow-up message to advance the journey.
   useEffect(() => {
     (window as any).__journeySend = (text: string) => append({ role: 'user', content: text });
-    return () => { delete (window as any).__journeySend; };
+    (window as any).__journeySendEvent = (customerEvent: any) =>
+      append({
+        role: 'user',
+        content: customerEvent?.payload?.title ? `[${customerEvent.type}: ${customerEvent.payload.title}]` : `[${customerEvent.type}]`,
+        customerEvent,
+      } as any);
+    return () => {
+      delete (window as any).__journeySend;
+      delete (window as any).__journeySendEvent;
+    };
   }, [append]);
 
   useEffect(() => {
@@ -870,7 +1042,7 @@ export default function ChatPanel() {
     const fingerprint = qs.map((q: any) => `${q.id}:${state.dynamicAnswers[q.id] ?? q.answer ?? ''}`).join('|');
     if (submittedClarificationsRef.current.has(fingerprint)) return;
 
-    const clarificationText = `My answers:\n${answerSummary(qs, state.dynamicAnswers)}`;
+    const clarificationText = `My answers:\n${answerSummary(qs, state.dynamicAnswers, state.dynamicKept)}`;
 
     if (isLoading || state.isThinking) {
       pendingClarificationRef.current = { fingerprint, message: clarificationText };
@@ -955,6 +1127,27 @@ export default function ChatPanel() {
     dispatch({ type: 'SET_THINKING', thinking: false });
   }, [messages, sendToAI, dispatch]);
 
+  // Try again / edit: send the customer message at `index` again, with `text` as its words, from the place in the conversation it was
+  // first sent from. The assistant then reads only what came before it; the replaced reply, and whatever followed it, leave the thread
+  // (the server keeps them as a branch it no longer follows).
+  const branchFrom = useCallback(async (index: number, text: string) => {
+    if (!CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE || isLoading || state.isThinking) return;
+    if (!canBranchAt(messages, index)) return;
+    const words = text.trim();
+    if (!words) return;
+    const parentMessageId = messages[index].parentMessageId as string;
+    const newMessages = [...branchBase(messages, index), { role: 'user', content: words }];
+    setMessages(newMessages);
+    dispatch({ type: 'TRIM_CARDS_AFTER', count: cardCountToKeep(index, stateRef.current.messages.length) });
+
+    dispatch({ type: 'SET_PHASE', phase: 'validating' });
+    dispatch({ type: 'SET_THINKING', thinking: true });
+
+    await sendToAI(newMessages, { parentMessageId });
+
+    dispatch({ type: 'SET_THINKING', thinking: false });
+  }, [messages, sendToAI, dispatch, isLoading, state.isThinking]);
+
   useEffect(() => {
     (window as any).__handleUserMessage = handleUserMessage;
     return () => { delete (window as any).__handleUserMessage; };
@@ -971,37 +1164,31 @@ export default function ChatPanel() {
     if (!orderId || state.placedOrder?.status !== 'paid') return;
     const key = `jx:thanked:${orderId}`;
     try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch { /* still send once this session */ }
-    const t = setTimeout(() => { void handleUserMessageRef.current(`Payment received for order ${orderId}.`, { silent: true }); }, 600);
+    const t = setTimeout(() => { rememberOrder(orderId); void handleUserMessageRef.current(`Payment received for order #${orderRef(orderId)}.`, { silent: true }); }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.placedOrder?.orderId, state.placedOrder?.status]);
 
 
-  const onSubmit = (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const submitPrompt = () => {
     const content = prompt.trim();
     if (!content) return;
     append({ role: 'user', content });
     setPrompt('');
   };
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      onSubmit();
-    }
-  };
-
   // Merge context messages (welcome) with chat messages.
   // Hide tool results and tool-call-only turns — they carry machine data
   // (e.g. {"success":true}) and must never render as chat bubbles.
   const allMessages = [...state.messages, ...messages
+    .map((m, rawIndex) => ({ m, rawIndex }))
     // `silent` turns are storefront events sent on the customer's behalf
     // ("Payment received for order …") — the agent answers them, the
     // customer never sees them as their own bubble.
-    .filter(m => m.role !== 'tool' && !m.tool_calls && !m.silent)
-    .map((m, i) => ({
+    .filter(({ m }) => m.role !== 'tool' && !m.tool_calls && !m.silent)
+    .map(({ m, rawIndex }, i) => ({
       id: `msg-${i}`,
+      rawIndex,
       role: m.role as 'user' | 'ai' | 'note',
       // Display-side safety net: an open model's `TOOL_CALL: name({...})` is a
       // machine instruction, never chat. The server strips balanced calls and
@@ -1009,6 +1196,8 @@ export default function ChatPanel() {
       // through a replayed transcript, cut from the marker to the end — after
       // it there is only ever the (possibly truncated) JSON.
       text: (m.content || '').replace(/\s*TOOL_CALL:\s*[A-Za-z0-9_]+\s*\([\s\S]*$/i, '').trimEnd(),
+      // What the turn that produced this reply did ("Worked for 12 s"), kept with the saved message.
+      trace: m.role === 'assistant' && isWorkedTrace(m.trace) ? m.trace : undefined,
     }))]
     .filter(m => m.text)
     // Multi-tenant greeting: the welcome bubble shows the project's configured
@@ -1041,13 +1230,15 @@ export default function ChatPanel() {
     // then streams in below it. The mockup order is text, then card — so
     // when the stamped slot follows a user turn and the agent's reply now
     // exists, the card sits after that reply instead.
-    if (n > 0 && allMessages[n - 1]?.role === 'user' && allMessages[n] && allMessages[n].role !== 'user') n += 1;
+    if (!card.beforeReply && n > 0 && allMessages[n - 1]?.role === 'user' && allMessages[n] && allMessages[n].role !== 'user') n += 1;
     (cardsByCount.get(n) || cardsByCount.set(n, []).get(n)!).push(card);
   }
   const timeline: Array<{ kind: 'msg'; msg: (typeof allMessages)[number] } | { kind: 'card'; card: CardInstance }> = [];
   const placedCounts = new Set<number>();
   allMessages.forEach((msg, i) => {
-    timeline.push({ kind: 'msg', msg });
+    // The opening message is the empty screen's greeting (see the hero below), not a turn in the thread. It still counts in
+    // the numbering above, so every card keeps the position it was stamped with.
+    if (msg.id !== 'welcome') timeline.push({ kind: 'msg', msg });
     const here = cardsByCount.get(i + 1);
     if (here) { here.forEach((card) => timeline.push({ kind: 'card', card })); placedCounts.add(i + 1); }
   });
@@ -1055,263 +1246,250 @@ export default function ChatPanel() {
   strayCards.forEach((card) => timeline.push({ kind: 'card', card }));
 
   const showWorking = state.isThinking || isLoading;
+  // The customer message whose reply "Try again" would replace (-1 when there is none that can be sent again from a known place).
+  const retryAt = retryableIndex(messages);
+
+  // The empty screen: nothing said yet, nothing shown yet. The greeting and the composer sit together in the middle of the page.
+  const isEmpty = messages.length === 0
+    && state.cards.length === 0
+    && state.phase === 'intro'
+    && state.messages.every((m) => m.id === 'welcome');
+  // A person who has a dashboard starts on it: the board first, the message box under it. While their figures are being fetched the
+  // screen shows neither the board nor the starters, so nothing appears and then moves.
+  const dashboard = useDashboardState();
+  const dashboardReady = isEmpty && panelEnabled && !!authUser && dashboard.status === 'ready' && !!dashboard.data;
+  const dashboardPending = isEmpty && panelEnabled && !!authUser && (dashboard.status === 'idle' || dashboard.status === 'loading');
+  const personalGreeting = cfg.greeting ? personaliseGreeting(cfg.greeting, demoProfile?.name) : '';
+  // The team's own welcome (pack `extensions.welcome`) when there is one, else the shop's headline.
+  const welcomeHeadline = fillGreeting(welcome?.headline, authUser?.fullName);
+  const hero = welcomeHeadline
+    ? { title: welcomeHeadline, subtitle: fillGreeting(welcome?.subtitle, authUser?.fullName) ?? '' }
+    : resolveHero({ headline: cfg.intro?.heroHeadline, subtitle: cfg.intro?.heroSubtitle, greeting: personalGreeting, name: displayName });
+  // What the empty chat offers: the demo customer's own questions, else the team's own (the ones this person may use), else a few taken
+  // from what this person may use (an adviser is offered cases and orders, marketing is offered campaigns), else the shop's own starters.
+  const starters = demoProfile?.tryAsking?.length
+    ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
+    : welcomeOffer(welcome, connectorItems) ?? startersFor(connectorItems, introStarters);
+
+  // Product details and comparisons open in the side panel; the thread keeps a one-line note where each one was.
+  const shownPanelCard = useShownPanelCard(state.cards, panelEnabled);
+
+  // While a turn runs its live steps sit directly under the customer's message, where "Worked for N s" will stand once the
+  // reply is in, so nothing jumps when the turn finishes.
+  let liveAfter = -1;
+  timeline.forEach((item, i) => { if (item.kind === 'msg' && item.msg.role === 'user') liveAfter = i; });
+
+  const toggleInline = (id: string) => setInlineCardIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  // Blank threads are noise in Recents: only the open one is listed, under a plain name.
+  const sidebarConvos = forSidebar(convos, convoId);
+  const activeTitle = convos.find((c) => c.id === convoId)?.title;
+
+  const demoPicker = cfg.demoCustomers && cfg.demoCustomers.profiles.length > 0 ? (
+    <label className="ax-demo" title={cfg.demoCustomers.disclaimer}>
+      <UserIcon size={15} />
+      <select
+        aria-label={cfg.demoCustomers.label}
+        value={demoPrincipalId}
+        onChange={(e) => {
+          const id = e.target.value;
+          try { if (id) localStorage.setItem(demoKey(cfg.projectId), id); else localStorage.removeItem(demoKey(cfg.projectId)); } catch { /* best effort */ }
+          setDemoPrincipalId(id);
+          demoPrincipalRef.current = id;
+          startNewConversation();
+        }}
+      >
+        <option value="">{cfg.demoCustomers.label}</option>
+        {cfg.demoCustomers.profiles.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}{p.country ? ` · ${p.country}` : ''}{p.role === 'staff_read_only' ? ' · Staff' : p.role === 'guest' && p.name.toLowerCase() !== 'guest' ? ' · Guest' : ''}</option>
+        ))}
+      </select>
+    </label>
+  ) : null;
 
   return (
-    <div className={`chat-panel ${sidebarOpen ? 'sidebar-open' : 'sidebar-collapsed'}`} data-sidebar={cfg.theme?.sidebarStyle || 'light'}>
-      {/* ChatGPT-style Left Sidebar */}
-      <aside className={`chat-sidebar ${sidebarOpen ? 'is-open' : 'is-collapsed'}`} aria-label="Conversation history">
-        <div className="chat-sidebar__header">
-          <div className="chat-sidebar__brand">
-            {(() => {
-              const logoSrc = cfg.theme?.logoUrl || null;
-              if (!logoSrc || logoFailed) {
-                return <span className="chat-sidebar__brand-text">{cfg.companyName || 'PlaceMakers'}</span>;
-              }
-              return (
-                <img
-                  className="chat-sidebar__logo"
-                  src={logoSrc}
-                  alt={cfg.companyName || 'PlaceMakers'}
-                  onError={() => setLogoFailed(true)}
-                />
-              );
-            })()}
-          </div>
-          <button
-            type="button"
-            className="chat-sidebar__iconbtn"
-            onClick={() => setSidebarOpen(false)}
-            title="Collapse sidebar"
-            aria-label="Collapse sidebar"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <line x1="9" y1="3" x2="9" y2="21" />
-              <path d="M15 9l-3 3 3 3" />
-            </svg>
-          </button>
-        </div>
+    <AppShell
+      className="chat-panel"
+      active="chat"
+      embed={embed}
+      conversations={sidebarConvos}
+      activeConversationId={convoId}
+      onNewChat={startNewConversation}
+      onOpenConversation={openConversation}
+      onDeleteConversation={handleDeleteConversation}
+      footerExtra={demoPicker}
+    >
+      <div className="chat-workspace">
+        <div className="chat-main" data-empty={isEmpty ? 'true' : 'false'} data-home={dashboardReady ? 'true' : 'false'}>
+          <ChatTopbar
+            title={isEmpty ? '' : (activeTitle && activeTitle !== BLANK_TITLE ? activeTitle : '')}
+            // Retail bag affordance (see isCart above): a cart brand always has a way back to its bag.
+            bagLabel={isCart ? 'bag' : 'quote'}
+            bagTitle={isCart ? 'View your bag' : 'View your quote / materials'}
+            bagCount={bagCount}
+            bagOpen={cartOpen}
+            onBag={() => { if (panelEnabled) { if (getCanvas()?.kind === 'cart') closeCanvas(); else openCanvas({ kind: 'cart' }); } else setCartOpen((v) => !v); }}
+            extra={panelEnabled ? <MyDayTile person={authUser?.email} projectId={cfg.projectId} hidden={dashboardReady} /> : null}
+          />
 
-        {/* New chat button */}
-        <div className="chat-sidebar__action">
-          <button
-            id="new-convo-btn"
-            type="button"
-            className="chat-sidebar__new-btn"
-            onClick={startNewConversation}
-            title="Start a new conversation"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span>New conversation</span>
-          </button>
-        </div>
-
-        {/* Conversation list */}
-        <div className="chat-sidebar__convos">
-          <div className="chat-sidebar__section-title">Your chats</div>
-          <div className="chat-sidebar__list">
-            {convos.map((c) => (
-              <div
-                key={c.id}
-                className={`chat-sidebar__item ${c.id === convoId ? 'is-active' : ''}`}
-                onClick={() => openConversation(c.id)}
-                role="button"
-                tabIndex={0}
-              >
-                <svg className="chat-sidebar__item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.7-.8L3 21l1.9-4.8A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z" />
-                </svg>
-                <span className="chat-sidebar__item-title" title={c.title}>{c.title}</span>
-                <button
-                  type="button"
-                  className="chat-sidebar__item-del"
-                  onClick={(e) => handleDeleteConversation(e, c.id)}
-                  title="Delete chat"
-                  aria-label="Delete chat"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-            {convos.length === 0 && (
-              <div className="chat-sidebar__empty">No previous conversations</div>
-            )}
-          </div>
-        </div>
-
-        {/* Sidebar Footer */}
-        <div className="chat-sidebar__footer">
-          {cfg.demoCustomers && cfg.demoCustomers.profiles.length > 0 && (
-            <label className="chat-sidebar__demo" title={cfg.demoCustomers.disclaimer}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
-              </svg>
-              <select
-                aria-label={cfg.demoCustomers.label}
-                value={demoPrincipalId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  try { if (id) localStorage.setItem(demoKey(cfg.projectId), id); else localStorage.removeItem(demoKey(cfg.projectId)); } catch { /* best effort */ }
-                  setDemoPrincipalId(id);
-                  demoPrincipalRef.current = id;
-                  startNewConversation();
-                }}
-              >
-                <option value="">{cfg.demoCustomers.label}</option>
-                {cfg.demoCustomers.profiles.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}{p.country ? ` · ${p.country}` : ''}{p.role === 'staff_read_only' ? ' · Staff' : p.role === 'guest' && p.name.toLowerCase() !== 'guest' ? ' · Guest' : ''}</option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <div className="chat-sidebar__user">
-            <div className="chat-sidebar__user-avatar">
-              {displayName ? displayName.slice(0, 2).toUpperCase() : 'PM'}
-            </div>
-            <div className="chat-sidebar__user-meta">
-              <div className="chat-sidebar__user-name">{displayName || 'Sign in'}</div>
-              <div className="chat-sidebar__user-sub">{authUser?.role || 'PlaceMakers Customer'}</div>
-            </div>
-            <button
-              type="button"
-              className="chat-sidebar__user-action"
-              onClick={onSignIn}
-              title={displayName ? `Signed in as ${displayName} — click to sign out` : 'Sign in'}
-            >
-              {displayName ? (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-              ) : (
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>Log in</span>
-              )}
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Chat Area */}
-      <div className="chat-main">
-        {/* Minimal clean topbar */}
-        <header className="chat-topbar">
-          <div className="chat-topbar__left">
-            {!sidebarOpen && (
-              <button
-                type="button"
-                className="chat-topbar__iconbtn"
-                onClick={() => setSidebarOpen(true)}
-                title="Open sidebar"
-                aria-label="Open sidebar"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <line x1="9" y1="3" x2="9" y2="21" />
-                  <path d="M9 9l3 3-3 3" />
-                </svg>
-              </button>
-            )}
-            <div className="chat-topbar__brand-badge">
-              <span className="chat-topbar__dot" />
-              <span className="chat-topbar__title">{cfg.companyName || 'PlaceMakers'} Consultant</span>
-              <span className="chat-topbar__tag">AI</span>
-            </div>
-          </div>
-          <div className="chat-topbar__right">
-            <button
-              type="button"
-              className="chat-topbar__bag"
-              onClick={() => setCartOpen((v) => !v)}
-              title={isCart ? 'View your bag' : 'View your quote / materials'}
-              aria-label={`View your ${isCart ? 'bag' : 'quote'}, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
-              aria-expanded={cartOpen}
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-                <path d="M6 8h12l-1 12H7L6 8Z" />
-                <path d="M9 8V6a3 3 0 0 1 6 0v2" strokeLinecap="round" />
-              </svg>
-              {bagCount > 0 && <span className="chat-topbar__bag-count">{bagCount}</span>}
-            </button>
-          </div>
-        </header>
-
-        {/* Conversation stream */}
-        <div className="chat-messages">
-          {timeline.map((item) => item.kind === 'msg'
-            ? <MessageBubble key={item.msg.id} message={item.msg} />
-            : <CardTile key={item.card.id} card={item.card} onAction={onCardAction} />)}
-          <ProjectPanel />
-          {showWorking && <WorkingStrip working={state.working} />}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* ChatGPT-style Input Area */}
-        <div className="chat-input-area">
-          {state.phase === 'intro' && messages.length === 0 && (demoProfile?.tryAsking?.length || introStarters.length > 0) && (
-            <div className="chat-suggestions">
-              {(demoProfile?.tryAsking?.length
-                ? demoProfile.tryAsking.map((q) => ({ label: q, prompt: q }))
-                : introStarters
-              ).map((s, i) => (
-                <div
-                  key={i}
-                  className="chat-suggestion"
-                  onClick={() => append({ role: 'user', content: s.prompt })}
-                >
-                  <span className="chat-suggestion__arrow">→</span>
-                  {s.label}
-                </div>
-              ))}
-            </div>
-          )}
-          <form
-            className="chat-input-row"
-            onSubmit={onSubmit}
-          >
-            <input
-              id="chat-input-field"
-              className="chat-input"
-              value={prompt}
-              onChange={e => setPrompt(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={introPlaceholder}
+          {/* The board a team starts on: what needs them, their figures and lists; the box below starts the conversation. */}
+          {dashboardReady && (
+            <DashboardHome
+              title={welcomeLoaded ? hero.title : ''}
+              subtitle={welcomeLoaded ? hero.subtitle : undefined}
+              links={careAccess ? CARE_ENTRIES.map((entry) => ({ label: entry.label, onOpen: () => openCanvas({ kind: entry.kind }) })) : []}
             />
-            <button
-              id="chat-send-btn"
-              type="submit"
-              className={`chat-send-btn ${prompt.trim() ? 'has-content' : ''}`}
-              aria-label="Send message"
-              disabled={!prompt.trim() && !isLoading}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="19" x2="12" y2="5" />
-                <polyline points="5 12 12 5 19 12" />
-              </svg>
-            </button>
-          </form>
-          <div className="chat-input-hint">
-            {cfg.systemName || 'PlaceMakers Consultant'} can search verified building products, check branch stock, and build your quote.
-          </div>
-          {demoProfile && cfg.demoCustomers && (
-            <div className="chat-demo-note">
-              Exploring as <b>{demoProfile.name}{demoProfile.country ? ` · ${demoProfile.country}` : ''}</b>
-              {demoProfile.scenario ? ` — ${demoProfile.scenario}` : ''}. {cfg.demoCustomers.disclaimer}
-            </div>
           )}
+
+          {/* Conversation stream */}
+          <div className="chat-messages">
+            <div className="chat-thread">
+              {timeline.map((item, i) => {
+                const live = showWorking && i === liveAfter ? <WorkingLive key="working-live" working={state.working} /> : null;
+                if (item.kind === 'msg') {
+                  const at = item.msg.rawIndex;
+                  const idle = !showWorking;
+                  // Edit: a message the customer typed, whose place in the conversation is known. Try again: the last reply.
+                  const onEdit = idle && at !== undefined && item.msg.role === 'user' && canBranchAt(messages, at) ? (text: string) => { void branchFrom(at, text); } : undefined;
+                  const onRetry = idle && at !== undefined && at === retryAt + 1 ? () => { void branchFrom(retryAt, messages[retryAt].content || ''); } : undefined;
+                  return <Fragment key={item.msg.id}><MessageBubble message={item.msg} onEdit={CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE ? onEdit : undefined} onRetry={CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE ? onRetry : undefined} />{live}</Fragment>;
+                }
+                const card = item.card;
+                if (panelEnabled && isPanelCardType(card.cardType)) {
+                  const inline = inlineCardIds.has(card.id);
+                  return (
+                    <Fragment key={card.id}>
+                      <PanelNote
+                        card={card}
+                        showing={shownPanelCard?.id === card.id}
+                        inline={inline}
+                        onOpen={() => openPanelCard(card.id, card.cardType)}
+                        onToggleInline={() => toggleInline(card.id)}
+                      />
+                      {inline && <CardTile card={card} onAction={onCardAction} />}
+                      {live}
+                    </Fragment>
+                  );
+                }
+                return <Fragment key={card.id}><CardTile card={card} onAction={onCardAction} />{live}</Fragment>;
+              })}
+              <ProjectPanel />
+              {showWorking && liveAfter === -1 && <WorkingLive working={state.working} />}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Composer */}
+          <div className="chat-input-area">
+            {isEmpty && !dashboardReady && (
+              <div className="ax-hero" style={welcomeLoaded && !dashboardPending ? undefined : { visibility: 'hidden' }}>
+                <h1 className="ax-hero__title">{hero.title}</h1>
+                {hero.subtitle && <p className="ax-hero__sub">{hero.subtitle}</p>}
+              </div>
+            )}
+            <CompareTray onCompare={(skus) => onCardAction('compareProducts', { skus })} />
+            <QuantityStepHost />
+            <Composer
+              plusExtra={plusModel.showLists || connectorItems.length ? ({ close }) => (
+                <PlusMenu
+                  model={plusModel}
+                  connectors={connectorItems}
+                  off={connectorsOff}
+                  search={typeof window === 'undefined' ? '' : window.location.search}
+                  onClose={close}
+                  onToggleConnector={(id) => {
+                    const next = toggled(connectorsOffRef.current, id);
+                    setConnectorsOff(next);
+                    writeOff(cfg.projectId, convoIdRef.current, next);
+                  }}
+                  onPickSkill={(skill) => {
+                    setPrompt((current) => skillPrompt(skill.name, current));
+                    close();
+                    window.requestAnimationFrame(() => document.getElementById('chat-input-field')?.focus());
+                  }}
+                />
+              ) : undefined}
+              value={prompt}
+              onChange={setPrompt}
+              onSubmit={submitPrompt}
+              onStop={stopStreaming}
+              busy={isLoading}
+              placeholder={welcome?.placeholder ?? introPlaceholder}
+              autoFocus={typeof window !== 'undefined' && window.innerWidth > 860}
+            />
+            {isEmpty && !dashboardReady && !dashboardPending && (careAccess || starters.length > 0) && (
+              <div className="ax-suggestions" role="group" aria-label="Things you can ask">
+                {careAccess && CARE_ENTRIES.map((entry) => (
+                  <button key={entry.kind} type="button" className="ax-suggestion" onClick={() => openCanvas({ kind: entry.kind })}>
+                    {entry.label}
+                  </button>
+                ))}
+                {starters.map((s, i) => (
+                  <button key={i} type="button" className="ax-suggestion" onClick={() => append({ role: 'user', content: s.prompt })}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* As in Claude, the new-chat screen has only the box and its suggestions; the reminder appears once a conversation has started. */}
+            {!isEmpty && (
+              <p className="chat-input-hint">
+                {cfg.systemName || 'This assistant'} is AI and can make mistakes. Please check important details.
+              </p>
+            )}
+          </div>
         </div>
+
+        <SidePanelHost cards={state.cards} onAction={onCardAction} enabled={panelEnabled} />
       </div>
 
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
-    </div>
+    </AppShell>
   );
 }
 
+/** The thin bar above the thread: the sidebar toggle (when the sidebar is closed), the chat's name, and the bag. */
+function ChatTopbar({ title, bagLabel, bagTitle, bagCount, bagOpen, onBag, extra }: {
+  title: string;
+  /** Something small for the corner, beside the bag: the person's dashboard tile. */
+  extra?: ReactNode;
+  bagLabel: string;
+  bagTitle: string;
+  bagCount: number;
+  bagOpen: boolean;
+  onBag: () => void;
+}) {
+  const { sidebarVisible, isMobile, toggleSidebar } = useShell();
+  return (
+    <header className="chat-topbar">
+      <div className="chat-topbar__left">
+        {(!sidebarVisible || isMobile) && (
+          <button type="button" className="ax-iconbtn" onClick={toggleSidebar} aria-label="Open sidebar" title="Open sidebar">
+            <SidebarIcon />
+          </button>
+        )}
+        {title && <h1 className="chat-topbar__title" title={title}>{title}</h1>}
+      </div>
+      <div className="chat-topbar__right">
+        {extra}
+        {(bagCount > 0 || bagOpen) && (
+        <button
+          type="button"
+          className="chat-topbar__bag"
+          onClick={onBag}
+          title={bagTitle}
+          aria-label={`View your ${bagLabel}, ${bagCount} item${bagCount === 1 ? '' : 's'}`}
+          aria-expanded={bagOpen}
+        >
+          <BagIcon size={18} />
+          {bagCount > 0 && <span className="chat-topbar__bag-count">{bagCount}</span>}
+        </button>
+        )}
+      </div>
+    </header>
+  );
+}

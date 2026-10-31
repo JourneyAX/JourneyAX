@@ -1,0 +1,359 @@
+import { z } from 'zod';
+
+/**
+ * A skill is a named, reusable piece of instructions an agent can carry (how to open a broad request, what to do after an
+ * item is added, how to show a picture of the finished job). Skills are tenant data: the platform has no skill wording of
+ * its own. An agent lists the skills it carries by id.
+ *
+ *   tier "always"     the instructions are part of the agent's prompt on every turn
+ *   tier "on_demand"  only the name and description are in the prompt; the agent calls use_skill to read the instructions
+ *                     when the customer's request calls for it (keeps the prompt short, lets the model decide)
+ */
+export const SkillDefinitionSchema = z.object({
+  skillId: z.string().min(1).regex(/^[a-z0-9][a-z0-9_-]*$/, 'skillId is lower-case letters, digits, "-" or "_"'),
+  name: z.string().min(1),
+  description: z.string().min(1),
+  instructions: z.string().min(1),
+  tier: z.enum(['always', 'on_demand']).default('always'),
+  /** Tools the skill relies on; shown in the customization screens, and checked against the agent's allowed tools. */
+  tools: z.array(z.string()).default([]),
+});
+
+export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;
+
+/** The skills of an agent, in the order the agent lists them; an id no skill defines is skipped (and reported by the validator). */
+export function resolveAgentSkills(
+  agent: { skills?: string[] | undefined } | undefined,
+  skills: unknown,
+): SkillDefinition[] {
+  const ids = Array.isArray(agent?.skills) ? agent!.skills! : [];
+  if (ids.length === 0 || !Array.isArray(skills)) return [];
+  const byId = new Map<string, SkillDefinition>();
+  for (const candidate of skills) {
+    const parsed = SkillDefinitionSchema.safeParse(candidate);
+    if (parsed.success) byId.set(parsed.data.skillId, parsed.data);
+  }
+  return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
+}
+
+/** Tenant settings for the "how many to buy" helper (pack `extensions.quantityHelper`). */
+export const QuantityHelperSchema = z.object({
+  /** Extra to buy for cuts and waste, as a percentage of what the area needs. */
+  allowancePercent: z.number().min(0).max(100).optional(),
+  /** Case-insensitive patterns whose first capture group is the square metres one pack covers, tried against a product's own text. */
+  coveragePatterns: z.array(z.string().min(1).max(300)).max(20).optional(),
+  /** A side shorter than this (mm) means the product is sold by length, not as a piece that covers an area. */
+  minPieceSideMm: z.number().min(1).max(5000).optional(),
+  /** Units of area the shop understands, each as square metres per unit, keyed by the unit written plainly (lower case, no spaces: "ft2", "sqft"). */
+  areaUnits: z.record(z.string().min(1).max(30), z.number().positive().max(1_000_000)).optional(),
+  /** The words on the quantity card's working lines. */
+  labels: z.record(z.string(), z.string().max(80)).optional(),
+}).strict();
+
+/** Lookups to make the moment a customer's tap arrives (pack `extensions.eventPrefetch`), by kind of tap; `{sku}`, `{title}` and `{quantity}` name the tapped product. */
+export const EventPrefetchSchema = z.record(
+  z.string().min(1).max(40),
+  z.array(z.object({
+    tool: z.string().min(1).max(60),
+    args: z.record(z.string().min(1).max(40), z.union([z.string().max(200), z.number(), z.boolean()])).default({}),
+    /** Show what this lookup found on a card of this type when the agent does not present a card itself. */
+    showAs: z.enum(['accessories', 'review']).optional(),
+  }).strict()).max(6),
+);
+
+/** Tenant settings for pictures of the finished job (pack `extensions.visualiser`); a tenant without it has the feature off. */
+export const VisualiserSchema = z.object({
+  enabled: z.boolean().optional(),
+  model: z.string().min(1).max(80).optional(),
+  quality: z.enum(['low', 'medium', 'high']).optional(),
+  size: z.enum(['1024x1024', '1536x1024', '1024x1536']).optional(),
+  /** The prompt, with {scene} and {products} where the customer's words and the product names go. */
+  promptTemplate: z.string().min(1).max(1000).optional(),
+  /** Shown under every picture. */
+  disclaimer: z.string().max(300).optional(),
+  maxProducts: z.number().int().min(1).max(5).optional(),
+}).strict();
+
+/**
+ * Tenant settings for reading a product's own guide (pack `extensions.productGuides`): the supplier's specification guide,
+ * installation guide or instruction manual, as kept with the product record. A tenant without it has the feature off.
+ */
+export const ProductGuidesSchema = z.object({
+  enabled: z.boolean().optional(),
+  /**
+   * Claim classes the supplier's own words may support in a reply (for example "installation_step" or "safety_instruction").
+   * The reply guard holds back a sentence of a class nobody has verified; a tenant that accepts its suppliers' published
+   * guides as the source for these names the classes here. Empty or absent: the guide is read but unlocks nothing.
+   */
+  unlocks: z.array(z.string().min(1).max(40)).max(12).optional(),
+  /** Passages returned by one read, and the most characters of each. */
+  maxPassages: z.number().int().min(1).max(20).optional(),
+  passageChars: z.number().int().min(200).max(3000).optional(),
+  /** A single guide up to this many characters is read whole, in its own order, instead of the best few passages (default 12000; 0 never). */
+  wholeGuideChars: z.number().int().min(0).max(30000).optional(),
+}).strict();
+
+/**
+ * Tenant settings for a signed-in business customer's own account (pack `extensions.customerAccount`): which connector answers when a customer
+ * the back office has linked to a company asks about their deliveries, balance or prices, and which of its tools do each of the three jobs.
+ * A tenant without it (or with `enabled` false) has the feature off: nobody is offered the account tools.
+ */
+export const CustomerAccountSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** The connector that holds the accounts (its id in `extensions.connectors`). */
+  connector: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/, 'a connector id uses letters, digits and _ . -').optional(),
+  /** The connector's own tools for the three lookups; each must be a tool that only reads. */
+  tools: z.object({
+    balance: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional(),
+    deliveries: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional(),
+    price: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional(),
+  }).strict().optional(),
+}).strict();
+
+/**
+ * Tenant settings for reading the shop's own web pages (pack `extensions.contentPages`): project how-tos, inspiration, compliance
+ * and trade-tool pages. A tenant without it has the feature off.
+ */
+export const ContentPagesSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** Claim classes the shop's own pages may support in a reply (see `productGuides.unlocks`). Empty or absent: the page is read but unlocks nothing. */
+  unlocks: z.array(z.string().min(1).max(40)).max(12).optional(),
+  /** Passages returned by one read, and the most characters of each. */
+  maxPassages: z.number().int().min(1).max(20).optional(),
+  passageChars: z.number().int().min(200).max(3000).optional(),
+  /** Pages listed by one search. */
+  maxPages: z.number().int().min(1).max(10).optional(),
+}).strict();
+
+/**
+ * Tenant settings for the last look before payment (pack `extensions.checkoutReview`): when on, the cart's checkout button first
+ * asks the consultant for a review card (quantities, what else may be needed, pick-up or delivery, warranty and guides), and the
+ * card's own button goes on to payment. A tenant without it pays straight away, as before.
+ */
+/**
+ * Tenant settings for what goes with a product (pack `extensions.accessoryHelper`): the words around a list of suggestions, and, for a kind
+ * of product, the things the job really needs. When a kind of product has a "must have" list, that list is all the shop offers with it
+ * (no "also bought" extras); a kind with none keeps the knowledge's suggestions.
+ */
+export const AccessoryHelperSchema = z.object({
+  /** The words used around a list of suggestions (for example `suggestionsNote`, `shopSuggestions`). */
+  labels: z.record(z.string(), z.string().max(200)).optional(),
+  mustHave: z.array(z.object({
+    /** The product is of this kind when its category trail has one of these names (any case), or its name has one of them as a word. */
+    when: z.array(z.string().min(1).max(80)).min(1).max(10),
+    needs: z.array(z.object({
+      /** What the customer sees the group called ("Basin mixer"). */
+      label: z.string().min(1).max(80),
+      /** The words that find it in the catalogue ("basin mixer"). */
+      query: z.string().min(1).max(120),
+      /** Why the job needs it, in the shop's own words ("Needed to run water to the basin"). */
+      reason: z.string().max(200).optional(),
+      /** How many products to show for it (default 3). */
+      maxItems: z.number().int().min(1).max(6).optional(),
+    }).strict()).min(1).max(6),
+  }).strict()).max(30).optional(),
+}).strict();
+
+/**
+ * What buyers often mention about a kind of product (pack `extensions.buyerFeedback`), shown on the product's details beside what is
+ * worth checking before buying. It is the shop's own wording kept as data, so a real review feed can replace it later; each rule applies to
+ * a product whose category (or a word of its name) is one of `when`.
+ */
+export const BuyerFeedbackSchema = z.object({
+  rules: z.array(z.object({
+    when: z.array(z.string().min(1).max(80)).min(1).max(10),
+    mentions: z.array(z.string().min(1).max(200)).min(1).max(6),
+    watchFor: z.array(z.string().min(1).max(200)).max(4).optional(),
+  }).strict()).max(30),
+}).strict();
+
+export const CheckoutReviewSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** The words on the card (heading, section titles, button labels); anything left out keeps the platform's plain wording. */
+  labels: z.record(z.string(), z.string().max(160)).optional(),
+  /** What each way of fulfilling an order is called, by the code the product record uses (for example a code for collecting in store). */
+  deliveryLabels: z.record(z.string(), z.string().max(80)).optional(),
+  /** The most things listed under "what you may still need". */
+  maxAccessories: z.number().int().min(0).max(8).optional(),
+}).strict();
+
+/**
+ * Tenant settings for paying (pack `extensions.payment`): pay inside the storefront, in the side panel, instead of on the payment
+ * provider's own page; and whether the payment form also asks where the order goes. A tenant without it keeps the provider's page.
+ */
+export const PaymentSchema = z.object({
+  embedded: z.boolean().optional(),
+  collectShipping: z.boolean().optional(),
+  /** Two-letter country codes a delivery address may be in. */
+  shippingCountries: z.array(z.string().regex(/^[A-Za-z]{2}$/)).max(20).optional(),
+}).strict();
+
+const HexColour = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'a colour as #rrggbb');
+
+/**
+ * Tenant colours for the working surfaces and buttons (pack `extensions.brandTheme`), taken from the shop's own website: the colour of
+ * its main buttons, the text on them, its link colour, and the header of the cart, payment and order panels. Anything left out keeps the
+ * shop's brand colour from its project settings.
+ */
+export const BrandThemeSchema = z.object({
+  action: HexColour.optional(),
+  actionText: HexColour.optional(),
+  link: HexColour.optional(),
+  canvasHeader: HexColour.optional(),
+  canvasHeaderText: HexColour.optional(),
+}).strict();
+
+/**
+ * How the shop's "what kind are you after?" questions are kept honest (pack `extensions.questionCards`). When a question offers the
+ * groups of a department, the server requires every group that holds at least `minShelfShare` of the department's products to be among
+ * the choices, and adds the shop's own words for "something that is not listed" (`otherOptionLabel`) so a customer is never left without
+ * a choice to tap. Without `otherOptionLabel` no such choice is added.
+ */
+export const QuestionCardsSchema = z.object({
+  otherOptionLabel: z.string().min(1).max(60).optional(),
+  minShelfShare: z.number().min(0.01).max(0.5).optional(),
+}).strict();
+
+/**
+ * Tenant phrase swaps for the consultant's voice (pack `extensions.voice`): a model that is told to speak as the shop's own team still
+ * sometimes writes about the shop in the third person ("the shop's page says"). Each rule is a pattern and what replaces it ("our page
+ * says"); only the words matched are swapped, and nothing is added. The shop's own wording, never the platform's.
+ */
+export const VoiceSchema = z.object({
+  rewrites: z.array(z.object({
+    pattern: z.string().min(1).max(200),
+    replacement: z.string().max(80),
+    flags: z.enum(['', 'i']).optional(),
+  }).strict().superRefine((rule, ctx) => {
+    try { new RegExp(rule.pattern, `${rule.flags ?? ''}g`); } catch { ctx.addIssue({ code: 'custom', message: `"${rule.pattern}" is not a valid pattern` }); }
+  })).max(40),
+}).strict();
+
+const DashboardSourceSchema = z.object({
+  connector: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/i).max(60),
+  tool: z.string().regex(/^[a-z0-9_]+$/i).max(60),
+  /** Inputs for the tool. `{me.name}` stands for the signed-in person's name from `people`; an input that cannot be filled is left out. */
+  args: z.record(z.string().min(1).max(40), z.union([z.string().max(120), z.number(), z.boolean()])).optional(),
+}).strict();
+
+const DashboardWhereSchema = z.object({
+  field: z.string().min(1).max(40),
+  /** `in` takes a short comma list ("high,urgent") and passes a record whose field is any one of them. `withinDays` is today up to N days ahead, `withinLastDays` is N days back up to today (0 is today). */
+  op: z.enum(['equals', 'notEquals', 'in', 'before', 'onOrBefore', 'after', 'withinDays', 'withinLastDays']),
+  value: z.union([z.string().max(80), z.number()]).optional(),
+}).strict();
+
+const DashboardToneSchema = z.enum(['good', 'warn', 'bad', 'info']);
+
+/** The roles a signed-in trade customer holds in a company the team linked them to (the words the customer-account tools use). */
+export const CompanyRoleSchema = z.enum(['account_admin', 'accounts_payable', 'buyer', 'job_viewer']);
+
+/** One line of a card or list: templates over a record's fields, `{field}` or `{field|money}`, `{field|date}`, `{field|clean}`, `{field|item}`, `{field|title}`, `{field|price}` (money to the cent), `{field|number}` (a count with its thousands), `{field|words}` (out_for_delivery read as "Out for delivery"). */
+const DashboardRowSchema = z.object({
+  title: z.string().min(1).max(160),
+  subtitle: z.string().max(200).optional(),
+  detail: z.string().max(200).optional(),
+  badge: z.string().max(80).optional(),
+  /** The tone of the badge by the badge's own text ("High" is bad). */
+  tones: z.record(z.string().min(1).max(60), DashboardToneSchema).optional(),
+  amount: z.string().max(80).optional(),
+  /** What pressing the line asks in the chat. */
+  ask: z.string().max(300).optional(),
+}).strict();
+
+const DashboardId = z.string().min(1).max(40).regex(/^[a-z0-9][a-z0-9_-]*$/i);
+
+/**
+ * What each team sees in the corner of the chat and in the dashboard it opens (pack `extensions.dashboard`). Everything is the pack's:
+ * the numbers (`metrics`), the lists under them (`sections`) and the cards the chat shows when the assistant looks something up
+ * (`cards`) say which tool to call and which fields to show. The first entry that fits the person is used. Nothing here grants access:
+ * every call goes through the same connector gate as the assistant's, so a number the person may not read is left blank.
+ */
+export const DashboardSchema = z.object({
+  /** The shop's time zone, for "closing in 14 days" and the dates on cards (UTC when left out). */
+  timeZone: z.string().min(1).max(60).optional(),
+  /** The signed-in person's name in the connected systems, for inputs that say `{me.name}` (login → name). */
+  people: z.record(z.string().min(1).max(120), z.object({ name: z.string().min(1).max(120) }).strict()).optional(),
+  entries: z.array(z.object({
+    groups: z.array(z.string().min(1).max(60)).min(1).max(10).optional(),
+    audience: z.enum(['shopper', 'staff']).optional(),
+    /** For a signed-in trade customer: the company roles this entry is for (it then reads only the `customer-account` tools `my_balance` and `my_deliveries`). */
+    companyRoles: z.array(CompanyRoleSchema).min(1).max(4).optional(),
+    title: z.string().min(1).max(40),
+    subtitle: z.string().max(160).optional(),
+    /** Ids of the metrics shown on the small tile in the corner, at most three. */
+    tile: z.array(DashboardId).min(1).max(3),
+    metrics: z.array(z.object({
+      id: DashboardId,
+      label: z.string().min(1).max(40),
+      source: DashboardSourceSchema,
+      measure: z.enum(['count', 'sum']),
+      /** The field to add up, for `sum`. */
+      field: z.string().min(1).max(40).optional(),
+      where: z.array(DashboardWhereSchema).max(3).optional(),
+      format: z.enum(['number', 'money']).optional(),
+      /** A second figure under the number, for example the money the deals are worth. `{value}` is the figure. */
+      hint: z.object({ field: z.string().min(1).max(40), format: z.enum(['number', 'money']).optional(), text: z.string().min(1).max(80) }).strict().optional(),
+      /** The number's colour: the highest `atLeast` that the number reaches. */
+      tone: z.array(z.object({ atLeast: z.number(), tone: DashboardToneSchema }).strict()).max(3).optional(),
+      /** What pressing the number asks in the chat. */
+      ask: z.string().max(300).optional(),
+    }).strict().refine((metric) => metric.measure !== 'sum' || Boolean(metric.field), { message: 'a sum needs the field to add up' })).max(8),
+    sections: z.array(z.object({
+      id: DashboardId,
+      title: z.string().min(1).max(60),
+      source: DashboardSourceSchema,
+      /** The dotted path to the list in the tool's answer; the tool's own `records` when left out. */
+      from: z.string().max(60).optional(),
+      where: z.array(DashboardWhereSchema).max(3).optional(),
+      sort: z.object({ field: z.string().min(1).max(40), order: z.enum(['asc', 'desc']).optional() }).strict().optional(),
+      limit: z.number().int().min(1).max(10).optional(),
+      row: DashboardRowSchema,
+      empty: z.string().max(160).optional(),
+      /** A button under the list that carries on in the chat. */
+      more: z.object({ label: z.string().min(1).max(40), prompt: z.string().min(1).max(300) }).strict().optional(),
+    }).strict()).max(6),
+    /** Cards the chat shows by itself when the assistant has looked something up, so the reply can stay short. */
+    cards: z.array(z.object({
+      connector: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/i).max(60),
+      tool: z.string().regex(/^[a-z0-9_]+$/i).max(60),
+      heading: z.string().min(1).max(60),
+      from: z.string().max(60).optional(),
+      where: z.array(DashboardWhereSchema).max(3).optional(),
+      sort: z.object({ field: z.string().min(1).max(40), order: z.enum(['asc', 'desc']).optional() }).strict().optional(),
+      limit: z.number().int().min(1).max(8).optional(),
+      row: DashboardRowSchema,
+    }).strict()).max(12),
+  }).strict()
+    .refine((entry) => Boolean(entry.groups?.length || entry.audience || entry.companyRoles?.length), { message: 'name the groups, the company roles or the audience the entry is for' })
+    .refine((entry) => entry.tile.every((id) => entry.metrics.some((metric) => metric.id === id)), { message: 'every tile figure must be one of the metrics' })
+    .refine((entry) => new Set(entry.metrics.map((metric) => metric.id)).size === entry.metrics.length, { message: 'metric ids must be different' })
+    .refine((entry) => new Set(entry.sections.map((section) => section.id)).size === entry.sections.length, { message: 'section ids must be different' })).max(20),
+}).strict();
+
+export type DashboardSetting = z.infer<typeof DashboardSchema>;
+export type DashboardEntry = DashboardSetting['entries'][number];
+
+/**
+ * What the empty chat says to each kind of person (pack `extensions.welcome`): a headline, a line under it and a few things to ask, per
+ * team. The first entry that fits the person is used; an entry names the staff groups it is for (the normalised team names the access
+ * rows use) or a whole audience. `{hello}` becomes the time-of-day greeting and `{name}` the person's first name. A starter may list the
+ * tools (`system.tool`) it needs, and is then offered only to a person who may use all of them: nobody is offered what they would be refused.
+ */
+export const WelcomeSchema = z.object({
+  entries: z.array(z.object({
+    groups: z.array(z.string().min(1).max(60)).min(1).max(10).optional(),
+    audience: z.enum(['shopper', 'staff']).optional(),
+    /** For a signed-in trade customer: the company roles this entry is for. */
+    companyRoles: z.array(CompanyRoleSchema).min(1).max(4).optional(),
+    headline: z.string().min(1).max(120).optional(),
+    subtitle: z.string().min(1).max(240).optional(),
+    /** What the empty message box says, in grey, before anyone types ("Ask about a ticket, a case or an order…"). */
+    placeholder: z.string().min(1).max(100).optional(),
+    starters: z.array(z.object({
+      label: z.string().min(1).max(60),
+      prompt: z.string().min(1).max(500),
+      needs: z.array(z.string().regex(/^[a-z0-9-]+\.[a-z0-9_]+$/i, 'a tool as system.tool')).max(4).optional(),
+    }).strict()).max(6).optional(),
+  }).strict().refine((entry) => Boolean(entry.groups?.length || entry.audience || entry.companyRoles?.length), { message: 'name the groups, the company roles or the audience the entry is for' })).max(40),
+}).strict();

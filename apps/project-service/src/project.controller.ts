@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PermissionGuard, RequirePermission } from './permission.guard';
-import { UNATTRIBUTED_PRINCIPAL } from '@journeyax/shared-types';
+import { UNATTRIBUTED_PRINCIPAL, normaliseGroups } from '@journeyax/shared-types';
 import { ProjectService, redactSecrets, isCardType, validateCardSpec, STANDARD_TOOL_SCHEMAS } from './project.service';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import {
@@ -19,6 +19,8 @@ import {
 import { OKF_LIMITS, OkfIntegrityError } from '@journeyax/knowledge';
 import { OkfAuthoringService, OkfDraftConflictError } from './okf-authoring.service';
 import { KnowledgeInsightService } from './knowledge-insight.service';
+import { PersonaLibraryError } from './persona-library';
+import { CompanyLinkError } from './company-links';
 
 /**
  * Internal runtime services (agent, WhatsApp sender) present this shared key to
@@ -692,6 +694,113 @@ export class ProjectController {
     const project = await this.projectService.getProject(projectId);
     if (!project) throw new NotFoundException(`Project '${projectId}' not found.`);
     return this.projectService.addTeam(projectId, body.orgId || project.orgId, body);
+  }
+
+  // ── Persona library (reference material for the people who configure the assistant; not part of the published pack) ────────────
+  private personaError(error: unknown): never {
+    if (error instanceof PersonaLibraryError) {
+      if (error.code === 'conflict') throw new ConflictException(error.message);
+      if (error.code === 'not_found' || error.code === 'missing') throw new NotFoundException(error.message);
+      throw new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  @Get(':projectId/persona-library')
+  @RequirePermission('config.edit')
+  async getPersonaLibrary(@Param('projectId') projectId: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    const record = await this.projectService.getPersonaLibraryStore().get(projectId);
+    return record ? { present: true, ...record } : { present: false };
+  }
+
+  /** Loads a library (the importer's output). A newer one replaces the old; the scenario tools people set are kept. */
+  @Put(':projectId/persona-library')
+  @RequirePermission('config.edit')
+  async putPersonaLibrary(@Param('projectId') projectId: string, @Body() body: { library?: unknown; expectedRevision?: number }, @Headers('x-user-id') userId?: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    try {
+      const record = await this.projectService.getPersonaLibraryStore().put(projectId, body?.library, userId || UNATTRIBUTED_PRINCIPAL, typeof body?.expectedRevision === 'number' ? body.expectedRevision : undefined);
+      return { present: true, revision: record.revision, checksum: record.checksum, updatedAt: record.updatedAt };
+    } catch (error) { return this.personaError(error); }
+  }
+
+  /** Sets the tools one scenario (use case) needs. */
+  @Put(':projectId/persona-library/scenario-tools')
+  @RequirePermission('config.edit')
+  async putScenarioTools(@Param('projectId') projectId: string, @Body() body: { useCaseId?: string; tools?: unknown; expectedRevision?: number }, @Headers('x-user-id') userId?: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    if (typeof body?.useCaseId !== 'string' || !body.useCaseId || typeof body?.expectedRevision !== 'number') throw new BadRequestException('Say which use case, and which revision of the library you were looking at.');
+    try {
+      const record = await this.projectService.getPersonaLibraryStore().setScenarioTools(projectId, body.useCaseId, body.tools, userId || UNATTRIBUTED_PRINCIPAL, body.expectedRevision);
+      return { present: true, revision: record.revision, scenarioTools: record.scenarioTools[body.useCaseId] ?? [], updatedAt: record.updatedAt };
+    } catch (error) { return this.personaError(error); }
+  }
+
+  /** Sets the question a person types to try one scenario. */
+  @Put(':projectId/persona-library/scenario-prompt')
+  @RequirePermission('config.edit')
+  async putScenarioPrompt(@Param('projectId') projectId: string, @Body() body: { useCaseId?: string; prompt?: unknown; expectedRevision?: number }, @Headers('x-user-id') userId?: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    if (typeof body?.useCaseId !== 'string' || !body.useCaseId || typeof body?.expectedRevision !== 'number') throw new BadRequestException('Say which use case, and which revision of the library you were looking at.');
+    try {
+      const record = await this.projectService.getPersonaLibraryStore().setScenarioPrompt(projectId, body.useCaseId, body.prompt, userId || UNATTRIBUTED_PRINCIPAL, body.expectedRevision);
+      return { present: true, revision: record.revision, scenarioPrompt: record.scenarioPrompts[body.useCaseId] ?? '', updatedAt: record.updatedAt };
+    } catch (error) { return this.personaError(error); }
+  }
+
+  private companyLinkError(error: unknown): never {
+    if (error instanceof CompanyLinkError) throw new BadRequestException(error.message);
+    throw error;
+  }
+
+  /** Every trade customer login linked to a company in this project, for the back office. */
+  @Get(':projectId/company-links')
+  @RequirePermission('config.edit')
+  async listCompanyLinks(@Param('projectId') projectId: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    return { links: await this.projectService.getCompanyLinkStore().list(projectId) };
+  }
+
+  /** Links a login to a company by hand (or changes the person's role in it). The team checks who the person is before linking. */
+  @Put(':projectId/company-links')
+  @RequirePermission('config.edit')
+  async putCompanyLink(@Param('projectId') projectId: string, @Body() body: unknown, @Headers('x-user-id') userId?: string) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    try {
+      return { link: await this.projectService.getCompanyLinkStore().link(projectId, body, userId || UNATTRIBUTED_PRINCIPAL) };
+    } catch (error) { return this.companyLinkError(error); }
+  }
+
+  @Delete(':projectId/company-links')
+  @RequirePermission('config.edit')
+  async deleteCompanyLink(@Param('projectId') projectId: string, @Body() body: { email?: unknown; companyId?: unknown }) {
+    if (!(await this.projectService.getProject(projectId))) throw new NotFoundException(`Project '${projectId}' not found.`);
+    try {
+      return { removed: await this.projectService.getCompanyLinkStore().unlink(projectId, body?.email, body?.companyId) };
+    } catch (error) { return this.companyLinkError(error); }
+  }
+
+  /** The companies a verified login is linked to: asked by the runtime with the identity the gateway verified, never by a browser. */
+  @Post(':projectId/company-links/lookup')
+  @RequirePermission('project.read')
+  async lookupCompanyLinks(@Param('projectId') projectId: string, @Body() body: { email?: unknown }) {
+    return { companies: await this.projectService.getCompanyLinkStore().lookup(projectId, body?.email) };
+  }
+
+  /** "View as": which agents a shopper, or a member of staff in the given groups, would get from the project's current settings. Read-only, for those who may edit the configuration (it names the project's teams). */
+  @Get(':projectId/access-preview')
+  @RequirePermission('config.edit')
+  async accessPreview(
+    @Param('projectId') projectId: string,
+    @Query('audience') audience?: string,
+    @Query('groups') groups?: string,
+  ) {
+    const who = audience === undefined || audience === '' ? 'shopper' : audience;
+    if (who !== 'shopper' && who !== 'staff') throw new BadRequestException("audience must be 'shopper' or 'staff'.");
+    const preview = await this.projectService.previewAccess(projectId, { audience: who, groups: normaliseGroups(groups) });
+    if (!preview) throw new NotFoundException(`Project '${projectId}' not found.`);
+    return preview;
   }
 
   @Post(':projectId/verify-membership')

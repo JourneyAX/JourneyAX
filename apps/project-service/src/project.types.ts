@@ -198,7 +198,7 @@ export interface ProjectAiConfig {
    *  that model on the platform key. */
   intentModel?: string;
   /** Overrides of the platform's model policies for this project: { fast_intent: { model?, provider?, timeoutMs? }, … }. */
-  policyOverrides?: Record<string, { provider?: string; model?: string; timeoutMs?: number }>;
+  policyOverrides?: Record<string, { provider?: string; model?: string; timeoutMs?: number; reasoningEffort?: string; maxOutputTokens?: number }>;
   embeddingModel?: string;     // "text-embedding-3-small" | "voyage-3-large"
   /** Model used for bulk INGESTION work (product narratives, catalogue
    *  extraction). Separate from the conversational `model` so heavy offline jobs
@@ -647,6 +647,8 @@ export interface UpdateProjectDto {
   workspacePinPolicy?: { idleRepinAfterHours?: number } | null;
   /** How the assistant decides each turn (ask, recommend, show, answer): thresholds, word lists and wording. Unset sections use platform defaults. */
   dialoguePolicy?: Record<string, unknown> | null;
+  /** Autonomous AI agent mode: tool calling, parallel retrieval and multi-step reasoning. Defaults to off (false). */
+  agentMode?: boolean | { enabled: boolean } | null;
   /** The journey that answers a request matching none; required before a project with several journeys can be published. */
   routingPolicy?: { defaultJourneyId: string; fallbackOnCatalogSearch?: boolean } | null;
   embed?: EmbedConfig;

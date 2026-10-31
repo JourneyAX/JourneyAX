@@ -1,0 +1,8 @@
+{
+  "_comment": "Platform defaults for the agent turn loop. A pack overrides any value under conversationPolicy (validated when saved). Nothing here is specific to a tenant or an industry.",
+  "repair": {
+    "thinBelowChars": 120,
+    "minChars": 40,
+    "removedShareAbove": 0.5
+  }
+}

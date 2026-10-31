@@ -1,0 +1,3930 @@
+[
+  {
+    "id": 1,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Do you have 100x50 H3.2 treated timber in stock?",
+    "purpose": "Numeric dimension code + treatment grade recognition",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 1002835 \"Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)\" (framing timber; priced per branch/quote, not a listed national price).",
+    "assistantMessage": "I couldn't find any products matching \"100x50 H3.2 treated timber\" in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-1-1",
+      "timeToFirstEventMs": 1394,
+      "timeToFirstTextMs": 2442,
+      "interpretMs": 2673,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2745,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4581,
+        "completion": 71,
+        "total": 4652
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1002835, 1003586, 1003591)"
+    ]
+  },
+  {
+    "id": 2,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "I need 4x2 timber for framing, what do you have?",
+    "purpose": "Legacy imperial sizing ('4x2') mapped to metric product (4x2\"≈100x50mm)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — imperial 4x2\" maps to metric 100x50mm. SKU 1002835 \"Radiata Structural Grade 8 ... H3.2 CCA Treated 100 x 50mm (90 x 45mm)\"; SKU 1010788 H1.2 Boron Treated 100 x 50mm variant also exists.",
+    "assistantMessage": "I couldn't find any products matching \"4x2 timber\" for framing in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-2-1",
+      "timeToFirstEventMs": 1678,
+      "timeToFirstTextMs": 2437,
+      "interpretMs": 2660,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2721,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4575,
+        "completion": 68,
+        "total": 4643
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1002835, 1010788, 1003586)"
+    ]
+  },
+  {
+    "id": 3,
+    "category": "Timber & Dimensions",
+    "promptType": "education",
+    "prompt": "What's the difference between kiln dried and wet timber?",
+    "purpose": "Comparative/informational query, not a direct product search",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — both product lines exist side by side, e.g. SKU 1002837 \"Radiata SG8 Kiln Dried H3.2 CCA Treated 200 x 50mm\" vs SKU 1003595 \"Radiata SG8 Wet H3.2 CCA Treated 100 x 50mm ... 6.0m\". Informational/comparative — no single SKU is \"the\" answer.",
+    "assistantMessage": "Kiln dried timber and wet timber differ primarily in their moisture content and the drying process:\n1. **Kiln Dried Timber**:\n- **Moisture Content**: Has a low moisture content, typically around 10-15%.\n- **Drying Process**: Dried in a controlled environment using a kiln, which speeds up the drying process while reducing the risk of defects like warping or splitting.\n- **Advantages**: More stable, less likely to shrink or expand after installation, and generally better for indoor use where humidity control is important.\n2. **Wet Timber**:",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-3-1",
+      "timeToFirstEventMs": 591,
+      "timeToFirstTextMs": 591,
+      "interpretMs": 2138,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2193,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 213,
+        "total": 2448
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 4,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Looking for 150x50 treated pine for a deck frame",
+    "purpose": "Dimension + species + use-case combined query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — SKU 1002836 \"Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 150 x 50mm (140 x 45mm)\"; SKU 1003596 \"Radiata SG8 Wet H3.2 CCA Treated 150 x 50mm\" also available.",
+    "assistantMessage": "It appears that no matching products for 150x50 treated pine were found in the catalogue. Would you like to explore alternative sizes or types of treated pine for your deck frame?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-4-1",
+      "timeToFirstEventMs": 797,
+      "timeToFirstTextMs": 1882,
+      "interpretMs": 2039,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2097,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4576,
+        "completion": 65,
+        "total": 4641
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1002836, 1003596, 1003601)"
+    ]
+  },
+  {
+    "id": 5,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Do you sell untreated structural timber?",
+    "purpose": "Treatment-type filter",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 2420248 \"Radiata Structural Plywood F8/F8 Untreated DD 2400 x 1200 x 17mm\"; SKU 2420911 \"DIY Plywood Non-Structural Pine CD Untreated 1200 x 595 x 12mm\" (brand BBI).",
+    "assistantMessage": "No matching products for untreated structural timber were found in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-5-1",
+      "timeToFirstEventMs": 882,
+      "timeToFirstTextMs": 1629,
+      "interpretMs": 1933,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1994,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4548,
+        "completion": 56,
+        "total": 4604
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2420248, 2420911, 1202498)"
+    ]
+  },
+  {
+    "id": 6,
+    "category": "Timber & Dimensions",
+    "promptType": "advice",
+    "prompt": "What size timber do I need for deck joists?",
+    "purpose": "Advisory query requiring recommendation, not a SKU lookup",
+    "groundTruthReference": "[FEED-VERIFIED] CONTENT PAGE — \"Decking - The Complete Guide\" (/projects/landscaping/decking). Advisory query; real structural timber SKUs (SG8 H3.2 CCA Treated range) back the recommendation.",
+    "assistantMessage": "The size of timber needed for deck joists typically depends on the span of the joists and the load they will carry. Common sizes for deck joists are:\n- **140mm x 45mm (6x2 inches)**: Used for longer spans (up to about 2.4 meters).\n- **190mm x 45mm (8x2 inches)**: Ideal for spans over 2.4 meters. For specific recommendations based on your deck design, including the span and load requirements, I recommend consulting with a building professional or referring to local building codes. Would you like assistance finding timber options for your deck joists?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-6-1",
+      "timeToFirstEventMs": 760,
+      "timeToFirstTextMs": 760,
+      "interpretMs": 2135,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2193,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2236,
+        "completion": 160,
+        "total": 2396
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 7,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "9x15 timber for a fence rail - do you stock that?",
+    "purpose": "Non-standard dimension shorthand for a specific end use",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (as 100x50mm fence rail, the real dimension for this use) — e.g. SKU 1074723 \"Radiata Rough Sawn Fence Rail No.2 H4 CCA Treated 100 x 50mm\"; SKU 2330974 \"Primewood Fence Rail Standard Finger Jointed H3.1 Treated PG 5.4m 100 x 50mm\". \"9x15\" is not a real PlaceMakers rail size — good test of whether the agent corrects/clarifies rather than inventing a match.",
+    "assistantMessage": "I couldn't find any products matching \"9x15 timber for a fence rail\" in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-7-1",
+      "timeToFirstEventMs": 759,
+      "timeToFirstTextMs": 1530,
+      "interpretMs": 1750,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1807,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4576,
+        "completion": 74,
+        "total": 4650
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1074723, 2330974, 2339323)"
+    ]
+  },
+  {
+    "id": 8,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Can I get H1.2 treated timber for interior framing?",
+    "purpose": "H-grade treatment code recognition",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 1010784 \"Radiata Structural Grade 6 Planer Gauged Kiln Dried H1.2 Boron Treated 75 x 50mm (70 x 45mm)\"; SKU 1015022 \"Radiata SG8 Kiln Dried H1.2 Treated 100 x 50mm\".",
+    "assistantMessage": "Would you like assistance with alternative timber options or specifications for your project?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-8-1",
+      "timeToFirstEventMs": 816,
+      "timeToFirstTextMs": 1742,
+      "interpretMs": 1741,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1799,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4580,
+        "completion": 66,
+        "total": 4646
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1010784, 1015022, 1010788)"
+    ]
+  },
+  {
+    "id": 9,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "What's your cheapest 6x2 treated timber?",
+    "purpose": "Price-sensitive dimension query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (150x50mm = 6x2\") — multiple SKUs exist (SG8 H3.2 CCA Treated, SG8 Wet H3.2, H4 Treated Retaining) but structural timber has no listed unit price in this feed (branch/quote pricing) — a true \"cheapest\" answer needs live branch pricing, not this feed alone.",
+    "assistantMessage": "I couldn't find any 6x2 treated timber in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-9-1",
+      "timeToFirstEventMs": 705,
+      "timeToFirstTextMs": 1531,
+      "interpretMs": 1673,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1731,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4563,
+        "completion": 65,
+        "total": 4628
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1002836, 1003596, 1003601)"
+    ]
+  },
+  {
+    "id": 10,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Do you have square dressed boards for skirting?",
+    "purpose": "Product-category name match",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — Square Dressed timber exists (e.g. SKU 8303455 \"Radiata Square Dressed H3.1 Treated Finger Jointed 24 x 24mm M25\") but no SKU is profiled/named specifically as a \"skirting board\" — the only \"skirting\" hits in the feed are door-stop hardware (e.g. \"75mm Doorstop Concealed Skirting Fix\"). Good test of whether the agent conflates those.",
+    "assistantMessage": "1. **Radiata Clear Grade D4S Moulding Untreated 100 x 25mm (90 x 19mm)**\n- Price: $15 NZD\n- SKU: 1202514\n2. **Radiata Clear Grade D4S Moulding Untreated 50 x 25mm (40 x 18mm)**\n- Price: $15 NZD\n- SKU: 1202498",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-10-1",
+      "timeToFirstEventMs": 1262,
+      "timeToFirstTextMs": 2492,
+      "interpretMs": 4530,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4590,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4871,
+        "completion": 309,
+        "total": 5180
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 8303455, 2272362, 2272383)"
+    ]
+  },
+  {
+    "id": 11,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "I need timber for retaining wall sleepers",
+    "purpose": "Use-case to product-category mapping",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 1005652 \"Radiata Retaining Timber Rough Sawn No.2 H4 Treated 150 x 50mm x 4.8m\"; SKU 1005653 \"... 150 x 50 x 5.4m\".",
+    "assistantMessage": "Here are some timber options for retaining wall sleepers:\n1. **Rustic Railway NZ Pine Sleeper**\n- **Size:** 200 x 150mm x 2.1m\n- **Price:** $15 NZD\n- **Description:** Classic and traditional New Zealand historically treated Pine railway sleepers. Versatile and forever popular.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-11-1",
+      "timeToFirstEventMs": 1066,
+      "timeToFirstTextMs": 1718,
+      "interpretMs": 3708,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 3766,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4731,
+        "completion": 286,
+        "total": 5017
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1005652, 1005653, 2320077)"
+    ]
+  },
+  {
+    "id": 12,
+    "category": "Timber & Dimensions",
+    "promptType": "advice",
+    "prompt": "What plywood thickness is best for flooring underlay?",
+    "purpose": "Advisory + thickness spec",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 2420522 \"Radiata Structural Plywood Flooring F11/F11 Untreated CD T&G Long Edge 2400 x 1200 x 19mm\" (brand IPL); SKU 2372693 \"Flooring Plywood ... F11 H3.2 MCA Waterborne Treated CD T&G 2400 x 1200 x 21mm\" (brand EziPly).",
+    "assistantMessage": "For flooring underlay, a common thickness for plywood is typically 12mm to 15mm. This thickness provides adequate support and stability for various types of flooring, including laminate and hardwood.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-12-1",
+      "timeToFirstEventMs": 634,
+      "timeToFirstTextMs": 634,
+      "interpretMs": 1017,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1078,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 66,
+        "total": 2301
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 13,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Show me your range of decking timber",
+    "purpose": "Broad category browse intent",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 1012463 \"Radiata Merch Griptread Decking H3.2 CCA Treated 150 x 40mm\"; SKU 1012466 \"Radiata Premium Smooth Decking H3.2 CCA Treated 150 x 40mm\"; plus SKU 1930532 \"Form Composite Decking Mid Grey 130 x 19 x 4850mm\" ($106, brand BiForm) for a non-timber option.",
+    "assistantMessage": "Here is our range of decking timber:\n1. **Radiata Merch Griptread Decking H3.2 CCA Treated 150 x 40mm (140 x 32mm)** - NZD 15 Merch grade NZ grown Radiata pine decking with slight imperfections. Features a griptread face on one side.\n2. **Radiata Merch Deck H3.2 CCA Treated 150 x 40mm Smooth** - NZD 15 Merch grade NZ grown Radiata pine decking with slight imperfections.",
+    "cards": [
+      "products"
+    ],
+    "toolCalls": 2,
+    "toolsCalled": [
+      "search_products",
+      "present_card"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-13-1",
+      "timeToFirstEventMs": 818,
+      "timeToFirstTextMs": 5652,
+      "interpretMs": 8504,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 8565,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 8276,
+        "completion": 869,
+        "total": 9145
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 14,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Do you have 100x100 treated posts for a pergola?",
+    "purpose": "Dimension + use-case (posts)",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — no 100x100mm SKU; closest real posts are H5-treated Glulam, e.g. SKU 2201029 \"Radiata Glulam Post Pre-primed H5 MCA Treated PL8 88 x 88mm x 2.4m\" ($167.42) or SKU 2201025 112 x 112mm. Content: \"Pergolas - Information & Inspiration\" (/projects/landscaping/pergolas-and-translucent-roofs/pergolas).",
+    "assistantMessage": "I want to ensure all details and specifications are completely accurate. Would you like me to connect you with a specialist consultant who can verify this for you?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-14-1",
+      "timeToFirstEventMs": 983,
+      "timeToFirstTextMs": 2035,
+      "interpretMs": 2035,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2093,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4579,
+        "completion": 74,
+        "total": 4653
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2201029, 2201025, 2250317)"
+    ]
+  },
+  {
+    "id": 15,
+    "category": "Timber & Dimensions",
+    "promptType": "safety",
+    "prompt": "What timber grade should I use for load-bearing beams?",
+    "purpose": "Structural advisory query, tests safety-relevant guidance",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (informational/advisory) — SG8 (Structural Grade 8) is the real grade used across the framing range, e.g. SKU 1002837, 1002842, 1002844. No single SKU is \"the\" answer — a structural/engineering judgement call, flag with Magesh.",
+    "assistantMessage": "I don't have verified information on timber grades for load-bearing beams. I recommend consulting a qualified specialist or store staff for guidance on the appropriate timber grade for your specific project needs. Would you like assistance with anything else?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-15-1",
+      "timeToFirstEventMs": 585,
+      "timeToFirstTextMs": 585,
+      "interpretMs": 859,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 917,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2236,
+        "completion": 44,
+        "total": 2280
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 16,
+    "category": "Fencing & Decking",
+    "promptType": "project",
+    "prompt": "I want to build a timber paling fence, what do I need?",
+    "purpose": "Multi-item project query (posts, rails, palings, fixings)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — palings e.g. SKU 2331056 \"Radiata Rough Sawn Fence Paling H3.2 100 x 25mm x 1.8m\"; rails e.g. SKU 1074723 \"Fence Rail No.2 H4 CCA Treated 100 x 50mm\"; content: \"PlaceMakers Guide to Fencing\" (/projects/landscaping/fencing).",
+    "assistantMessage": "To build a timber paling fence, you'll typically need the following materials:\n1. **Timber Palings**: These are the vertical boards that make up the fence.\n2. **Fence Posts**: These are the vertical supports that hold the palings in place.\n3. **Railings**: Horizontal pieces that connect the posts and support the palings.\n4. **Concrete**: For securing the posts in the ground.\n5. **Nails or Screws**: For attaching the palings to the railings.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-16-1",
+      "timeToFirstEventMs": 800,
+      "timeToFirstTextMs": 800,
+      "interpretMs": 1852,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1911,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2239,
+        "completion": 145,
+        "total": 2384
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 17,
+    "category": "Fencing & Decking",
+    "promptType": "education",
+    "prompt": "What's the difference between palings and rails for fencing?",
+    "purpose": "Terminology/education query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — both real, distinct product lines: Fence Paling (e.g. SKU 2331056) vs Fence Rail (e.g. SKU 1074723). Content: \"Timber Fencing\" (/projects/landscaping/fencing/timber-fencing).",
+    "assistantMessage": "Palings and rails are both components of fencing, but they serve different purposes:\n1. **Palings**: These are the vertical boards or slats that make up the main body of the fence. They are typically spaced apart to provide privacy while allowing some airflow. Palings can be made from various materials, including timber, vinyl, or metal.\n2. **Rails**: These are the horizontal supports that hold the palings in place. Rails are usually attached to the fence posts and provide structural integrity to the fence.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-17-1",
+      "timeToFirstEventMs": 676,
+      "timeToFirstTextMs": 676,
+      "interpretMs": 2146,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2204,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2236,
+        "completion": 171,
+        "total": 2407
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 18,
+    "category": "Fencing & Decking",
+    "promptType": "product_lookup",
+    "prompt": "Do you have fence trellis panels in stock?",
+    "purpose": "Specific sub-category name match",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 2280699 \"Radiata Trellis Fencetop Oriental Long 2400 x 350 x 10mm H3.2 Heavy Framed\" ($159, brand WTS); SKU 2280698 \"Radiata Trellis Double Oriental 1800 x 1800 x 10mm H3.2\" ($419).",
+    "assistantMessage": "No matching products for fence trellis panels were found in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-18-1",
+      "timeToFirstEventMs": 748,
+      "timeToFirstTextMs": 1543,
+      "interpretMs": 1726,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1781,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4563,
+        "completion": 56,
+        "total": 4619
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2280699, 2280698, 2280068)"
+    ]
+  },
+  {
+    "id": 19,
+    "category": "Fencing & Decking",
+    "promptType": "product_lookup",
+    "prompt": "Looking for aluminium fence panels instead of timber",
+    "purpose": "Material-alternative query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 2250692 \"Delta Aluminium Fence Panel 1200 x 2250mm Black\" ($264.01, brand FENTEC); SKU 2250694 \"950 x 2250mm Black\" ($239.99).",
+    "assistantMessage": "It appears that no aluminium fence panels were found in the catalogue. If you're open to alternatives, I can help you explore other fencing options or materials. Would you like to look into different types of fencing?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-19-1",
+      "timeToFirstEventMs": 652,
+      "timeToFirstTextMs": 1997,
+      "interpretMs": 2289,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2349,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4558,
+        "completion": 66,
+        "total": 4624
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2250692, 2250694)"
+    ]
+  },
+  {
+    "id": 20,
+    "category": "Fencing & Decking",
+    "promptType": "project",
+    "prompt": "What's needed to build a basic backyard fence?",
+    "purpose": "Vague project query, tests clarifying-question flow",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (multi-item) — posts e.g. SKU 2330694 \"Radiata Rough Sawn Fence Post H4 100 x 75mm x 1.5m\"; post caps e.g. SKU 2250317 \"Classic Fence Post Cap Acorn 100 x 100mm\" ($68.99). Content: \"PlaceMakers Guide to Fencing\".",
+    "assistantMessage": "To build a basic backyard fence, you'll typically need the following materials:\n1. **Fence Panels**: These are the main structure of your fence. Common options include wooden panels, vinyl panels, or chain-link.\n2. **Posts**: These are used to support the fence panels. They should be sturdy and can be made from wood or metal.\n3. **Concrete**: Used for setting the posts in the ground to ensure stability.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-20-1",
+      "timeToFirstEventMs": 613,
+      "timeToFirstTextMs": 613,
+      "interpretMs": 1963,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2020,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2234,
+        "completion": 168,
+        "total": 2402
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 21,
+    "category": "Fencing & Decking",
+    "promptType": "product_lookup",
+    "prompt": "Show me composite decking options",
+    "purpose": "Material-specific browse",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 1930531 \"Form Composite Decking Cedar Brown 130 x 19 x 4850mm\" ($106, brand BiForm); SKU 1930533 \"Camo Grey\" ($119). Content: \"Composite Decking Info & Inspiration\".",
+    "assistantMessage": "Here are some composite decking options available:\n1. **Composite decking board 140mm** Price: $62 NZD\n2. **Form Composite Decking Mid Grey 130 x 19 x 4850mm** Price: $15 NZD *BiForm made from 60% waste timber fibre and 30% recycled HDPE plastic (+ 10% additives of colour, UV protectant, and mould inhibitors).*",
+    "cards": [
+      "products"
+    ],
+    "toolCalls": 2,
+    "toolsCalled": [
+      "search_products",
+      "present_card"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-21-1",
+      "timeToFirstEventMs": 828,
+      "timeToFirstTextMs": 6408,
+      "interpretMs": 9377,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 9437,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 8164,
+        "completion": 869,
+        "total": 9033
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 22,
+    "category": "Fencing & Decking",
+    "promptType": "product_lookup",
+    "prompt": "What's needed to build a deck from scratch - framing, boards, fixings?",
+    "purpose": "Multi-category bundled project query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (multi-category) — framing timber (SG8 H3.2 CCA range), decking boards (e.g. SKU 1012463), Post & Bearer Brackets e.g. SKU 3550233 (\"Post & Bearer Bracket ... Galvanised B25\", $37.98, brand BOWMAC). Content: \"Decking - The Complete Guide\".",
+    "assistantMessage": "To build a deck from scratch, you'll typically need the following materials:\n1. **Framing**:\n- **Joists**: These are the horizontal supports that hold up the deck boards.\n- **Beams**: These are the larger supports that carry the load of the joists.\n- **Posts**: Vertical supports that hold up the beams.\n2. **Decking Boards**:",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-22-1",
+      "timeToFirstEventMs": 573,
+      "timeToFirstTextMs": 573,
+      "interpretMs": 2289,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2341,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2241,
+        "completion": 229,
+        "total": 2470
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 1012463, 3550233, 1002835)"
+    ]
+  },
+  {
+    "id": 23,
+    "category": "Fencing & Decking",
+    "promptType": "product_lookup",
+    "prompt": "Do you sell pergola kits?",
+    "purpose": "Kit/bundle product search",
+    "groundTruthReference": "[FEED-VERIFIED] NOT IN FEED as a packaged \"kit\" — no product titled \"Pergola Kit\" exists. Closest real components: H5-treated Glulam posts (SKU 2201025/2201029). Content: \"Pergolas - Information & Inspiration\" confirms PlaceMakers sells the concept via components + guide, not a boxed kit — a good test of whether the agent invents a \"kit\" SKU that doesn't exist.",
+    "assistantMessage": "I couldn't find any pergola kits in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-23-1",
+      "timeToFirstEventMs": 654,
+      "timeToFirstTextMs": 1354,
+      "interpretMs": 1609,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1667,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4548,
+        "completion": 57,
+        "total": 4605
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2201025, 2250317, 2250629)"
+    ]
+  },
+  {
+    "id": 24,
+    "category": "Fencing & Decking",
+    "promptType": "product_lookup",
+    "prompt": "I need fence posts and concrete for a new boundary fence",
+    "purpose": "Cross-category combo (timber + concrete)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (as two separate real items, not one combo SKU) — post e.g. SKU 2330694 \"Radiata Rough Sawn Fence Post H4 100 x 75mm x 1.5m\"; concrete e.g. SKU 3250868 \"HandiCrete High Strength Concrete 25kg HC25HS\" ($20.98, brand Dricon). Note: \"Postcrete\" as a named product was NOT found in this feed.",
+    "assistantMessage": "Here are some options for fence posts and concrete available in our catalogue: ### Fence Posts\n1. **Radiata Rough Sawn Fence Post H4 100 x 75mm x 1.5m**\n- **Price:** $15 NZD\n- **Description:** Rough sawn timber post ideal for use as a fence post.\n- **SKU:** 2330694",
+    "cards": [],
+    "toolCalls": 2,
+    "toolsCalled": [
+      "search_products",
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-24-1",
+      "timeToFirstEventMs": 1036,
+      "timeToFirstTextMs": 1919,
+      "interpretMs": 4476,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4535,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 5295,
+        "completion": 396,
+        "total": 5691
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 25,
+    "category": "Fencing & Decking",
+    "promptType": "advice",
+    "prompt": "What's the best decking board width for a small patio?",
+    "purpose": "Advisory sizing query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (advisory) — real widths available include 100mm and 150mm face (e.g. SKU 1012474 \"Griptread Decking H3.2 CCA Treated 100 x 40mm (90 x 32mm)\", SKU 1012463 150 x 40mm).",
+    "assistantMessage": "For a small patio, the best decking board width often depends on the desired aesthetic and the space available. Common widths for decking boards range from 90mm to 140mm.\n- **140mm boards**: These provide a more modern appearance and can make the patio feel larger due to fewer visible joints.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-25-1",
+      "timeToFirstEventMs": 1353,
+      "timeToFirstTextMs": 1353,
+      "interpretMs": 3876,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 3937,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2236,
+        "completion": 123,
+        "total": 2359
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 26,
+    "category": "Building Materials",
+    "promptType": "product_lookup",
+    "prompt": "Do you stock GIB plasterboard sheets?",
+    "purpose": "Correct/expected brand-term match (baseline)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — brand field is literally \"GIB\". E.g. SKU 2800027 \"Standard Wallboard 2400 x 1200 x 10mm Taper Edge\"; SKU 2800101 \"Standard Wallboard 6000 x 1200 x 13mm Taper Edge\".",
+    "assistantMessage": "I couldn't find any GIB plasterboard sheets in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-26-1",
+      "timeToFirstEventMs": 2816,
+      "timeToFirstTextMs": 3639,
+      "interpretMs": 3879,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 3937,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4555,
+        "completion": 55,
+        "total": 4610
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2800027, 2800101, 2800035)"
+    ]
+  },
+  {
+    "id": 27,
+    "category": "Building Materials",
+    "promptType": "vocabulary",
+    "prompt": "Find me a jib board",
+    "purpose": "Misspelling/synonym test flagged live in the Sep 3 demo ('jib' failed to resolve to GIB); ground truth is IDENTICAL to the row above",
+    "groundTruthReference": "[FEED-VERIFIED] Ground truth is IDENTICAL to \"GIB plasterboard sheets\" above — SAME real products (brand=\"GIB\", e.g. SKU 2800027 Standard Wallboard). CONFIRMED: the literal string \"jib\" appears ZERO times anywhere in the entire 33,595-product feed (title/description/keywords) — so this mapping can only come from the LLM's own world knowledge, not a feed keyword rule, which explains why it sometimes resolves correctly and sometimes doesn't (non-deterministic, not a fixable data gap).",
+    "assistantMessage": "I couldn't find any products matching \"jib board\" in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-27-1",
+      "timeToFirstEventMs": 891,
+      "timeToFirstTextMs": 2072,
+      "interpretMs": 2181,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2241,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4543,
+        "completion": 57,
+        "total": 4600
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 28,
+    "category": "Building Materials",
+    "promptType": "advice",
+    "prompt": "What insulation do you recommend for ceiling, R2.2 or R2.6?",
+    "purpose": "R-value comparison advisory query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3401015 \"Ceiling Insulation R2.2 1220 x 432 x 115mm 12.6m2 Per Bale\" (brand \"Pink Batts\"); SKU 3400456 \"Steel Framing Wall Insulation R2.6 1220 x 610 x 90mm\" (brand \"Pink® Batts®\") is the R2.6 wall equivalent — note the R2.6 SKU found is a WALL product, not ceiling; a precise answer needs the agent to distinguish wall vs ceiling R-values correctly.",
+    "assistantMessage": "When choosing insulation for ceilings, the R-value indicates the insulation's effectiveness.\n- **R2.6** provides better thermal resistance, making it a more effective option for energy efficiency, especially in cooler climates. If you're in a region that experiences colder temperatures, I recommend going with **R2.6** insulation for better performance. Would you like me to find specific products for either R2.2 or R2.6 insulation?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-28-1",
+      "timeToFirstEventMs": 1023,
+      "timeToFirstTextMs": 1023,
+      "interpretMs": 2404,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2461,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2243,
+        "completion": 106,
+        "total": 2349
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 29,
+    "category": "Building Materials",
+    "promptType": "product_lookup",
+    "prompt": "I need underfloor insulation for an old villa",
+    "purpose": "Use-case + property-type context",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3401165 \"Underfloor Insulation Section R1.9 370 x 1140mm 6.75m2\" ($289, brand Mammoth).",
+    "assistantMessage": "I couldn't find any products matching \"underfloor insulation\" for your old villa in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-29-1",
+      "timeToFirstEventMs": 797,
+      "timeToFirstTextMs": 1766,
+      "interpretMs": 2007,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2065,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4566,
+        "completion": 74,
+        "total": 4640
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3401165, 3401166, 3401167)"
+    ]
+  },
+  {
+    "id": 30,
+    "category": "Building Materials",
+    "promptType": "product_lookup",
+    "prompt": "Do you have Pink Batts in stock?",
+    "purpose": "Brand-name product search",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — brand field literally \"Pink Batts\" / \"Pink® Batts®\". E.g. SKU 3401015 (Ceiling R2.2), SKU 3400456 (Wall R2.6).",
+    "assistantMessage": "It appears that no products specifically labeled as \"Pink Batts\" were found in the catalogue. If you're looking for insulation options, I can help you find alternatives or other insulation products. Would you like to explore that?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-30-1",
+      "timeToFirstEventMs": 685,
+      "timeToFirstTextMs": 1495,
+      "interpretMs": 1731,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1791,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 5012,
+        "completion": 62,
+        "total": 5074
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3401015, 3400456)"
+    ]
+  },
+  {
+    "id": 31,
+    "category": "Building Materials",
+    "promptType": "product_lookup",
+    "prompt": "What wet wall lining do you have for a bathroom?",
+    "purpose": "Category + room-context query",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — no SKU literally named \"wet wall lining\"; real matches are \"Wet Wall Tile\" (e.g. SKU 2742226 \"Light Cement Wet Wall Tile 650 x 375 x 5mm 8 Pack\", $189) and \"Wet Wall Panel\" (e.g. SKU 2742233, $699), plus GIB's own \"Toughline Aqua Wallboard\" (SKU 2800236). Good test of whether the agent picks a sensible real match for the generic phrase.",
+    "assistantMessage": "1. **Betta Under Tile Membrane 4L Light Blue**\n- **SKU:** 3243732\n- **Price:** $15 NZD\n- **Description:** A liquid rubber developed for wet area waterproofing under tiles, renders, and surfaces.\n2. **Wet Area Silicone Sealant Translucent 300g**\n- **SKU:** 4450247",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-31-1",
+      "timeToFirstEventMs": 1041,
+      "timeToFirstTextMs": 1817,
+      "interpretMs": 5371,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 5429,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4934,
+        "completion": 449,
+        "total": 5383
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2742226, 2742233, 2800236)"
+    ]
+  },
+  {
+    "id": 32,
+    "category": "Building Materials",
+    "promptType": "product_lookup",
+    "prompt": "Looking for MDF panels for cabinetry",
+    "purpose": "Material + use-case",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 2601293 \"Nelson Pine Golden Edge Panelbrace Square Edge MDF Panel 2400 x 1200 x 9mm\" ($48.53); SKU 3849606 \"MDF V-groove panel 2440 x 1200 x 9mm\" ($83.79, brand Budpac).",
+    "assistantMessage": "I couldn't find any MDF panels for cabinetry in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-32-1",
+      "timeToFirstEventMs": 733,
+      "timeToFirstTextMs": 1630,
+      "interpretMs": 1934,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1991,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4557,
+        "completion": 67,
+        "total": 4624
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2601293, 3849606, 2362716)"
+    ]
+  },
+  {
+    "id": 33,
+    "category": "Building Materials",
+    "promptType": "vocabulary",
+    "prompt": "Do you sell roofing iron or steel roofing sheets?",
+    "purpose": "Synonym test (roofing iron = steel roofing)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3300563 \"Dimond Corrugate Galvanised 0.55 1.0m\" ($41.65, brand Dimond).",
+    "assistantMessage": "I couldn't find any products matching \"roofing iron\" or \"steel roofing sheets\" in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-33-1",
+      "timeToFirstEventMs": 946,
+      "timeToFirstTextMs": 1733,
+      "interpretMs": 1965,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2023,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4561,
+        "completion": 67,
+        "total": 4628
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 34,
+    "category": "Building Materials",
+    "promptType": "education",
+    "prompt": "What's the R-value difference between wall and ceiling insulation?",
+    "purpose": "Comparative advisory, no direct SKU",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (informational) — e.g. wall SKU 3400456 R2.6 vs ceiling SKU 3401015 R2.2; also SKU 3401382 \"Wall Insulation R2.2 90 x 560mm\" (brand GreenStuf, $389).",
+    "assistantMessage": "I currently have no verified information on the R-value differences between wall and ceiling insulation. I recommend checking with a qualified specialist or store staff for detailed guidance on insulation options. Would you like assistance with anything else?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-34-1",
+      "timeToFirstEventMs": 889,
+      "timeToFirstTextMs": 889,
+      "interpretMs": 1154,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1211,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2236,
+        "completion": 43,
+        "total": 2279
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 35,
+    "category": "Building Materials",
+    "promptType": "product_lookup",
+    "prompt": "I need concrete mix for a small footpath",
+    "purpose": "Use-case sizing query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3250868 \"HandiCrete High Strength Concrete 25kg HC25HS\" ($20.98, brand Dricon).",
+    "assistantMessage": "1. **HandiCrete 40kg HC40**\n- **Price:** $15 NZD\n- **Description:** Dricon Dricon® HandiCrete® is a high-quality, dry, bagged concrete mix designed for small-scale projects like posts, poles, and footpaths.\n- **SKU:** 3250867\n2. **HandiCrete 25kg HC25**\n- **Price:** $15 NZD",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-35-1",
+      "timeToFirstEventMs": 967,
+      "timeToFirstTextMs": 2155,
+      "interpretMs": 3373,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 3428,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4972,
+        "completion": 204,
+        "total": 5176
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 36,
+    "category": "Building Materials",
+    "promptType": "product_lookup",
+    "prompt": "Do you have noticeboard or pinboard panels?",
+    "purpose": "Niche panel product search",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — brand field literally \"Noticeboard Products\". E.g. SKU 2860047 \"Hessian Pinboard Edge Wrapped 2440 x 1220mm Bone\" ($225); SKU 2868121 \"Corkboard Wood Frame Low Use 450 x 600mm\" ($14.79).",
+    "assistantMessage": "I found several noticeboard and pinboard panels available:\n1. **Hessian Pinboard Edge Wrapped, 2440 x 1220mm Bone**\n- Price: $15 NZD\n- Description: A hessian-covered, frameless pinboard with a criss-cross fabric texture typical of traditional hessian sack material.\n2. **Hessian Pinboard Edge Wrapped, 2440 x 1220mm Navy**\n- Price: $15 NZD",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-36-1",
+      "timeToFirstEventMs": 685,
+      "timeToFirstTextMs": 1414,
+      "interpretMs": 3704,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 3762,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4835,
+        "completion": 285,
+        "total": 5120
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2860047, 2868121, 2868137)"
+    ]
+  },
+  {
+    "id": 37,
+    "category": "Building Materials",
+    "promptType": "advice",
+    "prompt": "What thickness plasterboard do I need for a garage wall?",
+    "purpose": "Advisory + room-context sizing",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (advisory) — Standard Wallboard exists in 10mm and 13mm (e.g. SKU 2800027 10mm, SKU 2800076 13mm), both brand \"GIB\".",
+    "assistantMessage": "For garage walls, the recommended thickness of plasterboard is typically 10mm or 13mm. The choice between these thicknesses can depend on the specific requirements of your garage, such as insulation needs and fire rating. Would you like to explore available plasterboard options in our catalogue?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-37-1",
+      "timeToFirstEventMs": 801,
+      "timeToFirstTextMs": 801,
+      "interpretMs": 1097,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1153,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2237,
+        "completion": 58,
+        "total": 2295
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 38,
+    "category": "Paint & Finishes",
+    "promptType": "advice",
+    "prompt": "What woodcare paint do you recommend for an outdoor deck?",
+    "purpose": "Product-category + use-case advisory",
+    "groundTruthReference": "[FEED-VERIFIED] NOT DIRECTLY VERIFIED as \"woodcare\" category name in this feed slice — real paint entries found are branded (Wattyl, Colour Lab, Dulux) rather than a PlaceMakers \"Woodcare\" line; needs a broader paint-category query than this feed sample covers.",
+    "assistantMessage": "I couldn't find any specific woodcare paint products for outdoor decks in our catalogue. Alternatively, I can help you explore other options or categories.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-38-1",
+      "timeToFirstEventMs": 802,
+      "timeToFirstTextMs": 1633,
+      "interpretMs": 1934,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1991,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4573,
+        "completion": 83,
+        "total": 4656
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 39,
+    "category": "Paint & Finishes",
+    "promptType": "product_lookup",
+    "prompt": "Do you have Resene paint in stock?",
+    "purpose": "Third-party brand name search — NOT CONFIRMED as a PlaceMakers-stocked line in this crawl",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — ONLY ONE Resene SKU in the entire 33,595-product feed: SKU 4031703 \"Quickdry 450ml Endseal White\" ($43.08, brand \"Resene\"), described as \"The Resene 450ml end seal ... for interior or exterior surfaces.\" Not general Resene house paint — a correct answer should reflect this narrow, single-SKU reality, not imply a full Resene range.",
+    "assistantMessage": "No matching products for Resene paint were found in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-39-1",
+      "timeToFirstEventMs": 820,
+      "timeToFirstTextMs": 1553,
+      "interpretMs": 1780,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1839,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4555,
+        "completion": 62,
+        "total": 4617
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 4031703)"
+    ]
+  },
+  {
+    "id": 40,
+    "category": "Paint & Finishes",
+    "promptType": "project",
+    "prompt": "I want to build a pink colour cabinet from scratch, what paint?",
+    "purpose": "Reproduces the exact live-demo query - confirm the fix for missing related products (e.g. MDF) alongside paint",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — real pink paints VERIFIED: SKU 4115405 \"Fluorescent Spray Paint Pink 400ml GA-GK3632\" ($13.16, Glokote); SKU 4115436 \"Upside Down Fluorescent Spray Paint Pink 400ml GA-GK4601\" ($13.16, Glokote); SKU 4115472 \"Enamel Aerosol Spray Paint 325g Pink CNA3241\" ($16.49, Wattyl). BUT the cabinet-body MDF the agent quoted (\"MDF 2440 x 1220 x 18mm Classic Oak Puregrain F2\", $224.18) DOES NOT EXIST anywhere in the feed — no MDF SKU matches that title, dimensions, finish name or price. This looks like a genuine hallucination alongside otherwise-correct real products.",
+    "assistantMessage": "To build a pink cabinet, you'll want to choose a suitable paint that provides good coverage and durability. Here are some options to consider: It's great for indoor furniture projects.\n2. **Enamel Paint**: This type of paint provides a hard, durable finish and is ideal for furniture that will see a lot of use.\n3. **Chalk Paint**: This paint gives a matte finish and is popular for furniture projects. It adheres well to most surfaces and can be distressed for a vintage look.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-40-1",
+      "timeToFirstEventMs": 648,
+      "timeToFirstTextMs": 648,
+      "interpretMs": 1602,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1660,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2239,
+        "completion": 144,
+        "total": 2383
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 41,
+    "category": "Paint & Finishes",
+    "promptType": "product_lookup",
+    "prompt": "What's a good stain blocker for water marks before painting?",
+    "purpose": "Problem-based query, not product-name search",
+    "groundTruthReference": "[FEED-VERIFIED] NOT IN FEED under that name — no SKU titled \"stain blocker\" found in this feed slice; closest real category is Primers (e.g. SKU 4110000 \"Killrust Super Etch Primer Grey 300g\", brand Wattyl) though that's rust-specific, not a general stain blocker.",
+    "assistantMessage": "I couldn't find any specific stain blockers for water marks in the catalogue. Would you like assistance with anything else?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-41-1",
+      "timeToFirstEventMs": 820,
+      "timeToFirstTextMs": 1665,
+      "interpretMs": 1903,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1963,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4578,
+        "completion": 82,
+        "total": 4660
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 4110000)"
+    ]
+  },
+  {
+    "id": 42,
+    "category": "Paint & Finishes",
+    "promptType": "product_lookup",
+    "prompt": "Do you sell aerosol/spray paint for small touch-ups?",
+    "purpose": "Sub-category name match",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 4115405 \"Fluorescent Spray Paint Pink 400ml\"; SKU 4114424 \"Classic Primer Spray Paint White 325g\" (brand Colour Lab).",
+    "assistantMessage": "Here are some options:\n1. **Killrust Aerosol Spray Paint Satin Cold Galvit 300g**\n- Price: $15 NZD\n- Description: Designed for ferrous and non-ferrous materials.\n- SKU: 4014920\n2. **Clear Zinc 400ml**",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-42-1",
+      "timeToFirstEventMs": 852,
+      "timeToFirstTextMs": 1631,
+      "interpretMs": 4419,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4474,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4950,
+        "completion": 333,
+        "total": 5283
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 43,
+    "category": "Paint & Finishes",
+    "promptType": "advice",
+    "prompt": "What finish is best for exterior timber cladding?",
+    "purpose": "Advisory, exterior use-case",
+    "groundTruthReference": "[FEED-VERIFIED] CONTENT PAGE — \"Timber Cladding\" (/projects/cladding/timber) plus multiple brand-specific cladding guides (Abodo Vulcan, Accoya, Western Red Cedar, etc.). Advisory query, not a single SKU.",
+    "assistantMessage": "I don't have verified information on the best finishes for exterior timber cladding. Would you like assistance with anything else?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-43-1",
+      "timeToFirstEventMs": 638,
+      "timeToFirstTextMs": 638,
+      "interpretMs": 931,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 989,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 48,
+        "total": 2283
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 44,
+    "category": "Paint & Finishes",
+    "promptType": "product_lookup",
+    "prompt": "Looking for a clear timber sealer for a deck",
+    "purpose": "Product-type + use-case",
+    "groundTruthReference": "[FEED-VERIFIED] NOT VERIFIED in this feed slice under that exact name — no SKU titled \"clear timber sealer\" found; would need a broader paint/decking-finish query than covered here.",
+    "assistantMessage": "I couldn't find any products matching \"clear timber sealer\" or \"deck sealer\" in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-44-1",
+      "timeToFirstEventMs": 957,
+      "timeToFirstTextMs": 1776,
+      "interpretMs": 1949,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2007,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4572,
+        "completion": 74,
+        "total": 4646
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 4080417, 4080418)"
+    ]
+  },
+  {
+    "id": 45,
+    "category": "Paint & Finishes",
+    "promptType": "product_lookup",
+    "prompt": "Do you have exterior paint in a range of colours?",
+    "purpose": "Colour/variant browse intent",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — real spray-paint colour ranges exist (Pink, White, Grey primers, etc.) but no \"Timbacryl\" or dedicated exterior-house-paint-in-colour-swatches SKU was found in this feed slice.",
+    "assistantMessage": "Here are some exterior paint options available in a range of colours:\n1. **Exterior Wall Paint 4L**\n- Price: $99 NZD\n- SKU: 1000121\n2. **Fence Finish Scoria Red 10L PR434-159-10**\n- Price: $15 NZD",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-45-1",
+      "timeToFirstEventMs": 673,
+      "timeToFirstTextMs": 1964,
+      "interpretMs": 4717,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4782,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4861,
+        "completion": 355,
+        "total": 5216
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 4014920, 4066403, 4066411)"
+    ]
+  },
+  {
+    "id": 46,
+    "category": "Paint & Finishes",
+    "promptType": "advice",
+    "prompt": "What primer should I use before painting new MDF?",
+    "purpose": "Substrate-specific advisory",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (as a category, not MDF-specific) — e.g. SKU 4114424 \"Classic Primer Spray Paint White 325g\" (Colour Lab, $22.10); SKU 4080418 \"Metal Armour Primer And Sealer\" (CRC) is metal-specific, not MDF — good test of whether the agent picks a wood-appropriate primer.",
+    "assistantMessage": "For painting new MDF, it's recommended to use a high-quality primer specifically designed for MDF surfaces. Look for a water-based or oil-based primer that provides good adhesion and seals the surface effectively. Would you like me to find specific primer products available in our catalogue?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-46-1",
+      "timeToFirstEventMs": 658,
+      "timeToFirstTextMs": 658,
+      "interpretMs": 1027,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1084,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 53,
+        "total": 2288
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 47,
+    "category": "Paint & Finishes",
+    "promptType": "product_lookup",
+    "prompt": "I need paint for a fence - what do you recommend?",
+    "purpose": "Use-case to product mapping",
+    "groundTruthReference": "[FEED-VERIFIED] NOT VERIFIED under a \"fence paint\"/\"fence finish\" SKU name in this feed slice — nearest real matches are the general spray/enamel paint SKUs found above (Wattyl, Glokote).",
+    "assistantMessage": "Here are some great options for fence paint and related accessories:\n1. **Fence Finish Scoria Red 10L**\n- **Price:** $15 NZD\n- **Description:** Aalto Procoat Fence Paint is a solid colour water-based paint that provides an even, low sheen finish. Specifically formulated for New Zealand conditions.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-47-1",
+      "timeToFirstEventMs": 680,
+      "timeToFirstTextMs": 1375,
+      "interpretMs": 4664,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4719,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4934,
+        "completion": 424,
+        "total": 5358
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 48,
+    "category": "Fixings & Fasteners",
+    "promptType": "safety",
+    "prompt": "What screw should I use for wallboard?",
+    "purpose": "Reproduces the exact query the safety guardrail blocked live in the demo - confirm the guardrail is fixed without losing genuine safety coverage",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — brand field literally \"Gib\"/\"GIB\". E.g. SKU 4512224 \"Grabber Screw Self Tapper Collated 6g x 25mm 1000 Box\" ($50.93); SKU 4512778 \"Grabber Screw Coarse Collated 6g x 25mm 1000 Box\" ($38.71). This is an ordinary, non-hazardous fastener — should not be guardrail-blocked.",
+    "assistantMessage": "For wallboard, you typically want to use screws that are specifically designed for that purpose. Here are a few options:\n1. **Drywall Screws**: These are specifically designed for attaching drywall to wood or metal studs. They have a sharp point and a bugle head which helps to countersink the screw.\n2. **Self-Drilling Screws**: If you're working with metal studs, self-drilling screws are a great option as they can penetrate without needing a pilot hole. Would you like me to find specific products for drywall screws in our catalogue?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "consult_business_knowledge"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-48-1",
+      "timeToFirstEventMs": 1078,
+      "timeToFirstTextMs": 1937,
+      "interpretMs": 2658,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2716,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 5749,
+        "completion": 138,
+        "total": 5887
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 49,
+    "category": "Fixings & Fasteners",
+    "promptType": "product_lookup",
+    "prompt": "Do you stock cladding screws in stainless steel?",
+    "purpose": "Exact catalogue product-name match (baseline)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — brand \"TURBOSPITZE\". E.g. SKU 3521326 \"Cladding Screws Stainless Steel Black 5.5mm 80mm 250PK\" ($156); SKU 3521321 \"... T316 5.5mm 80mm 250PK\" ($144).",
+    "assistantMessage": "1. **Roof Screw Deks Neo 55mm SS 50 Pack**\n- **Price:** NZD 15\n- **Description:** SunTuf Stainless Steel Roof Fasteners ideal for a range of profiled polycarbonate sheets.\n2. **Quik Drive DHW Series Hardwood to Softwood Deck Screw 10G x 60mm 305 Stainless Steel SSDHW60SA**\n- **Price:** NZD 15\n- **Description:** Designed for fastening hardwood to hardwood.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-49-1",
+      "timeToFirstEventMs": 693,
+      "timeToFirstTextMs": 1551,
+      "interpretMs": 5185,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 5243,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 5010,
+        "completion": 449,
+        "total": 5459
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3521326, 3521321, 3521320)"
+    ]
+  },
+  {
+    "id": 50,
+    "category": "Fixings & Fasteners",
+    "promptType": "advice",
+    "prompt": "What's the right screw size for decking boards?",
+    "purpose": "Advisory sizing query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 4516515 \"Deck Screw Shark Truss Stainless Steel T304 12g x 65mm 500 Box\" ($269, brand Bremick); SKU 3161812 \"Quikdrive Collated Deck Screw Trim 7g 75mm 1000 pack\" (Simpson Strong-Tie, $839.01).",
+    "assistantMessage": "The right screw size for decking boards can depend on several factors, including the type of decking material and what you're screwing into. Generally, for timber decking, you would typically use screws that are at least 60mm long, which allows for a secure fit while minimizing the risk of splitting the wood.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "consult_business_knowledge"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-50-1",
+      "timeToFirstEventMs": 849,
+      "timeToFirstTextMs": 1810,
+      "interpretMs": 2411,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2470,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 5182,
+        "completion": 120,
+        "total": 5302
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 51,
+    "category": "Fixings & Fasteners",
+    "promptType": "product_lookup",
+    "prompt": "I need nails for a Paslode nail gun",
+    "purpose": "Brand-specific consumable search",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — no \"Paslode\"-branded nails found in this feed; real gasless D-Head nails (brand Delfast) are the compatible equivalent, e.g. SKU 5081884 \"Gasless D-Head Nails 90mm Galvanised 3000 Box\" ($166.64).",
+    "assistantMessage": "It seems that no products matching \"Paslode nails\" were found in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-51-1",
+      "timeToFirstEventMs": 707,
+      "timeToFirstTextMs": 1749,
+      "interpretMs": 2077,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2135,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4562,
+        "completion": 70,
+        "total": 4632
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 5081884, 4480587, 4480589)"
+    ]
+  },
+  {
+    "id": 52,
+    "category": "Fixings & Fasteners",
+    "promptType": "product_lookup",
+    "prompt": "Do you have brackets for a pergola build?",
+    "purpose": "Project-linked fixings search",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (generic brackets, not pergola-specific) — e.g. SKU 2250623 \"Post Bracket 38 x 25mm Aluminum\" ($5.19, brand Fentec); SKU 3550233 \"Post & Bearer Bracket ... Galvanised B25\" ($37.98, BOWMAC).",
+    "assistantMessage": "I couldn't find any products matching \"pergola brackets\" in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-52-1",
+      "timeToFirstEventMs": 781,
+      "timeToFirstTextMs": 1788,
+      "interpretMs": 2029,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2088,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4560,
+        "completion": 65,
+        "total": 4625
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2250623, 3550233, 2250168)"
+    ]
+  },
+  {
+    "id": 53,
+    "category": "Fixings & Fasteners",
+    "promptType": "advice",
+    "prompt": "What fixings do I need for a timber retaining wall?",
+    "purpose": "Advisory, cross-referenced to Timber Retaining",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. Coach Screws SKU 4501453 \"Coach Screw 12 x 90mm Hex Head T316 Stainless Steel\" ($5.99, brand Ecko).",
+    "assistantMessage": "For a timber retaining wall, you'll typically need the following fixings:\n1. **Decking Screws** - These are specifically designed for timber applications and provide strong holding power. Would you like me to look up decking screws or any other related items?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "consult_business_knowledge"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-53-1",
+      "timeToFirstEventMs": 913,
+      "timeToFirstTextMs": 1996,
+      "interpretMs": 2439,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2497,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 6009,
+        "completion": 110,
+        "total": 6119
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 54,
+    "category": "Fixings & Fasteners",
+    "promptType": "product_lookup",
+    "prompt": "Looking for construction adhesive for skirting boards",
+    "purpose": "Adhesive category + use-case",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 2804672 \"One Construction Adhesive 375ml\" ($11.21); SKU 4451808 \"Liquid Nails Construction Adhesive Clear 80g\" ($15.69, brand Selleys).",
+    "assistantMessage": "1. **ADOS Multi Purpose Spray Adhesive 575ml**\n- **Price:** $15 NZD\n- **Description:** This spray glue bonds most materials quickly and easily, providing a long-lasting bond.\n2. **ADOS Ultra High Strength Spray Adhesive 550ml 8180**\n- **Price:** $15 NZD\n- **Description:** An ultra high strength contact adhesive that gives an immediate and permanent bond on a wide variety of surfaces.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-54-1",
+      "timeToFirstEventMs": 803,
+      "timeToFirstTextMs": 1665,
+      "interpretMs": 2693,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2752,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4960,
+        "completion": 165,
+        "total": 5125
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 2804672, 4451808, 2804698)"
+    ]
+  },
+  {
+    "id": 55,
+    "category": "Fixings & Fasteners",
+    "promptType": "safety",
+    "prompt": "What screws are safe to use near electrical wiring?",
+    "purpose": "Safety-adjacent query, tests whether guardrails over- or under-block",
+    "groundTruthReference": "[FEED-VERIFIED] NO SINGLE SKU — genuine safety-judgement question (risk of hitting live wiring), not a product search. No feed match is \"the\" right answer; flag with Akshay (guardrail wording) and Magesh (safety sign-off) rather than expecting a product tile.",
+    "assistantMessage": "I recommend consulting with a qualified electrician or a store staff member for guidance on this matter. Would you like assistance with anything else related to building materials or project planning?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-55-1",
+      "timeToFirstEventMs": 879,
+      "timeToFirstTextMs": 879,
+      "interpretMs": 1025,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1082,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 54,
+        "total": 2289
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 56,
+    "category": "Fixings & Fasteners",
+    "promptType": "product_lookup",
+    "prompt": "Do you sell galvanised nails for outdoor framing?",
+    "purpose": "Coating/finish-specific fastener search",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3530474 \"Galvanised Product Nail 30mm 3.15mm 5Kg\" ($105, brand LUMBERLOK); SKU 5082452 \"Collated Nails D-Head 90mm Gasless Galvanised, Branz listing ST16855, 1000 pack\" (brand PlaceMakers, $65.64).",
+    "assistantMessage": "I couldn't find any galvanised nails specifically for outdoor framing in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-56-1",
+      "timeToFirstEventMs": 684,
+      "timeToFirstTextMs": 1450,
+      "interpretMs": 1803,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1861,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4568,
+        "completion": 60,
+        "total": 4628
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3530474, 5082452, 4480592)"
+    ]
+  },
+  {
+    "id": 57,
+    "category": "Fixings & Fasteners",
+    "promptType": "education",
+    "prompt": "What's the difference between coach screws and bolts?",
+    "purpose": "Comparative/educational fastener query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — both real, distinct lines: Coach Screw e.g. SKU 4501453 ($5.99, hex head, drives like a screw) vs Coach Bolt and Nut e.g. SKU 4500237 ($2.79, needs a nut on the far side) — both brand Ecko.",
+    "assistantMessage": "Coach screws and bolts are both types of fasteners, but they have different characteristics and applications:\n1. **Coach Screws**:\n- Typically have a large, flat head and a thick shaft.\n- Designed for heavy-duty applications, often used in wood.\n- They have a coarse thread that allows for better grip in softer materials like timber.\n- Often used in construction for securing heavy structures or components.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-57-1",
+      "timeToFirstEventMs": 1350,
+      "timeToFirstTextMs": 1350,
+      "interpretMs": 2464,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2520,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2234,
+        "completion": 201,
+        "total": 2435
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 58,
+    "category": "Tools",
+    "promptType": "advice",
+    "prompt": "What drill should I use for masonry walls?",
+    "purpose": "Classic tool-for-task query (mirrors Magesh's 'what drill' example)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (as masonry drill BITS, not a drill tool itself) — e.g. SKU 4732206 \"Reo Buster 6.5 x 160mm SDS Plus Masonry Drill Bit\" (Makita, $19.69); SKU 4730904 \"Zentro Masonry Drill Bit SDS 12 x 450mm\" (Blu-Mol, $169.99). A fully correct answer should also point to an actual SDS/hammer drill, not just bits.",
+    "assistantMessage": "It seems that no specific drills for masonry walls were found in the catalogue. Would you like me to help you find general-purpose drills or masonry bits that could work for your project?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-58-1",
+      "timeToFirstEventMs": 738,
+      "timeToFirstTextMs": 1492,
+      "interpretMs": 1910,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1967,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4566,
+        "completion": 85,
+        "total": 4651
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 59,
+    "category": "Tools",
+    "promptType": "advice",
+    "prompt": "What trimmer should I use for hedges?",
+    "purpose": "Tool-for-task query (mirrors Magesh's 'what trimmer' example)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 4737075 \"M18 FUEL Cordless Articulating Hedge Trimmer\" (Milwaukee, $413.99); SKU 4849040 \"Hedge Trimmer 36V 560mm Skin Only\" (HiKOKI, $512.99).",
+    "assistantMessage": "To recommend the best trimmer for hedges, could you please specify the type of hedges you have (e.g., size, thickness) and whether you prefer electric, battery-operated, or petrol models? This will help me find the most suitable options for you.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-59-1",
+      "timeToFirstEventMs": 1065,
+      "timeToFirstTextMs": 1065,
+      "interpretMs": 1142,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1199,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 55,
+        "total": 2290
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 60,
+    "category": "Tools",
+    "promptType": "product_lookup",
+    "prompt": "Do you sell cordless screw driving systems?",
+    "purpose": "Exact catalogue product match",
+    "groundTruthReference": "[FEED-VERIFIED] NOT IN FEED under that name — the \"SST Cordless Pro300 Autofeed Screw Driving System\" seen live on the public Hardware & Tools page was NOT found anywhere in this consumer product feed. Closest real equivalents are collated screw guns, e.g. SKU 4919380 \"M18 FUEL Collated Drywall Screw Gun Skin\" ($469.99) or SKU 3620161 \"Quikdrive PRO250 Kit With Dewalt DCF622 Screw Gun\" ($1,739, Simpson Strong-Tie). Worth checking whether this SKU is trade-only / excluded from the B2C feed.",
+    "assistantMessage": "I couldn't find any cordless screw driving systems in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-60-1",
+      "timeToFirstEventMs": 851,
+      "timeToFirstTextMs": 2042,
+      "interpretMs": 2839,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2897,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4553,
+        "completion": 54,
+        "total": 4607
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 4919380, 3620161, 4760438)"
+    ]
+  },
+  {
+    "id": 61,
+    "category": "Tools",
+    "promptType": "advice",
+    "prompt": "What saw do I need to cut treated timber?",
+    "purpose": "Tool-for-material advisory",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3812698 \"M18 FUEL Cordless Circular Saw 184mm Skin\" (Milwaukee, $689); SKU 4732664 \"18V x2 (36V) LXT Brushless 185mm Rear Handle Circular Saw\" (Makita, $660).",
+    "assistantMessage": "To cut treated timber, a circular saw or a miter saw is typically recommended. Would you like me to find specific saw options available in our catalogue?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-61-1",
+      "timeToFirstEventMs": 680,
+      "timeToFirstTextMs": 680,
+      "interpretMs": 938,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 994,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 50,
+        "total": 2285
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 62,
+    "category": "Tools",
+    "promptType": "product_lookup",
+    "prompt": "Do you have a Paslode Trim Master in stock?",
+    "purpose": "Exact brand+model catalogue match",
+    "groundTruthReference": "[FEED-VERIFIED] NOT IN FEED — zero \"Paslode\" hits anywhere in this 33,595-product consumer catalog, despite this exact tool being shown live on the public Hardware & Tools page during the 3 Sep demo. Either this consumer feed excludes it (trade-only?) or the demo pulled from a different source than this feed — worth clarifying with Aravinth which feed the agent actually queries.",
+    "assistantMessage": "I couldn't find any products matching \"Paslode Trim Master\" in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-62-1",
+      "timeToFirstEventMs": 783,
+      "timeToFirstTextMs": 1545,
+      "interpretMs": 1768,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1825,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4561,
+        "completion": 64,
+        "total": 4625
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 63,
+    "category": "Tools",
+    "promptType": "advice",
+    "prompt": "What's the best tool for driving batten and cradle deck systems?",
+    "purpose": "Niche system-specific tool query",
+    "groundTruthReference": "[FEED-VERIFIED] NOT IN FEED — zero \"Dekcradle\"/\"Batten & Cradle\" hits in this feed, despite being shown live in the demo. Same discrepancy as the Paslode Trim Master above.",
+    "assistantMessage": "Here are some common tools that may be useful:\n1. **Screwdrivers**: For fastening components securely.\n2. **Drills**: Essential for creating pilot holes and driving screws.\n3. **Caulking Guns**: Useful for applying sealants or adhesives.\n5. **Planers**: To smooth and shape the timber as needed.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "consult_business_knowledge"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-63-1",
+      "timeToFirstEventMs": 760,
+      "timeToFirstTextMs": 2949,
+      "interpretMs": 3942,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4002,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 5599,
+        "completion": 157,
+        "total": 5756
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 64,
+    "category": "Tools",
+    "promptType": "product_lookup",
+    "prompt": "I need a reciprocating saw blade for demolition work",
+    "purpose": "Exact catalogue product match",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 4732381 \"SAWZALL TORCH Bi-Metal Blades 150mm 10 TPI 5 Pack\" ($40.49, Milwaukee); SKU 4732382 \"SAWZALL THE TORCH Straight Reciprocating Saw Blade 300mm 18 TPI 5 Pack\" ($76.99).",
+    "assistantMessage": "1. **Xtreme Reciprocating Saw Blade 12x14T 2-Pack**\n- **SKU**: 4771217\n- **Price**: $15 NZD\n- **Description**: Designed for efficient cutting in a variety of materials.\n2. **Xtreme Reciprocating Blade 12x16T 2-Pack**\n- **SKU**: 4771219",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-64-1",
+      "timeToFirstEventMs": 945,
+      "timeToFirstTextMs": 1770,
+      "interpretMs": 4770,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4825,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4996,
+        "completion": 417,
+        "total": 5413
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 4732381, 4732382, 4500570)"
+    ]
+  },
+  {
+    "id": 65,
+    "category": "Tools",
+    "promptType": "advice",
+    "prompt": "What drill bit should I use for tiles?",
+    "purpose": "Accessory-for-material advisory",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 4733147 \"Ceramic Tile Drill Bit 5 x 85mm\" ($50.99, brand Blu-Mol); SKU 4733145 \"... 10 x 150mm\" ($78.99).",
+    "assistantMessage": "Here are some options available:\n- Excellent performance for hard ceramic materials.\n- Designed for durability and precision.\n- Ideal for tough ceramic surfaces.\n- Offers great tool life for ceramic materials.\n- Perfect for drilling through hard tiles.",
+    "cards": [
+      "products"
+    ],
+    "toolCalls": 3,
+    "toolsCalled": [
+      "consult_business_knowledge",
+      "search_products",
+      "present_card"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-65-1",
+      "timeToFirstEventMs": 1097,
+      "timeToFirstTextMs": 6658,
+      "interpretMs": 8572,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 8630,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 16082,
+        "completion": 739,
+        "total": 16821
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 66,
+    "category": "Tools",
+    "promptType": "product_lookup",
+    "prompt": "Do you have hand tools for plumbing repairs?",
+    "purpose": "Category + trade-context search",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 4700167 \"Professional 8 Inch Pipe Wrench Drop Forged Alloy Steel\" ($21.99, brand Fuller Pro); SKU 3803082 \"Greenscene Plunger\" ($29, Parmco); SKU 4710701 \"PVC Pipe Cutter 210mm 3-35mm\" ($26, Tolsen).",
+    "assistantMessage": "No matching products for hand tools specifically for plumbing repairs were found in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-66-1",
+      "timeToFirstEventMs": 871,
+      "timeToFirstTextMs": 1658,
+      "interpretMs": 1873,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1929,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4560,
+        "completion": 65,
+        "total": 4625
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 4700167, 3803082, 4710701)"
+    ]
+  },
+  {
+    "id": 67,
+    "category": "Tools",
+    "promptType": "advice",
+    "prompt": "What power tool is best for cutting plywood sheets?",
+    "purpose": "Tool-for-material advisory",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3812698 \"M18 FUEL Cordless Circular Saw 184mm Skin\" (Milwaukee, $689).",
+    "assistantMessage": "For cutting plywood sheets, a circular saw is typically the best power tool to use. It's versatile, easy to handle, and can make straight cuts quickly. Would you like me to find some specific circular saws or jigsaws available in our catalogue?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-67-1",
+      "timeToFirstEventMs": 645,
+      "timeToFirstTextMs": 645,
+      "interpretMs": 1049,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1104,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 70,
+        "total": 2305
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 68,
+    "category": "Tools",
+    "promptType": "product_lookup",
+    "prompt": "Looking for a multitap - do you have one chilled and brushed?",
+    "purpose": "Exact catalogue product match (edge-case finish naming)",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (exact match) — SKU 7818444 \"Uso MultiTap Chilled Brushed\" ($5,595, brand InSinkErator). Confirmed live in agent testing too.",
+    "assistantMessage": "I found a multitap that matches your request: ### Uso MultiTap Chilled Brushed\n- **Price:** $15 NZD\n- **Description:** The InSinkErator® MultiTap Chilled system delivers filtered chilled water, filtered near-boiling water, and a standard mixer. Here are some additional options as well:\n1. **Lia MultiTap Chilled Chrome** - $15 NZD",
+    "cards": [
+      "products"
+    ],
+    "toolCalls": 2,
+    "toolsCalled": [
+      "search_products",
+      "present_card"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-68-1",
+      "timeToFirstEventMs": 1002,
+      "timeToFirstTextMs": 5116,
+      "interpretMs": 6154,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 6211,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 7902,
+        "completion": 492,
+        "total": 8394
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 69,
+    "category": "Tools",
+    "promptType": "vocabulary",
+    "prompt": "What tool should I use to drive screws into GIB board?",
+    "purpose": "Cross-references the GIB/jib synonym issue with a tool-based query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 4919380 \"M18 FUEL Collated Drywall Screw Gun Skin\" ($469.99); paired with GIB Grabber Screws (e.g. SKU 4512224).",
+    "assistantMessage": "A screw gun is specifically designed for driving screws into drywall or GIB board, providing better control and efficiency.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-69-1",
+      "timeToFirstEventMs": 768,
+      "timeToFirstTextMs": 768,
+      "interpretMs": 906,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 962,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2238,
+        "completion": 58,
+        "total": 2296
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 70,
+    "category": "Plumbing & Bathroom",
+    "promptType": "product_lookup",
+    "prompt": "Do you sell PVC piping and fittings?",
+    "purpose": "Material + category match",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 7503522 \"Novadrain SN8 PVC-U Pipe DWV RRJ 150mm x 6m\" ($1,865.55, brand Iplex); SKU 4400487 \"ADOS 75ml PVC Pipe Cement\" ($14.98, brand CRC); SKU 4710701 \"PVC Pipe Cutter 210mm\" ($26, Tolsen).",
+    "assistantMessage": "I couldn't find any PVC piping or fittings in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-70-1",
+      "timeToFirstEventMs": 657,
+      "timeToFirstTextMs": 1514,
+      "interpretMs": 1866,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1923,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4551,
+        "completion": 57,
+        "total": 4608
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 7503522, 4400487, 4710701)"
+    ]
+  },
+  {
+    "id": 71,
+    "category": "Plumbing & Bathroom",
+    "promptType": "advice",
+    "prompt": "What plumbing tools do I need for a basic bathroom repair?",
+    "purpose": "Advisory, project-scoped",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 4700118 \"Professional 200mm Adjustable Wrench Chrome Plated\" ($25.99, Fuller Pro); SKU 3803082 \"Greenscene Plunger\" ($29).",
+    "assistantMessage": "For a basic bathroom repair, you'll typically need the following plumbing tools:\n1. **Adjustable Wrench** - For loosening and tightening nuts and bolts.\n2. **Pipe Wrench** - Useful for gripping and turning pipes.\n3. **Plumber's Tape** - To seal pipe threads and prevent leaks.\n4. **Basin Wrench** - Ideal for working in tight spaces, especially under sinks.\n5. **Plunger** - Essential for clearing clogged drains.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-71-1",
+      "timeToFirstEventMs": 653,
+      "timeToFirstTextMs": 653,
+      "interpretMs": 2095,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2153,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2237,
+        "completion": 194,
+        "total": 2431
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 72,
+    "category": "Plumbing & Bathroom",
+    "promptType": "product_lookup",
+    "prompt": "Looking for bathroom accessories and fixtures",
+    "purpose": "Broad category browse",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3600722 \"Centro Toilet Roll Holder 140 x 115mm Chrome\" ($36, brand Heirloom); SKU 3600719 \"Centro Towel Rail 645 x 42mm Chrome\" ($48).",
+    "assistantMessage": "Here are some bathroom accessories currently available:\n1. **Mecca Care Add On Toilet Roll Holder Matte Black**\n- Price: $15 NZD\n- Description: Designed for easy access and convenience, enhancing the functionality of your bathroom.\n- SKU: 7827381\n2. **Mecca Care Add On Toilet Roll Holder Brushed Gold**",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-72-1",
+      "timeToFirstEventMs": 704,
+      "timeToFirstTextMs": 1480,
+      "interpretMs": 4093,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4149,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4896,
+        "completion": 353,
+        "total": 5249
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3600722, 3600719, 3601743)"
+    ]
+  },
+  {
+    "id": 73,
+    "category": "Plumbing & Bathroom",
+    "promptType": "product_lookup",
+    "prompt": "Do you have piping systems for a kitchen renovation?",
+    "purpose": "Category + room-context",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — same Piping/Fittings range as above (Iplex, CRC, Tolsen).",
+    "assistantMessage": "I couldn't find any piping systems specifically for kitchen renovations in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-73-1",
+      "timeToFirstEventMs": 783,
+      "timeToFirstTextMs": 1634,
+      "interpretMs": 1919,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1976,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4566,
+        "completion": 67,
+        "total": 4633
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3360101, 3360420, 3360422)"
+    ]
+  },
+  {
+    "id": 74,
+    "category": "Plumbing & Bathroom",
+    "promptType": "advice",
+    "prompt": "What fittings do I need to join two pipes of different sizes?",
+    "purpose": "Technical advisory query",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL/advisory — real fittings exist (Iplex PVC-U range) but a \"reducer for two different sizes\" is a technical fit-for-purpose judgement, not one single SKU.",
+    "assistantMessage": "To join two pipes of different sizes, you will typically need a **reducing fitting**. This fitting allows for a smooth transition between the two different pipe diameters. Here are some common types of fittings you might consider:\n1. **Reducer**: A fitting that connects two pipes of different diameters.\n2. **Coupling**: If the pipes are of the same type (e.g., both PVC), you can use a coupling with a reducer.\n3. **Adapter**: This can be used if the pipes are of different materials (e.g., PVC to metal).",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "consult_business_knowledge"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-74-1",
+      "timeToFirstEventMs": 986,
+      "timeToFirstTextMs": 1684,
+      "interpretMs": 2726,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2783,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 5476,
+        "completion": 178,
+        "total": 5654
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 75,
+    "category": "Plumbing & Bathroom",
+    "promptType": "product_lookup",
+    "prompt": "Do you sell kitchen benchtops?",
+    "purpose": "Exact category match",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — no standalone laminate benchtop sheet found in this feed slice; real \"Benchtop\" hits are hardware (SKU 3672000 \"Benchtop Connector Bolt Standard 65mm\", $1.50) and complete laundry cabinet units with benchtops built in (e.g. SKU 7853935 \"Mako 70 Laundry Cabinet 600mm ... White Velvet Bright White Benchtop ...\", $2,049, brand St Michel).",
+    "assistantMessage": "I found several products related to kitchen benchtops, but it seems that specific kitchen benchtops are not listed. Here are some related items that might be of interest:\n1. **Indoor Cleaner 1L**\n- Price: $14 NZD\n- Description: Cuts through grease and soap scum on kitchen benches and bathroom tiles.\n- SKU: 1000116",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-75-1",
+      "timeToFirstEventMs": 978,
+      "timeToFirstTextMs": 1905,
+      "interpretMs": 4564,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4618,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4927,
+        "completion": 387,
+        "total": 5314
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3672000, 7853935, 3672001)"
+    ]
+  },
+  {
+    "id": 76,
+    "category": "Plumbing & Bathroom",
+    "promptType": "product_lookup",
+    "prompt": "I need a tap for my kitchen sink",
+    "purpose": "Use-case product search",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3610989 \"Kudos Sink Mixer 480mm Coiled Swivel Spout Chrome\" ($732, brand Aquatica); SKU 3621198 \"Goccia Sink Mixer 310mm Swivel Spout Chrome\" ($365).",
+    "assistantMessage": "Here are some kitchen tap options for you:\n1. **Cignus Pull Out Tap Black Pearl Dual Function Stainless Steel Main Pressure Only**\n- **Price:** $15 NZD\n- **Description:** Designed for mains pressure use, this lead-free tap features stainless steel.\n- **SKU:** 2292377\n2. **Pearl Arc Cignus Pull Out Tap Stainless Steel Rio Bronze Dual Function**",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-76-1",
+      "timeToFirstEventMs": 860,
+      "timeToFirstTextMs": 1549,
+      "interpretMs": 4700,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4758,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4946,
+        "completion": 418,
+        "total": 5364
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3610989, 3621198, 3620514)"
+    ]
+  },
+  {
+    "id": 77,
+    "category": "Plumbing & Bathroom",
+    "promptType": "product_lookup",
+    "prompt": "What plumbing supplies do you stock for outdoor taps?",
+    "purpose": "Use-case + location context",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — general plumbing/tapware range verified (see above); no SKU specifically labelled for \"outdoor taps\" was found in this feed slice.",
+    "assistantMessage": "I couldn't find any plumbing supplies specifically for outdoor taps in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-77-1",
+      "timeToFirstEventMs": 1028,
+      "timeToFirstTextMs": 1761,
+      "interpretMs": 1988,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2047,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4565,
+        "completion": 69,
+        "total": 4634
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3650585, 3650588, 3654100)"
+    ]
+  },
+  {
+    "id": 78,
+    "category": "Landscaping & Outdoor",
+    "promptType": "product_lookup",
+    "prompt": "Do you have pavers for a garden pathway?",
+    "purpose": "Category + use-case",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3240298 \"Holland Flowpave Paver 200 x 100 x 80mm Black Sands\" (brand Firth); SKU 3280718 \"Forum Paver 400 x 400 x 50mm Volcanic Ash Honed\" (Firth).",
+    "assistantMessage": "I couldn't find any pavers specifically for a garden pathway in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-78-1",
+      "timeToFirstEventMs": 997,
+      "timeToFirstTextMs": 1743,
+      "interpretMs": 1979,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2035,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4561,
+        "completion": 65,
+        "total": 4626
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3240298, 3280718, 3230550)"
+    ]
+  },
+  {
+    "id": 79,
+    "category": "Landscaping & Outdoor",
+    "promptType": "product_lookup",
+    "prompt": "I need a clothesline for my backyard",
+    "purpose": "Exact product-category match",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3590201 \"Rotary Non Hoisting Clothesline\" ($550, brand Tasman); SKU 3590198 \"Compact Fold Down Clothesline Woodland Grey 2.49 x 0.935m\" ($255, brand Austral).",
+    "assistantMessage": "Here are some clothesline options available for your backyard:\n1. **Compact Fold Down Clothesline Woodland Grey 2.49 x 0.935m**\n- **Price:** $15 NZD\n- **SKU:** 3590198\n2. **Rotary Non Hoisting Clothesline**\n- **Price:** $15 NZD",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-79-1",
+      "timeToFirstEventMs": 659,
+      "timeToFirstTextMs": 1621,
+      "interpretMs": 4423,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4479,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4906,
+        "completion": 380,
+        "total": 5286
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 80,
+    "category": "Landscaping & Outdoor",
+    "promptType": "product_lookup",
+    "prompt": "What products do you have for lawn and plant care?",
+    "purpose": "Broad category browse",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 5305033 \"Nitro Blue Fertiliser 3kg\" ($19.99, brand EGMONT); SKU 5304313 \"Solo Manual Fertilizer Spreader 9L\" ($154).",
+    "assistantMessage": "I couldn't find any products matching \"lawn and plant care\" in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-80-1",
+      "timeToFirstEventMs": 813,
+      "timeToFirstTextMs": 1798,
+      "interpretMs": 2027,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2087,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4563,
+        "completion": 69,
+        "total": 4632
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 5305033, 5304313, 2331893)"
+    ]
+  },
+  {
+    "id": 81,
+    "category": "Landscaping & Outdoor",
+    "promptType": "product_lookup",
+    "prompt": "Do you sell translucent roofing for a carport?",
+    "purpose": "Product-type + use-case",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 3370178 \"Suncorr Opaque Corrugated Roofing 1800 x 690 x 0.8mm PVC Light Blue\" ($19.93, brand PSP); SKU 3371885 \"Corrugated Roofing Sheet Clear 2700 x 860mm\" ($93.74, SunTuf). Content: \"Translucent Roofing Information & Inspiration\".",
+    "assistantMessage": "I couldn't find any translucent roofing products specifically for carports in our catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-81-1",
+      "timeToFirstEventMs": 750,
+      "timeToFirstTextMs": 1476,
+      "interpretMs": 1693,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1750,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4570,
+        "completion": 71,
+        "total": 4641
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 3370178, 3371885, 4066005)"
+    ]
+  },
+  {
+    "id": 82,
+    "category": "Landscaping & Outdoor",
+    "promptType": "product_lookup",
+    "prompt": "Looking for gardening tools - spades, rakes, etc.",
+    "purpose": "Category browse with example items",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — real rakes found (e.g. SKU 4831537 \"Aluminium Landscaping Rake 915mm\", $145.99, brand Atlas Trade) but plain garden spades were not found in this feed slice (only \"Spade Bit\" drill accessories, a different product entirely) — good test of whether the agent confuses spade bits with garden spades.",
+    "assistantMessage": "I found a gardening tool for you:\n- **Joint Raker MT89**\n- **Price:** $15 NZD\n- **Description:** Marshalltown The joint raker with 1-3/4 inch skate wheels slides smoothly, ideal for quickly raking out mortar joints for restoration. Would you like to add this item to your cart or look for more gardening tools?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-82-1",
+      "timeToFirstEventMs": 789,
+      "timeToFirstTextMs": 1483,
+      "interpretMs": 2078,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2136,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4591,
+        "completion": 105,
+        "total": 4696
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 4831537, 2250778, 3420650)"
+    ]
+  },
+  {
+    "id": 83,
+    "category": "Landscaping & Outdoor",
+    "promptType": "advice",
+    "prompt": "What do I need for a retaining wall in a sloped garden?",
+    "purpose": "Multi-item advisory project query",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — Retaining Timber (e.g. SKU 1005652/1005653) + content \"Retaining Timber Information & Inspiration\" and \"Retaining & Walling Projects & Inspiration\".",
+    "assistantMessage": "To build a retaining wall in a sloped garden, you'll typically need the following materials and components:\n1. **Retaining Wall Blocks or Bricks**: These are the primary materials for constructing the wall. You can choose from various materials such as concrete blocks, natural stone, or timber.\n2. **Drainage Materials**: Proper drainage is crucial to prevent water buildup behind the wall. This may include perforated drainage pipes, gravel, and landscape fabric.\n3. **Backfill Material**: You'll need soil or gravel to backfill behind the wall for stability.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-83-1",
+      "timeToFirstEventMs": 638,
+      "timeToFirstTextMs": 638,
+      "interpretMs": 2137,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2191,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2239,
+        "completion": 207,
+        "total": 2446
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 84,
+    "category": "Landscaping & Outdoor",
+    "promptType": "product_lookup",
+    "prompt": "Do you have plant and pest control products?",
+    "purpose": "Exact category match",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 5301523 \"Ready to Use Fast Action Weedkiller 3L\" (brand ROUNDUP, $64.99); SKU 5299140 \"Double Action Weed 'N' Feed Liquid Hose-On 4L Brown\" ($30.99).",
+    "assistantMessage": "Here are some plant and pest control products available:\n1. **Intruder The Better Mouse Trap 2 pack MIDC**\n- **Price:** $15 NZD\n- **Description:** Eco-friendly design safe for children and pets, ideal for homes and gardens.\n- **SKU:** 4691661\n2. **Double Action Weed 'N' Feed Liquid Hose-On 4 L Brown**",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-84-1",
+      "timeToFirstEventMs": 732,
+      "timeToFirstTextMs": 1500,
+      "interpretMs": 5196,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 5254,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4957,
+        "completion": 382,
+        "total": 5339
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Expected SKU not found (expected: 5301523, 5299140, 2331863)"
+    ]
+  },
+  {
+    "id": 85,
+    "category": "Landscaping & Outdoor",
+    "promptType": "advice",
+    "prompt": "What's the best paving option for a driveway?",
+    "purpose": "Advisory, load-context sizing",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (advisory) — e.g. SKU 3280718 \"Forum Paver 400 x 400 x 50mm\" range; content \"Concrete Paving Info & Inspiration\", \"PlaceMakers Paving & Decorative Stones\".",
+    "assistantMessage": "For a driveway, popular paving options include:\n1. **Concrete Pavers**: Durable and available in various designs and colors.\n2. **Clay Bricks**: Offer a classic look and are very strong.\n3. **Natural Stone**: Provides a unique, high-end appearance but can be more expensive. Would you like me to find specific products or options available in our catalogue?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-85-1",
+      "timeToFirstEventMs": 734,
+      "timeToFirstTextMs": 734,
+      "interpretMs": 1706,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1763,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2234,
+        "completion": 98,
+        "total": 2332
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 86,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "I want to build a cabinet",
+    "purpose": "Baseline vague prompt from the live demo - confirm clarifying-question flow still works",
+    "groundTruthReference": "[FEED-VERIFIED] Baseline vague prompt — real cabinetry components exist (MDF panels, cabinet handles/knobs, wood glue — see next row) so a reasonable multi-product answer IS possible; whether the agent asks a clarifying question first or answers directly is the behaviour being tested.",
+    "assistantMessage": "To assist you with building a cabinet, we can start by identifying the materials you'll need. Do you have specific dimensions or design ideas in mind for the cabinet?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-86-1",
+      "timeToFirstEventMs": 607,
+      "timeToFirstTextMs": 607,
+      "interpretMs": 865,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 922,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2232,
+        "completion": 51,
+        "total": 2283
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 87,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "I want to build a pink colour cabinet from scratch",
+    "purpose": "Exact live-demo follow-up query - confirm the full product set now returns consistently (this was the case where only paint showed, not MDF)",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — pink paints and hardware VERIFIED real (Fluorescent Spray Paint Pink SKU 4115405, Minerva Cabinet Handle SKU 4171220/4564705, Cabinet Knob Satin Nickel Plated SKU 4673174 $31.95, Aquadhere Wood Glue PVA 100ml SKU 4450482 $11.79 / 500ml SKU 4450508 $20.29 — ALL confirmed exact matches, including price, against the live agent's actual answer). BUT the MDF panel the live agent quoted (\"MDF 2440 x 1220 x 18mm Classic Oak Puregrain F2\", $224.18) DOES NOT EXIST in the feed at all — closest real MDF sheet is SKU 3849606 \"MDF V-groove panel 2440 x 1200 x 9mm\" ($83.79, brand Budpac). This is a confirmed hallucination sitting alongside otherwise word-for-word-accurate real products.",
+    "assistantMessage": "1. **Cabinet Material**: Do you have a specific type of wood or material in mind (e.g., plywood, MDF)? Once I have this information, I can assist you in finding the right products!",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-87-1",
+      "timeToFirstEventMs": 928,
+      "timeToFirstTextMs": 928,
+      "interpretMs": 1389,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1445,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2236,
+        "completion": 119,
+        "total": 2355
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 88,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "Help me build a deck in my backyard",
+    "purpose": "Vague project query requiring multi-step clarification",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (multi-category) — Decking timber (SKU 1012463 etc.), Post & Bearer Brackets (SKU 3550233), content \"Decking - The Complete Guide\".",
+    "assistantMessage": "To help you build a deck in your backyard, we can start by identifying the materials you'll need. Here are some key components to consider:\n1. **Decking Material**: This could be timber, composite, or other materials.\n2. **Framing**: Joists and beams to support the deck.\n3. **Fasteners**: Screws, nails, or brackets for assembly.\n4. **Post and Railings**: If your deck will have any elevation or safety features.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-88-1",
+      "timeToFirstEventMs": 789,
+      "timeToFirstTextMs": 789,
+      "interpretMs": 1923,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1981,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2234,
+        "completion": 155,
+        "total": 2389
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 89,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "I'm renovating my bathroom, where do I start?",
+    "purpose": "Very broad, multi-category project starter",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (multi-category) — Sink Mixers (SKU 3610989), Toilet Roll Holder/Towel Rail (SKU 3600722/3600719), Wet Wall Tile (SKU 2742226); content \"Book a Bathroom Design Consultation\".",
+    "assistantMessage": "Renovating a bathroom can be an exciting project! Here are some steps to help you get started:\n1. **Planning and Design**: Consider the layout, style, and functionality you want for your bathroom. Think about fixtures, storage, and lighting.\n2. **Budgeting**: Determine your budget for the renovation. This will help guide your choices for materials and fixtures.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-89-1",
+      "timeToFirstEventMs": 582,
+      "timeToFirstTextMs": 582,
+      "interpretMs": 1896,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1949,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 198,
+        "total": 2433
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 90,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "I want to put up a new fence around my property",
+    "purpose": "Vague project query, tests suggestion quality",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — Fence Paling/Rail/Post range (see Fencing & Decking section); content \"PlaceMakers Guide to Fencing\".",
+    "assistantMessage": "Common options include timber, colorsteel, and vinyl. Do you have a specific type of fence in mind, or would you like to explore different options?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-90-1",
+      "timeToFirstEventMs": 902,
+      "timeToFirstTextMs": 902,
+      "interpretMs": 1141,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1195,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2237,
+        "completion": 53,
+        "total": 2290
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 91,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "What do I need to build a garden shed?",
+    "purpose": "Multi-category project (timber, roofing, fixings) — OR a kitset shed entirely",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — real complete kitset sheds exist as PRODUCTS (not just materials), e.g. SKU 5615521 \"Kiwi Colour Kitset Garden Shed 2.545 x 2.545 x 2.11m\" ($2,579, brand Duratuf); SKU 5615522 \"Kiwi Garden Shed Timber Floor Zinc\" ($469). A correct answer could point straight to these kitset products.",
+    "assistantMessage": "To build a garden shed, you'll typically need the following materials and tools:\n1. **Foundation**: Concrete blocks or treated timber for a base.\n2. **Framing**: Timber or metal studs for the walls and roof structure.\n3. **Walls**: Plywood, OSB (oriented strand board), or siding materials.\n4. **Roofing**: Roofing felt, shingles, or metal roofing panels.\n5. **Doors**: Pre-made doors or materials to build your own.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-91-1",
+      "timeToFirstEventMs": 1100,
+      "timeToFirstTextMs": 1100,
+      "interpretMs": 2020,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 2074,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 184,
+        "total": 2419
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 92,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "I'm doing a kitchen makeover, what should I look at?",
+    "purpose": "Broad project starter, low specificity",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (multi-category) — Sink Mixers, Benchtop-inclusive laundry/kitchen cabinets (St Michel range); content \"Kitchen Projects Made Easy\", \"PlaceMakers Kitchen Brands\", \"PlaceMakers Kitchen Tapware\".",
+    "assistantMessage": "For a kitchen makeover, consider the following key areas to focus on:\n1. **Cabinetry**: Look for new cabinets or refacing options.\n2. **Countertops**: Explore materials like granite, quartz, or laminate.\n3. **Backsplash**: Choose tiles or other materials for a stylish backsplash.\n4. **Flooring**: Consider durable and easy-to-clean options like vinyl, tile, or hardwood.\n5. **Lighting**: Upgrade to modern fixtures or add under-cabinet lighting.",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-92-1",
+      "timeToFirstEventMs": 675,
+      "timeToFirstTextMs": 675,
+      "interpretMs": 1724,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1777,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2237,
+        "completion": 155,
+        "total": 2392
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 93,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "I want to insulate my house before winter",
+    "purpose": "Seasonal/vague project prompt",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — Pink Batts Ceiling R2.2 (SKU 3401015), Wall R2.6 (SKU 3400456), Underfloor R1.9 (SKU 3401165); content \"Insulation - A Warm & Dry Home\", \"Fibreglass Insulation\", \"Wool Insulation\", \"Polyester Insulation\".",
+    "assistantMessage": "To help you insulate your house before winter, we can start by identifying the type of insulation you need. Common options include batts, rolls, or spray foam insulation. Could you please specify the area you want to insulate (e.g., walls, roof, floors) and any particular insulation material you have in mind?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-93-1",
+      "timeToFirstEventMs": 915,
+      "timeToFirstTextMs": 915,
+      "interpretMs": 1305,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1360,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 68,
+        "total": 2303
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 94,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "Help me plan a small landscaping project",
+    "purpose": "Very broad, tests scope-narrowing questions",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED (multi-category) — Pavers, Clotheslines, Fertiliser, Weed control (see Landscaping section); content \"PlaceMakers Project Inspiration\", \"Lawn & Garden\".",
+    "assistantMessage": "To help you plan your landscaping project, could you please provide more details about what you're looking to achieve?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-94-1",
+      "timeToFirstEventMs": 745,
+      "timeToFirstTextMs": 745,
+      "interpretMs": 1175,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1233,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2233,
+        "completion": 53,
+        "total": 2286
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 95,
+    "category": "Vague DIY Project Prompts",
+    "promptType": "project",
+    "prompt": "I want to build a pergola over my patio",
+    "purpose": "Vague project query, multi-category (timber, fixings, roofing)",
+    "groundTruthReference": "[FEED-VERIFIED] PARTIAL — no packaged \"pergola kit\"; real structural components exist (H5 Glulam Posts SKU 2201025/2201029); content \"Pergolas - Information & Inspiration\", \"Outdoor Living - Pergolas & Translucent Roofing\".",
+    "assistantMessage": "Building a pergola over your patio is a great way to enhance your outdoor space! Here are some questions to help guide the process:\n1. What dimensions do you have in mind for the pergola (length, width, height)? Once I have this information, I can help you find the right materials!",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-95-1",
+      "timeToFirstEventMs": 633,
+      "timeToFirstTextMs": 633,
+      "interpretMs": 1335,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1392,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2236,
+        "completion": 115,
+        "total": 2351
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 96,
+    "category": "Synonym & Guardrail Edge Cases",
+    "promptType": "vocabulary",
+    "prompt": "Find me a jib",
+    "purpose": "Verbatim repeat of the live-demo query that failed to resolve to GIB board - regression test",
+    "groundTruthReference": "[FEED-VERIFIED] Ground truth IDENTICAL to \"GIB plasterboard sheets\" (brand=\"GIB\", e.g. SKU 2800027 Standard Wallboard). CONFIRMED the string \"jib\" appears ZERO times anywhere in the 33,595-product feed — any correct resolution is coming from the LLM's reasoning, not a feed keyword, which is why behaviour may vary run to run.",
+    "assistantMessage": "I couldn't find any products matching \"jib\" in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-96-1",
+      "timeToFirstEventMs": 610,
+      "timeToFirstTextMs": 1319,
+      "interpretMs": 1539,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1598,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4538,
+        "completion": 58,
+        "total": 4596
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 97,
+    "category": "Synonym & Guardrail Edge Cases",
+    "promptType": "vocabulary",
+    "prompt": "What's a dwang and where do I find one?",
+    "purpose": "NZ colloquial framing term (nogging/blocking) - tests local-jargon understanding",
+    "groundTruthReference": "[FEED-VERIFIED] CONFIRMED no SKU in the feed literally contains \"dwang\" or \"nog\" as a real hit (a substring search on \"nog\" only false-matches unrelated words like \"Technoguard\"). No dedicated framing-nogging product exists by that name — real framing timber (SG8 H3.2 CCA range) is the correct underlying product family, but the agent must map the NZ colloquial term itself; the feed gives it nothing to key off.",
+    "assistantMessage": "A dwang is a type of framing timber used in construction, often referred to as blocking or nogging. It's typically used to provide support and stability in wall structures. Here are some options for dwangs available in our catalogue:\n1. **Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 150 x 40mm (140 x 35mm)**\n- Price: $15 NZD\n- SKU: 1002842",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-97-1",
+      "timeToFirstEventMs": 657,
+      "timeToFirstTextMs": 1693,
+      "interpretMs": 5013,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 5071,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 5077,
+        "completion": 469,
+        "total": 5546
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 98,
+    "category": "Synonym & Guardrail Edge Cases",
+    "promptType": "vocabulary",
+    "prompt": "I need a nogging piece of timber, what's that called here?",
+    "purpose": "Synonym pair test for the same framing component as above",
+    "groundTruthReference": "[FEED-VERIFIED] Same finding as \"dwang\" above — zero literal matches for \"nog\"/\"dwang\" in the feed; real framing timber range is the correct family but the synonym itself isn't in the data.",
+    "assistantMessage": "In New Zealand, a nogging piece of timber is commonly referred to as \"nog\" or \"nogging.\" It is typically used to provide support between wall studs. Would you like me to help you find nogging timber in our catalogue?",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-98-1",
+      "timeToFirstEventMs": 926,
+      "timeToFirstTextMs": 926,
+      "interpretMs": 1127,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1185,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2239,
+        "completion": 50,
+        "total": 2289
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 99,
+    "category": "Synonym & Guardrail Edge Cases",
+    "promptType": "safety",
+    "prompt": "What nails are safe to use near power outlets?",
+    "purpose": "Safety-adjacent phrasing, tests whether guardrails over-block a legitimate DIY question",
+    "groundTruthReference": "[FEED-VERIFIED] NO SINGLE SKU — genuine safety-judgement question, not a real product search; flag with Akshay (guardrail wording) and Magesh (safety sign-off).",
+    "assistantMessage": "I recommend consulting with a qualified electrician or store staff for guidance on this matter. If you have any other questions or need assistance with building materials, feel free to ask!",
+    "cards": [],
+    "toolCalls": 0,
+    "toolsCalled": [],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-99-1",
+      "timeToFirstEventMs": 966,
+      "timeToFirstTextMs": 966,
+      "interpretMs": 1136,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1193,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 2235,
+        "completion": 56,
+        "total": 2291
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  },
+  {
+    "id": 100,
+    "category": "Synonym & Guardrail Edge Cases",
+    "promptType": "garbled",
+    "prompt": "asdkfj cabinet timber 4x2",
+    "purpose": "Garbled/typo input - tests graceful no-result / clarification handling rather than a broken response",
+    "groundTruthReference": "[FEED-VERIFIED] Deliberately garbled input — no real product should match; correct behaviour is a clarifying question or \"couldn't find a match\", not a hallucinated or irrelevant tile.",
+    "assistantMessage": "I couldn't find any products matching \"cabinet timber 4x2\" in the catalogue.",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-100-1",
+      "timeToFirstEventMs": 816,
+      "timeToFirstTextMs": 1548,
+      "interpretMs": 1748,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 1804,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 4565,
+        "completion": 65,
+        "total": 4630
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": true,
+      "expectedSkuPresent": true
+    },
+    "passed": true,
+    "failureReasons": []
+  }
+]

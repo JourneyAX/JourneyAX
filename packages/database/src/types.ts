@@ -36,6 +36,43 @@ export const COLLECTION_OKF_REVOCATION_ARCHIVE = 'okf_revocation_events_archive'
 export const COLLECTION_OKF_ARTIFACT_POLICIES = 'okf_artifact_policies';
 export const COLLECTION_OKF_VERIFICATION_ATTESTATIONS = 'okf_verification_attestations';
 export const COLLECTION_OKF_VERIFIER_ROLES = 'okf_verifier_roles';
+export const COLLECTION_TURN_TRANSCRIPTS = 'turn_transcripts';
+export const COLLECTION_KNOWLEDGE_GAPS = 'knowledge_gaps';
+
+export interface KnowledgeGapRecord {
+  _id?: any;
+  tenantId: string;
+  tenant?: string;
+  environmentId?: string;
+  topic: string;
+  toolName: string;
+  conversationId: string;
+  recordedAt: Date;
+  time?: string;
+  createdAt?: Date;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TurnTranscriptRecord {
+  _id?: any;
+  tenantId: string;
+  environmentId: string;
+  workspaceId: string;
+  turnId: string;
+  sessionId?: string;
+  customerMessage: string;
+  assistantReply: string;
+  agentId?: string;
+  timestamps: {
+    receivedAt: string;
+    completedAt: string;
+  };
+  retentionExpiresAt?: Date;
+  metadata?: Record<string, unknown>;
+  /** The turn as messages of typed blocks (see the runtime's conversation thread); older records have none and are read from the two strings. */
+  thread?: Array<Record<string, unknown>>;
+  createdAt: Date;
+}
 
 export interface BusinessPackReleaseRecord {
   _id?: any;

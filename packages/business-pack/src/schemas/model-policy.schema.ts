@@ -5,6 +5,8 @@ export const ModelCandidateSchema = z.object({
   model: z.string(),
   priority: z.number().int().min(1),
   temperature: z.number().min(0).max(2).optional(),
+  /** How long a reasoning model may think before it answers (OpenAI reasoning models). 'none' answers straight away. */
+  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high']).optional(),
 });
 
 export const ResidencyAttestationSchema = z.object({

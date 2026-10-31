@@ -1,0 +1,500 @@
+{
+ "opps": {
+  "ok": true,
+  "connector": "salesforce",
+  "total": 22,
+  "returned": 22,
+  "amountOfThese": 78511.25,
+  "records": [
+   {
+    "opportunityId": "006i80000023uuEAAQ",
+    "name": "Ngata & Penrose Joinery: Garrison Sloping Roof Garden and 2 more [OPP-0006]",
+    "account": "Ngata & Penrose Joinery Ltd",
+    "accountId": "001i8000008Uu8LAAS",
+    "stage": "Propose",
+    "amount": 6612,
+    "closeDate": "2026-11-01",
+    "owner": "Jess Penrose",
+    "nextStep": "Call to talk through delivery",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuVAAQ",
+    "name": "Okafor & Yardley Painters: Garrison Gable Roof Garden and 2 more [OPP-0023]",
+    "account": "Okafor & Yardley Painters Ltd",
+    "accountId": "001i8000008Uu8YAAS",
+    "stage": "Negotiate",
+    "amount": 5733.25,
+    "closeDate": "2026-11-02",
+    "owner": "Aroha Bellamy",
+    "nextStep": "Call to talk through delivery",
+    "source": "Seminar - Internal"
+   },
+   {
+    "opportunityId": "006i80000023uucAAA",
+    "name": "Hartley & Hartley Concrete: Minifoot Deck Pedestal 25-40mm and 1 more [OPP-0030]",
+    "account": "Hartley & Hartley Concrete Ltd",
+    "accountId": "001i8000008Uu8eAAC",
+    "stage": "Propose",
+    "amount": 797.97,
+    "closeDate": "2026-11-04",
+    "owner": "Wendy Hartley",
+    "nextStep": "Send the quote",
+    "source": "Seminar - Internal"
+   },
+   {
+    "opportunityId": "006i80000023uuNAAQ",
+    "name": "Hartley & Sutherland Electrical: Garrison Sloping Roof Garden and 2 more [OPP-0015]",
+    "account": "Hartley & Sutherland Electrical Ltd",
+    "accountId": "001i8000008Uu8SAAS",
+    "stage": "Propose",
+    "amount": 6893.2,
+    "closeDate": "2026-11-07",
+    "owner": "Finn Paterson",
+    "nextStep": "Confirm quantities",
+    "source": "Seminar - Internal"
+   },
+   {
+    "opportunityId": "006i80000023uuDAAQ",
+    "name": "Whittle & Ngata Plumbing: Residential Pool Gate In and 2 more [OPP-0005]",
+    "account": "Whittle & Ngata Plumbing Ltd",
+    "accountId": "001i8000008Uu8KAAS",
+    "stage": "Meet & Present",
+    "amount": 2686.09,
+    "closeDate": "2026-11-08",
+    "owner": "Sione Paterson",
+    "nextStep": "Book a site visit",
+    "source": "Web"
+   },
+   {
+    "opportunityId": "006i80000023uuYAAQ",
+    "name": "Yardley & Mackie Landscapes: Garrison Gable Roof Garden and 1 more [OPP-0026]",
+    "account": "Yardley & Mackie Landscapes Ltd",
+    "accountId": "001i8000008Uu8bAAC",
+    "stage": "Meet & Present",
+    "amount": 5439.7,
+    "closeDate": "2026-11-09",
+    "owner": "Jess Penrose",
+    "nextStep": "Send the quote",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuGAAQ",
+    "name": "Whitaker & Tasman Fencing: Minifoot Deck Pedestal 25-40mm and 2 more [OPP-0008]",
+    "account": "Whitaker & Tasman Fencing Ltd",
+    "accountId": "001i8000008Uu8MAAS",
+    "stage": "Qualify",
+    "amount": 2222.95,
+    "closeDate": "2026-11-11",
+    "owner": "Wendy Hartley",
+    "nextStep": "Get the order signed off",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uubAAA",
+    "name": "Whittle & Pemberton Plumbing: Residential Pool Gate In [OPP-0029]",
+    "account": "Whittle & Pemberton Plumbing Ltd",
+    "accountId": "001i8000008Uu8dAAC",
+    "stage": "Negotiate",
+    "amount": 1164.5,
+    "closeDate": "2026-11-12",
+    "owner": "Sione Paterson",
+    "nextStep": "Call to talk through delivery",
+    "source": "Web"
+   },
+   {
+    "opportunityId": "006i80000023uuOAAQ",
+    "name": "Stanbridge & Harlow Joinery: Residential Pool Gate In [OPP-0016]",
+    "account": "Stanbridge & Harlow Joinery Ltd",
+    "accountId": "001i8000008Uu8TAAS",
+    "stage": "Qualify",
+    "amount": 1301.5,
+    "closeDate": "2026-11-14",
+    "owner": "Jess Penrose",
+    "nextStep": "Book a site visit",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuTAAQ",
+    "name": "Rowe & Ngata Framing: Garrison Sloping Roof Garden and 2 more [OPP-0021]",
+    "account": "Rowe & Ngata Framing Ltd",
+    "accountId": "001i8000008Uu8XAAS",
+    "stage": "Qualify",
+    "amount": 3389.6,
+    "closeDate": "2026-11-14",
+    "owner": "Hemi Ashworth",
+    "nextStep": "Send the quote",
+    "source": "Web"
+   },
+   {
+    "opportunityId": "006i80000023uuLAAQ",
+    "name": "Kereama & Ellery Landscapes: Garrison Gable Roof Garden [OPP-0013]",
+    "account": "Kereama & Ellery Landscapes Ltd",
+    "accountId": "001i8000008Uu8QAAS",
+    "stage": "Meet & Present",
+    "amount": 1333.65,
+    "closeDate": "2026-11-19",
+    "owner": "Ella Tomlinson",
+    "nextStep": "Get the order signed off",
+    "source": "Web"
+   },
+   {
+    "opportunityId": "006i80000023uuWAAQ",
+    "name": "Patel & Harlow Joinery: Minifoot Deck Pedestal 25-40mm and 2 more [OPP-0024]",
+    "account": "Patel & Harlow Joinery Ltd",
+    "accountId": "001i8000008Uu8ZAAS",
+    "stage": "Propose",
+    "amount": 2785.83,
+    "closeDate": "2026-11-21",
+    "owner": "Ella Tomlinson",
+    "nextStep": "Confirm quantities",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuAAAQ",
+    "name": "Talbot & Nguyen Concrete: Lifestyle Kaipara Shed 4 and 2 more [OPP-0002]",
+    "account": "Talbot & Nguyen Concrete Ltd",
+    "accountId": "001i8000008Uu8HAAS",
+    "stage": "Propose",
+    "amount": 8167.2,
+    "closeDate": "2026-11-25",
+    "owner": "Hemi Ashworth",
+    "nextStep": "Confirm quantities",
+    "source": "Web"
+   },
+   {
+    "opportunityId": "006i80000023uuHAAQ",
+    "name": "Ngata & Whittle Roofing: Garrison Sloping Roof Garden [OPP-0009]",
+    "account": "Ngata & Whittle Roofing Ltd",
+    "accountId": "001i8000008Uu8NAAS",
+    "stage": "Meet & Present",
+    "amount": 726.75,
+    "closeDate": "2026-11-30",
+    "owner": "Sione Paterson",
+    "nextStep": "Send the quote",
+    "source": "Seminar - Internal"
+   },
+   {
+    "opportunityId": "006i80000023uuJAAQ",
+    "name": "Aldridge & Yardley Electrical: Residential Pool Gate In and 1 more [OPP-0011]",
+    "account": "Aldridge & Yardley Electrical Ltd",
+    "accountId": "001i8000008Uu8PAAS",
+    "stage": "Propose",
+    "amount": 3082.5,
+    "closeDate": "2026-12-01",
+    "owner": "Hemi Ashworth",
+    "nextStep": "Call to talk through delivery",
+    "source": "Seminar - Internal"
+   },
+   {
+    "opportunityId": "006i80000023uuZAAQ",
+    "name": "Yardley & Mackie Landscapes: Minifoot Deck Pedestal 25-40mm and 2 more [OPP-0027]",
+    "account": "Yardley & Mackie Landscapes Ltd",
+    "accountId": "001i8000008Uu8bAAC",
+    "stage": "Qualify",
+    "amount": 2222.95,
+    "closeDate": "2026-12-02",
+    "owner": "Jess Penrose",
+    "nextStep": "Book a site visit",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuRAAQ",
+    "name": "Carrow & Kereama Concrete: Wired Garden Edging H3.2 and 1 more [OPP-0019]",
+    "account": "Carrow & Kereama Concrete Ltd",
+    "accountId": "001i8000008Uu8VAAS",
+    "stage": "Propose",
+    "amount": 1796.59,
+    "closeDate": "2026-12-03",
+    "owner": "Sione Paterson",
+    "nextStep": "Send the quote",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuCAAQ",
+    "name": "Dunmore & Tomlinson Concrete: Garrison Sloping Roof Garden and 2 more [OPP-0004]",
+    "account": "Dunmore & Tomlinson Concrete Ltd",
+    "accountId": "001i8000008Uu8JAAS",
+    "stage": "Negotiate",
+    "amount": 1910.33,
+    "closeDate": "2026-12-09",
+    "owner": "Aroha Bellamy",
+    "nextStep": "Send the quote",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuBAAQ",
+    "name": "Lindgren & Halloran Concrete: Minifoot Deck Pedestal 25-40mm and 1 more [OPP-0003]",
+    "account": "Lindgren & Halloran Concrete Ltd",
+    "accountId": "001i8000008Uu8IAAS",
+    "stage": "Qualify",
+    "amount": 1489.4,
+    "closeDate": "2026-12-14",
+    "owner": "Aroha Bellamy",
+    "nextStep": "Get the order signed off",
+    "source": "Web"
+   },
+   {
+    "opportunityId": "006i80000023uuSAAQ",
+    "name": "Marlow & Tasman Framing: Garrison Sloping Roof Garden and 1 more [OPP-0020]",
+    "account": "Marlow & Tasman Framing Ltd",
+    "accountId": "001i8000008Uu8WAAS",
+    "stage": "Meet & Present",
+    "amount": 4116.35,
+    "closeDate": "2026-12-15",
+    "owner": "Wendy Hartley",
+    "nextStep": "Get the order signed off",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuPAAQ",
+    "name": "Stanbridge & Harlow Joinery: Delta Raking Panel 1200mm and 2 more [OPP-0017]",
+    "account": "Stanbridge & Harlow Joinery Ltd",
+    "accountId": "001i8000008Uu8TAAS",
+    "stage": "Negotiate",
+    "amount": 12035.94,
+    "closeDate": "2026-12-15",
+    "owner": "Jess Penrose",
+    "nextStep": "Send the quote",
+    "source": "Other"
+   },
+   {
+    "opportunityId": "006i80000023uuIAAQ",
+    "name": "Ormond & Harlow Builders: Residential Pool Gate In and 1 more [OPP-0010]",
+    "account": "Ormond & Harlow Builders Ltd",
+    "accountId": "001i8000008Uu8OAAS",
+    "stage": "Negotiate",
+    "amount": 2603,
+    "closeDate": "2026-12-20",
+    "owner": "Wendy Hartley",
+    "nextStep": "Confirm quantities",
+    "source": "Other"
+   }
+  ]
+ },
+ "cases": {
+  "ok": true,
+  "connector": "salesforce",
+  "total": 10,
+  "returned": 10,
+  "more": true,
+  "records": [
+   {
+    "caseId": "500i8000004BaKPAA0",
+    "caseNumber": "00001047",
+    "subject": "Missed delivery for order ORD-100024",
+    "status": "New",
+    "priority": "High",
+    "accountId": "001i8000008Uu8iAAC",
+    "account": "Harlow & Talbot Landscapes Ltd",
+    "created": "2026-10-26T07:26:59.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2fAAC",
+    "caseNumber": "00001006",
+    "subject": "Account access",
+    "status": "New",
+    "priority": "Low",
+    "accountId": "001i8000008Uu8IAAS",
+    "account": "Lindgren & Halloran Concrete Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2pAAC",
+    "caseNumber": "00001016",
+    "subject": "Delivery delay",
+    "status": "Working",
+    "priority": "Low",
+    "accountId": "001i8000008Uu8PAAS",
+    "account": "Aldridge & Yardley Electrical Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2kAAC",
+    "caseNumber": "00001011",
+    "subject": "Damaged goods",
+    "status": "New",
+    "priority": "Low",
+    "accountId": "001i8000008Uu8KAAS",
+    "account": "Whittle & Ngata Plumbing Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2nAAC",
+    "caseNumber": "00001014",
+    "subject": "Collection time",
+    "status": "Working",
+    "priority": "Medium",
+    "accountId": "001i8000008Uu8MAAS",
+    "account": "Whitaker & Tasman Fencing Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2oAAC",
+    "caseNumber": "00001015",
+    "subject": "Pricing query",
+    "status": "New",
+    "priority": "High",
+    "accountId": "001i8000008Uu8OAAS",
+    "account": "Ormond & Harlow Builders Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2jAAC",
+    "caseNumber": "00001010",
+    "subject": "Account access",
+    "status": "Working",
+    "priority": "Medium",
+    "accountId": "001i8000008Uu8JAAS",
+    "account": "Dunmore & Tomlinson Concrete Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2sAAC",
+    "caseNumber": "00001019",
+    "subject": "Warranty",
+    "status": "Escalated",
+    "priority": "Medium",
+    "accountId": "001i8000008Uu8RAAS",
+    "account": "Ashworth & Rowe Framing Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2uAAC",
+    "caseNumber": "00001021",
+    "subject": "Invoice query",
+    "status": "Working",
+    "priority": "Medium",
+    "accountId": "001i8000008Uu8SAAS",
+    "account": "Hartley & Sutherland Electrical Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   },
+   {
+    "caseId": "500i8000004Ad2dAAC",
+    "caseNumber": "00001004",
+    "subject": "Warranty",
+    "status": "Escalated",
+    "priority": "Medium",
+    "accountId": "001i8000008Uu8HAAS",
+    "account": "Talbot & Nguyen Concrete Ltd",
+    "created": "2026-10-25T22:57:42.000+0000"
+   }
+  ]
+ },
+ "pipeline": {
+  "ok": true,
+  "connector": "salesforce",
+  "groupBy": "stage",
+  "stages": [
+   {
+    "stage": "Qualify",
+    "deals": 5,
+    "amount": 10626.4
+   },
+   {
+    "stage": "Meet & Present",
+    "deals": 5,
+    "amount": 14302.54
+   },
+   {
+    "stage": "Propose",
+    "deals": 7,
+    "amount": 30135.29
+   },
+   {
+    "stage": "Negotiate",
+    "deals": 5,
+    "amount": 23447.02
+   },
+   {
+    "stage": "Closed Won",
+    "deals": 6,
+    "amount": 38787.95
+   },
+   {
+    "stage": "Closed Lost",
+    "deals": 2,
+    "amount": 1973.14
+   }
+  ],
+  "open": {
+   "deals": 22,
+   "amount": 78511.25
+  },
+  "won": {
+   "deals": 6,
+   "amount": 38787.95
+  },
+  "lost": {
+   "deals": 2,
+   "amount": 1973.14
+  }
+ },
+ "account": {
+  "ok": true,
+  "connector": "salesforce",
+  "record": {
+   "accountId": "001i8000008Uu8iAAC",
+   "name": "Harlow & Talbot Landscapes Ltd",
+   "industry": "Construction",
+   "phone": "021 555 5158",
+   "city": "Silverdale",
+   "accountNumber": "ACC-0028",
+   "commercetoolsUnit": "acc-0028",
+   "owner": "Finn Paterson",
+   "cases": [
+    {
+     "caseId": "500i8000004BaKPAA0",
+     "caseNumber": "00001047",
+     "subject": "Missed delivery for order ORD-100024",
+     "status": "New",
+     "priority": "High",
+     "created": "2026-10-26T07:26:59.000+0000"
+    },
+    {
+     "caseId": "500i8000004Ad3EAAS",
+     "caseNumber": "00001041",
+     "subject": "Damaged goods",
+     "status": "Working",
+     "priority": "Medium",
+     "created": "2026-10-25T22:57:42.000+0000"
+    }
+   ],
+   "contacts": [
+    {
+     "name": "Graham Harlow",
+     "phone": "021 555 5158",
+     "email": "graham.harlow@example.test"
+    }
+   ]
+  }
+ },
+ "find": {
+  "ok": true,
+  "connector": "salesforce",
+  "total": 5,
+  "returned": 5,
+  "records": [
+   {
+    "accountId": "001i8000008Uu8iAAC",
+    "name": "Harlow & Talbot Landscapes Ltd",
+    "industry": "Construction",
+    "phone": "021 555 5158",
+    "city": "Silverdale",
+    "accountNumber": "ACC-0028",
+    "commercetoolsUnit": "acc-0028",
+    "owner": "Finn Paterson"
+   },
+   {
+    "accountId": "001i8000008Uu8OAAS",
+    "name": "Ormond & Harlow Builders Ltd",
+    "industry": "Construction",
+    "phone": "021 555 7748",
+    "city": "Palmerston North",
+    "accountNumber": "ACC-0008",
+    "commercetoolsUnit": "acc-0008",
+    "owner": "Wendy Hartley"
+   }
+  ]
+ }
+}

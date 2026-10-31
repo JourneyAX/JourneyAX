@@ -1,0 +1,151 @@
+{
+  "_comment": "PlaceMakers agent-mode settings. Data only: how the assistant's own words are shaped, and that the agent runs. The platform caps are 8 sentences and 5 questions per reply.",
+  "agentMode": true,
+  "interpretationPolicy": {
+    "replyStyle": {
+      "maxSentences": 14,
+      "dropListLines": false,
+      "dropCompanyName": false,
+      "allowFollowUpQuestion": true,
+      "maxQuestions": 5,
+      "forbiddenPhrases": [],
+      "rules": [
+        "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
+        "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
+        "Never ask for something the customer has already told you.",
+        "A short, narrow question gets a short answer. A broad one may take a few lines: say what the group is, name the main groups, name what goes with it, then ask.",
+        "When products are shown on a card, do not repeat their details in your words: say in a sentence or two why you chose them."
+      ],
+      "turnStyles": {
+        "answer": {
+          "maxSentences": 14,
+          "dropListLines": false,
+          "allowFollowUpQuestion": true,
+          "maxQuestions": 5,
+          "rules": [
+            "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
+            "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
+            "Never ask for something the customer has already told you.",
+            "A short, narrow question gets a short answer. A broad one may take a few lines: say what the group is, name the main groups, name what goes with it, then ask.",
+            "When products are shown on a card, do not repeat their details in your words: say in a sentence or two why you chose them."
+          ]
+        },
+        "recommend": {
+          "maxSentences": 14,
+          "dropListLines": false,
+          "allowFollowUpQuestion": true,
+          "maxQuestions": 5,
+          "rules": [
+            "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
+            "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
+            "Never ask for something the customer has already told you.",
+            "A short, narrow question gets a short answer. A broad one may take a few lines: say what the group is, name the main groups, name what goes with it, then ask.",
+            "When products are shown on a card, do not repeat their details in your words: say in a sentence or two why you chose them."
+          ]
+        },
+        "howto": {
+          "maxSentences": 14,
+          "dropListLines": false,
+          "allowFollowUpQuestion": true,
+          "maxQuestions": 5,
+          "rules": [
+            "Write plain, friendly sentences, the way a knowledgeable person at the trade counter would.",
+            "When you need to know several things, ask them together in one short message, and let the customer's answers decide what you ask next.",
+            "Never ask for something the customer has already told you.",
+            "A short, narrow question gets a short answer. A broad one may take a few lines: say what the group is, name the main groups, name what goes with it, then ask.",
+            "When products are shown on a card, do not repeat their details in your words: say in a sentence or two why you chose them."
+          ]
+        }
+      }
+    }
+  },
+  "routingPolicy": {
+    "defaultJourneyId": "placemakers_shop",
+    "fallbackOnCatalogSearch": true
+  },
+  "journeyPlaybook": [
+    {
+      "id": "orient",
+      "name": "Start from the situation",
+      "goal": "Read how the customer arrived (a product word, a problem, an idea, a project, a specific item, a how-to) and start the way your skill \"Start from the customer's situation\" says; for a broad word, welcome them and ask on a question card built from the options the range really has.",
+      "tools": [
+        "browse_range",
+        "explore_options",
+        "consult_business_knowledge",
+        "present_card"
+      ],
+      "exitCondition": "The customer has been welcomed and asked, on a card, what is needed to narrow it down, or has been taken straight to the products they named."
+    },
+    {
+      "id": "understand",
+      "name": "Understand the job",
+      "goal": "Find out what the customer is building, renovating or repairing, and consult the business knowledge for it.",
+      "tools": [
+        "consult_business_knowledge"
+      ],
+      "exitCondition": "The job is understood well enough to search for products, or the scoping questions have been asked."
+    },
+    {
+      "id": "recommend",
+      "name": "Recommend products",
+      "goal": "Search the catalogue and show real matching products with their price and image.",
+      "tools": [
+        "search_products",
+        "get_product"
+      ],
+      "exitCondition": "The customer has seen products that match what they asked for."
+    },
+    {
+      "id": "complete_system",
+      "name": "Complete the system",
+      "goal": "Show the accessories, fixings and related products that go with the chosen product on an accessories card, from the knowledge, the shop's own suggestions and searches; say they are suggestions to check.",
+      "tools": [
+        "get_related_products",
+        "consult_business_knowledge",
+        "search_products"
+      ],
+      "exitCondition": "The related products the job needs have been offered."
+    },
+    {
+      "id": "install_and_warranty",
+      "name": "Installation and warranty",
+      "goal": "Explain installation from the guides on file and state warranty only from documents on file; say plainly when nothing is on file.",
+      "tools": [
+        "search_guides",
+        "get_warranty"
+      ],
+      "exitCondition": "Installation and warranty information has been given or its absence stated."
+    },
+    {
+      "id": "quantity_and_stock",
+      "name": "Quantity and stock",
+      "goal": "Work out how many the customer needs for their area (estimate_quantity, or a calculator where one exists) before anything is added, and check stock for the chosen items.",
+      "tools": [
+        "estimate_quantity",
+        "calculate_quantity",
+        "check_stock"
+      ],
+      "exitCondition": "Quantities and availability have been given or their absence stated."
+    },
+    {
+      "id": "next_step",
+      "name": "Next step",
+      "goal": "Offer one clear next step: add to the cart or a quote, check another item, or connect the customer with a person.",
+      "tools": [
+        "update_cart",
+        "create_quote",
+        "present_card",
+        "hand_off_to_human"
+      ],
+      "exitCondition": "The customer has a clear next step."
+    }
+  ],
+  "modelPolicyOverrides": {
+    "complex_reasoning": {
+      "provider": "google",
+      "model": "gemini-3.5-flash",
+      "timeoutMs": 60000,
+      "maxOutputTokens": 6000
+    }
+  }
+}

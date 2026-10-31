@@ -9,6 +9,7 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+import { readableInk } from '@/lib/shell/theme';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -17,7 +18,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
   const brand = cfg.companyName || 'JourneyAX';
   const accent = cfg.theme?.primaryColor || '#00AEC7';
   const sidebar = cfg.theme?.sidebarColor || '#0B2A56';
@@ -56,7 +56,7 @@ export default function LoginScreen() {
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>JourneyAX · Agent Experience</div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F4F1EC', padding: 32 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, background: '#F4F1EC', padding: 32, overflowY: 'auto' }}>
         <form onSubmit={onSubmit} style={{ width: '100%', maxWidth: 400, background: '#FFFFFF', border: '1px solid #E4DFD4', padding: '36px 36px 30px', boxShadow: '0 12px 40px rgba(11,42,86,0.08)' }}>
           <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, color: '#0A0A0A' }}>Sign in</h2>
           <p style={{ margin: '0 0 24px', fontSize: 13.5, color: '#6B655B' }}>Use your {brand} account to continue.</p>
@@ -93,7 +93,7 @@ export default function LoginScreen() {
             id="login-submit"
             type="submit"
             disabled={busy}
-            style={{ width: '100%', padding: '14px 18px', fontSize: 15, fontWeight: 700, color: '#0A0A0A', background: accent, border: 'none', borderRadius: 8, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1 }}
+            style={{ width: '100%', padding: '14px 18px', fontSize: 15, fontWeight: 700, color: readableInk(accent), background: accent, border: 'none', borderRadius: 8, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1 }}
           >
             {busy ? 'Signing in…' : 'Sign in →'}
           </button>

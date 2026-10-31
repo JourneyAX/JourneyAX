@@ -1,0 +1,10 @@
+{
+  "_comment": "Platform defaults for the 'ask first' card. A pack overrides any wording under extensions.toolStates.wording (validated when saved). Nothing here is specific to a tenant or an industry.",
+  "heading": "Please check before I go ahead",
+  "prompt": "May I go ahead with this?",
+  "action": "Action",
+  "allow": "Allow",
+  "deny": "Not now",
+  "allowed": "You allowed this.",
+  "denied": "You chose not to."
+}

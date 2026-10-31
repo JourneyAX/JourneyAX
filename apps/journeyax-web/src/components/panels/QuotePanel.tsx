@@ -22,7 +22,7 @@ function BomThumb({ imageUrl, name }: { imageUrl?: string; name: string }) {
 }
 
 export default function QuotePanel() {
-  const { state, dispatch, bom, totals, quoteTitle, handleApprove, handleTryRemove } = useJourney();
+  const { state, dispatch, bom, totals, quoteTitle, requestCheckout, handleTryRemove } = useJourney();
   const cfg = useStorefrontConfig();
   const { qty, finish, selectedAddons } = state;
   const ordering = !!state.ordering;
@@ -345,7 +345,7 @@ export default function QuotePanel() {
             >
               {isFixtures ? 'Download BOM' : 'Download spec sheet'}
             </button>
-            <button className="btn-approve" onClick={handleApprove} disabled={ordering || !canOrder}>
+            <button className="btn-approve" onClick={requestCheckout} disabled={ordering || !canOrder}>
               {ordering ? 'Starting secure checkout…' : 'Approve & pay securely'}
               {!ordering && (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>

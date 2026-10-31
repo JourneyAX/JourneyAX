@@ -32,9 +32,19 @@ import * as crypto from 'crypto';
 import {
   computePackChecksum,
   getVerifiedBusinessPackMetadata,
+  welcomeFor,
+  type DashboardView,
+  type Welcome,
 } from '@journeyax/business-pack';
 import { isInCanaryBucket } from '@journeyax/journey-core';
+import { principalFrom } from '@journeyax/shared-types';
+import { connectorList, type ConnectorListItem } from './kernel/connector.runtime';
+import { DashboardViewService } from './dashboard/dashboard-view';
+import { customerAccountSettings } from './agent/customer-account';
+import type { PersonCompany } from './kernel/company-directory';
 import { idleRepinHours, isIdleBeyond, packHostsWorkspace } from './kernel/pin-lifecycle';
+import { isAgentModeEnabled } from './agent/agent-loop';
+import { getAgentToolDefinitions } from './agent/agent-tools';
 
 
 
@@ -272,6 +282,14 @@ export class RuntimeService {
     workspaceId: string
   ): Promise<WorkspaceState | null> {
     return this.appService.workspaceRepo.load(tenantId, environmentId, workspaceId);
+  }
+
+  async getTranscript(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    workspaceId: string
+  ): Promise<any> {
+    return this.appService.transcriptStore.getTranscript(tenantId, workspaceId, environmentId);
   }
 
   /**
@@ -825,6 +843,137 @@ export class RuntimeService {
    */
   async getOutboxMetrics(tenantId?: string): Promise<{ pending: number; leased: number; published: number; deadLetter: number }> {
     return this.appService.outboxRepo.getMetrics(tenantId);
+  }
+
+  /** The connectors this person may use under the tenant's active pack, for the chat's "+" menu. Empty when there is no pack or no connector. */
+  async listConnectors(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    person: { userId?: string; role?: string; groups?: string[] }
+  ): Promise<{ connectors: ConnectorListItem[]; packVersion?: string; welcome?: Welcome }> {
+    let pack: any = null;
+    try {
+      pack = await this.appService.packRepo.loadActivePack(tenantId, environmentId);
+    } catch {
+      return { connectors: [] };
+    }
+    const principal = principalFrom({ userId: person.userId, tenantId, role: person.role, groups: person.groups });
+    // What the empty chat says to this person (pack `extensions.welcome`) travels with their connector list: the same call, the same identity.
+    const companies = await this.companiesOf(pack, tenantId, principal);
+    const welcome = welcomeFor(pack?.extensions?.welcome, { audience: principal.audience, groups: principal.groups, companyRoles: companies.map((company) => company.role) });
+    return { connectors: connectorList(pack, { audience: principal.audience, groups: principal.groups }), packVersion: pack?.manifest?.version, ...(welcome ? { welcome } : {}) };
+  }
+
+  private dashboardViews: DashboardViewService | null = null;
+
+  /**
+   * The companies the team linked a signed-in trade customer to, from the verified login (never from the page), and only when the pack turns
+   * customer accounts on. Nobody else has any: staff and an ordinary shopper get an empty list.
+   */
+  private async companiesOf(pack: any, tenantId: string, principal: { audience: string; userId?: string }): Promise<PersonCompany[]> {
+    const login = String(principal.userId || '');
+    if (principal.audience !== 'shopper' || !login.includes('@') || !customerAccountSettings(pack).enabled) return [];
+    try {
+      return await this.appService.companyDirectory.companiesFor(tenantId, login);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * The corner tile and dashboard this person's team has in the active pack (`extensions.dashboard`), with the figures read through the
+   * connector gate for this person. `{}` when there is no pack, no dashboard for them, or nothing could be read: the page then shows no tile.
+   */
+  async getDashboard(
+    tenantId: string,
+    environmentId: EnvironmentId,
+    person: { userId?: string; role?: string; groups?: string[] }
+  ): Promise<{ dashboard?: DashboardView }> {
+    let pack: any = null;
+    try {
+      pack = await this.appService.packRepo.loadActivePack(tenantId, environmentId);
+    } catch {
+      return {};
+    }
+    if (!pack?.extensions?.dashboard) return {};
+    const principal = principalFrom({ userId: person.userId, tenantId, role: person.role, groups: person.groups });
+    // Staff have a team's board; a shopper has one only when the team linked them to a company (a trade customer).
+    const companies = await this.companiesOf(pack, tenantId, principal);
+    if (principal.audience !== 'staff' && companies.length === 0) return {};
+    const runtime = this.appService.capabilityGateway?.getConnectorRuntime?.();
+    if (!runtime) return {};
+    this.dashboardViews ||= new DashboardViewService({ runtime });
+    const dashboard = await this.dashboardViews.load({
+      tenantId,
+      environmentId,
+      release: pack,
+      person: { userId: principal.userId, role: principal.roleType, audience: principal.audience, groups: principal.groups },
+      companies,
+    });
+    return dashboard ? { dashboard } : {};
+  }
+
+  /**
+   * Retrieves active engine mode, default agent ID, and tool count for a tenant.
+   */
+  async getEngineMode(
+    tenantId: string,
+    environmentId: EnvironmentId = 'production'
+  ): Promise<{
+    status: string;
+    tenantId: string;
+    environmentId: EnvironmentId;
+    engineMode: 'agent' | 'rule-based';
+    defaultAgentId?: string;
+    toolCount: number;
+    availableTools: string[];
+    packVersion?: string;
+  }> {
+    let pack: any = null;
+    try {
+      pack = await this.appService.packRepo.loadActivePack(tenantId, environmentId);
+    } catch {
+      // pack not found
+    }
+
+    if (!pack) {
+      return {
+        status: 'not_found',
+        tenantId,
+        environmentId,
+        engineMode: 'rule-based',
+        toolCount: 0,
+        availableTools: [],
+      };
+    }
+
+    const isAgent = isAgentModeEnabled(pack);
+    const engineMode: 'agent' | 'rule-based' = isAgent ? 'agent' : 'rule-based';
+    const defaultAgentId =
+      (pack.extensions?.agentMode as any)?.defaultAgentId ||
+      pack.routingPolicy?.defaultAgentId ||
+      (Array.isArray(pack.agents) && pack.agents.length === 1 ? pack.agents.find(Boolean)?.agentId : undefined);
+
+    const tools = isAgent ? getAgentToolDefinitions(pack) : [];
+    const toolCount = isAgent ? tools.length : (pack.capabilities || []).length;
+    const availableTools = isAgent
+      ? tools.map((t) => t.name)
+      : (pack.capabilities || []).map((c: any) => c.capabilityId || c.name || c.id || String(c));
+
+    console.log(
+      `[EngineStatus] Active engine mode for tenant='${tenantId}' (${environmentId}): mode='${engineMode}' agentId='${defaultAgentId || 'none'}' toolsCount=${toolCount}`
+    );
+
+    return {
+      status: 'ok',
+      tenantId,
+      environmentId,
+      engineMode,
+      defaultAgentId,
+      toolCount,
+      availableTools,
+      packVersion: pack.manifest?.version || pack.manifest?.packId,
+    };
   }
 }
 

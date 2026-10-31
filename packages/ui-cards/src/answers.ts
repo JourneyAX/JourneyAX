@@ -12,11 +12,14 @@ export interface AnswerQuestion {
   options?: unknown;
   multi?: boolean;
   inputType?: string;
+  unit?: string;
   answer?: unknown;
 }
 
 export function answerLabel(question: AnswerQuestion, answer: unknown): string {
   const text = Array.isArray(answer) ? answer.map(String).join(', ') : String(answer ?? '');
+  // A number asked for with a unit ("20" on an area question in m²) is said with it, so "20 m²" is what the customer and the consultant read.
+  if (typeof question.unit === 'string' && question.unit.trim() && /^-?\d+(\.\d+)?$/.test(text.trim())) return `${text.trim()} ${question.unit.trim()}`;
   if (question.multi === true || question.inputType === 'multi_select' || Array.isArray(answer)) return text;
   const options = Array.isArray(question.options) ? question.options : [];
   const hit = options.find((option: any) => option && typeof option === 'object' && String(option.value) === text.trim());
@@ -24,12 +27,33 @@ export function answerLabel(question: AnswerQuestion, answer: unknown): string {
   return label || text;
 }
 
-/** One "question → answer" line per question, as the server reads a tapped answer. */
-export function answerSummary(questions: AnswerQuestion[], answers: Record<string, string | undefined>): string {
+/** Said after a number the card questioned ("did you mean 1.2?") and the customer kept as typed, so it is not asked about again. */
+export const KEPT_AS_TYPED = '(checked, kept as typed)';
+
+/** One "question → answer" line per question, as the server reads a tapped answer. `kept` names the questions whose number the customer kept after the card questioned it. */
+export function answerSummary(questions: AnswerQuestion[], answers: Record<string, string | undefined>, kept?: Record<string, boolean | undefined>): string {
   return questions
     .map((question) => {
       const given = (question.id !== undefined ? answers[question.id] : undefined) ?? question.answer;
-      return `${question.text || question.title || question.id} → ${given === undefined || given === null ? 'Not answered' : answerLabel(question, given)}`;
+      const label = given === undefined || given === null ? 'Not answered' : answerLabel(question, given);
+      const note = given !== undefined && given !== null && question.id !== undefined && kept?.[question.id] ? ` ${KEPT_AS_TYPED}` : '';
+      return `${question.text || question.title || question.id} → ${label}${note}`;
     })
     .join('\n');
+}
+
+/**
+ * A number outside the usual range, moved a decimal place or two to land inside it (18 for 1.8, 0.24 for 2.4); undefined when no
+ * shift does. The customer is asked "did you mean…?" once and may keep what they typed.
+ */
+export function nearbyInRange(value: number, min?: number, max?: number): number | undefined {
+  if (!Number.isFinite(value) || value === 0) return undefined;
+  const inside = (n: number) => (min === undefined || n >= min) && (max === undefined || n <= max);
+  if (inside(value)) return undefined;
+  const tooBig = max !== undefined && value > max;
+  for (const shift of tooBig ? [0.1, 0.01] : [10, 100]) {
+    const moved = Math.round(value * shift * 1000) / 1000;
+    if (inside(moved)) return moved;
+  }
+  return undefined;
 }

@@ -288,6 +288,29 @@ export class AnalyticsController {
   }
 
   /**
+   * Tracked knowledge gaps (uncovered topics) so authors can fill the gaps.
+   */
+  @Get('knowledge-gaps')
+  async getKnowledgeGaps(
+    @Query('projectId') projectId: string,
+    @Headers('x-tenant-id') headerTenantId: string,
+    @Headers('x-user-permissions') permissions: string,
+    @Headers('x-user-email') userEmail: string,
+    @Headers('x-user-role') userRole: string,
+    @Query('environmentId') environmentId?: string,
+  ) {
+    const tenant = projectId || headerTenantId;
+    if (!tenant) throw new BadRequestException('tenantId or projectId required');
+    if (!userEmail) throw new UnauthorizedException('Missing gateway identity headers');
+    verifyTenant(tenant, headerTenantId, userRole);
+    verifyPermission(permissions, userRole, 'analytics:read');
+
+    return this.analyticsService.getKnowledgeGaps(tenant, {
+      environmentId: environmentId as any,
+    });
+  }
+
+  /**
    * 6. Custom Reports: Creation.
    */
   @Post('reports')

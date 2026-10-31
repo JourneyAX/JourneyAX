@@ -1,0 +1,111 @@
+{
+  "connectorId": "marketing-cloud",
+  "tenantId": "placemakers",
+  "builtFrom": "PlaceMakers product master and content master (read only), plus a seeded generator",
+  "provenance": {
+    "messages": {
+      "origin": "sample",
+      "source": "invented",
+      "realFields": [],
+      "madeUpFields": [
+        "every field"
+      ]
+    },
+    "contacts": {
+      "origin": "sample",
+      "source": "invented (the sample accounts' contacts)",
+      "realFields": [],
+      "madeUpFields": [
+        "every field"
+      ]
+    },
+    "templates": {
+      "origin": "sample",
+      "source": "invented",
+      "realFields": [],
+      "madeUpFields": [
+        "every field"
+      ]
+    }
+  },
+  "collections": {
+    "messages": [
+      {"messageId":"MSG-20001","accountId":"ACC-0003","contactName":"Mason Nguyen","contactEmail":"mason.nguyen@example.test","channel":"email","templateId":"TPL-107","campaign":"Back in stock","subject":"Back in stock","status":"delivered","sentAt":"2026-07-05T10:58:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20002","accountId":"ACC-0008","contactName":"Sione Fenwick","contactEmail":"sione.fenwick@example.test","channel":"sms","templateId":"TPL-105","campaign":"Credit note issued","subject":"Credit note issued","status":"opened","sentAt":"2026-07-06T10:19:00.000Z","openedAt":"2026-07-06T22:10:00.000Z","sample":true},
+      {"messageId":"MSG-20003","accountId":"ACC-0012","contactName":"Una Pemberton","contactEmail":"una.pemberton@example.test","channel":"email","templateId":"TPL-103","campaign":"Delivery rescheduled","subject":"Delivery rescheduled","status":"bounced","sentAt":"2026-07-07T14:05:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20004","accountId":"ACC-0002","contactName":"Grace Hartley","contactEmail":"grace.hartley@example.test","channel":"email","templateId":"TPL-104","campaign":"Quote follow-up","subject":"Quote follow-up","status":"opened","sentAt":"2026-07-10T15:57:00.000Z","openedAt":"2026-07-10T22:25:00.000Z","sample":true},
+      {"messageId":"MSG-20005","accountId":"ACC-0019","contactName":"Ruth Halloran","contactEmail":"ruth.halloran@example.test","channel":"email","templateId":"TPL-101","campaign":"Order ready for collection","subject":"Order ready for collection","status":"delivered","sentAt":"2026-07-15T14:01:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20006","accountId":"ACC-0028","contactName":"Graham Harlow","contactEmail":"graham.harlow@example.test","channel":"sms","templateId":"TPL-102","campaign":"Delivery on its way","subject":"Delivery on its way","status":"delivered","sentAt":"2026-07-16T09:16:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20007","accountId":"ACC-0018","contactName":"Priya Talbot","contactEmail":"priya.talbot@example.test","channel":"sms","templateId":"TPL-105","campaign":"Credit note issued","subject":"Credit note issued","status":"opened","sentAt":"2026-07-16T16:47:00.000Z","openedAt":"2026-07-16T18:31:00.000Z","sample":true},
+      {"messageId":"MSG-20008","accountId":"ACC-0011","contactName":"Kiri Pemberton","contactEmail":"kiri.pemberton@example.test","channel":"email","templateId":"TPL-103","campaign":"Delivery rescheduled","subject":"Delivery rescheduled","status":"opened","sentAt":"2026-07-19T09:06:00.000Z","openedAt":"2026-07-19T20:08:00.000Z","sample":true},
+      {"messageId":"MSG-20009","accountId":"ACC-0006","contactName":"Xavier Dunmore","contactEmail":"xavier.dunmore@example.test","channel":"email","templateId":"TPL-101","campaign":"Order ready for collection","subject":"Order ready for collection","status":"opened","sentAt":"2026-07-19T16:59:00.000Z","openedAt":"2026-07-19T20:38:00.000Z","sample":true},
+      {"messageId":"MSG-20010","accountId":"ACC-0030","contactName":"Jess Ngata","contactEmail":"jess.ngata@example.test","channel":"sms","templateId":"TPL-105","campaign":"Credit note issued","subject":"Credit note issued","status":"bounced","sentAt":"2026-07-20T09:38:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20011","accountId":"ACC-0009","contactName":"Hemi Tomlinson","contactEmail":"hemi.tomlinson@example.test","channel":"sms","templateId":"TPL-105","campaign":"Credit note issued","subject":"Credit note issued","status":"bounced","sentAt":"2026-07-20T11:32:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20012","accountId":"ACC-0025","contactName":"Priya Redfern","contactEmail":"priya.redfern@example.test","channel":"email","templateId":"TPL-107","campaign":"Back in stock","subject":"Back in stock","status":"clicked","sentAt":"2026-07-22T14:08:00.000Z","openedAt":"2026-07-22T17:46:00.000Z","sample":true},
+      {"messageId":"MSG-20013","accountId":"ACC-0021","contactName":"Ruth Mackie","contactEmail":"ruth.mackie@example.test","channel":"email","templateId":"TPL-107","campaign":"Back in stock","subject":"Back in stock","status":"opened","sentAt":"2026-07-22T14:27:00.000Z","openedAt":"2026-07-22T21:19:00.000Z","sample":true},
+      {"messageId":"MSG-20014","accountId":"ACC-0022","contactName":"Aroha Fenwick","contactEmail":"aroha.fenwick@example.test","channel":"email","templateId":"TPL-103","campaign":"Delivery rescheduled","subject":"Delivery rescheduled","status":"clicked","sentAt":"2026-07-24T10:53:00.000Z","openedAt":"2026-07-24T21:47:00.000Z","sample":true},
+      {"messageId":"MSG-20015","accountId":"ACC-0026","contactName":"Mere Tasman","contactEmail":"mere.tasman@example.test","channel":"email","templateId":"TPL-107","campaign":"Back in stock","subject":"Back in stock","status":"delivered","sentAt":"2026-07-26T09:22:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20016","accountId":"ACC-0028","contactName":"Graham Harlow","contactEmail":"graham.harlow@example.test","channel":"email","templateId":"TPL-101","campaign":"Order ready for collection","subject":"Order ready for collection","status":"delivered","sentAt":"2026-07-27T10:59:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20017","accountId":"ACC-0028","contactName":"Graham Harlow","contactEmail":"graham.harlow@example.test","channel":"email","templateId":"TPL-100","campaign":"Order confirmed","subject":"Order confirmed","status":"opened","sentAt":"2026-07-29T10:42:00.000Z","openedAt":"2026-07-29T21:53:00.000Z","sample":true},
+      {"messageId":"MSG-20018","accountId":"ACC-0013","contactName":"Ben Okafor","contactEmail":"ben.okafor@example.test","channel":"email","templateId":"TPL-107","campaign":"Back in stock","subject":"Back in stock","status":"opened","sentAt":"2026-07-31T08:34:00.000Z","openedAt":"2026-07-31T17:29:00.000Z","sample":true},
+      {"messageId":"MSG-20019","accountId":"ACC-0017","contactName":"Fiona Sutherland","contactEmail":"fiona.sutherland@example.test","channel":"in_app","templateId":"TPL-100","campaign":"Order confirmed","subject":"Order confirmed","status":"delivered","sentAt":"2026-08-03T09:17:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20020","accountId":"ACC-0007","contactName":"Wendy Ngata","contactEmail":"wendy.ngata@example.test","channel":"email","templateId":"TPL-100","campaign":"Order confirmed","subject":"Order confirmed","status":"opened","sentAt":"2026-08-08T11:09:00.000Z","openedAt":"2026-08-08T18:18:00.000Z","sample":true},
+      {"messageId":"MSG-20021","accountId":"ACC-0014","contactName":"Callum Okafor","contactEmail":"callum.okafor@example.test","channel":"sms","templateId":"TPL-102","campaign":"Delivery on its way","subject":"Delivery on its way","status":"delivered","sentAt":"2026-08-08T12:33:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20022","accountId":"ACC-0023","contactName":"Wendy Nguyen","contactEmail":"wendy.nguyen@example.test","channel":"in_app","templateId":"TPL-101","campaign":"Order ready for collection","subject":"Order ready for collection","status":"opened","sentAt":"2026-08-10T09:53:00.000Z","openedAt":"2026-08-10T19:05:00.000Z","sample":true},
+      {"messageId":"MSG-20023","accountId":"ACC-0017","contactName":"Fiona Sutherland","contactEmail":"fiona.sutherland@example.test","channel":"sms","templateId":"TPL-105","campaign":"Credit note issued","subject":"Credit note issued","status":"delivered","sentAt":"2026-08-13T14:47:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20024","accountId":"ACC-0016","contactName":"Kyle Mackie","contactEmail":"kyle.mackie@example.test","channel":"in_app","templateId":"TPL-103","campaign":"Delivery rescheduled","subject":"Delivery rescheduled","status":"delivered","sentAt":"2026-08-14T10:57:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20025","accountId":"ACC-0009","contactName":"Hemi Tomlinson","contactEmail":"hemi.tomlinson@example.test","channel":"email","templateId":"TPL-100","campaign":"Order confirmed","subject":"Order confirmed","status":"delivered","sentAt":"2026-08-14T10:58:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20026","accountId":"ACC-0021","contactName":"Ruth Mackie","contactEmail":"ruth.mackie@example.test","channel":"in_app","templateId":"TPL-100","campaign":"Order confirmed","subject":"Order confirmed","status":"clicked","sentAt":"2026-08-15T08:15:00.000Z","openedAt":"2026-08-15T21:02:00.000Z","sample":true},
+      {"messageId":"MSG-20027","accountId":"ACC-0026","contactName":"Mere Tasman","contactEmail":"mere.tasman@example.test","channel":"email","templateId":"TPL-107","campaign":"Back in stock","subject":"Back in stock","status":"delivered","sentAt":"2026-08-15T09:23:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20028","accountId":"ACC-0002","contactName":"Grace Hartley","contactEmail":"grace.hartley@example.test","channel":"email","templateId":"TPL-107","campaign":"Back in stock","subject":"Back in stock","status":"bounced","sentAt":"2026-08-16T10:07:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20029","accountId":"ACC-0006","contactName":"Xavier Dunmore","contactEmail":"xavier.dunmore@example.test","channel":"email","templateId":"TPL-106","campaign":"Price list update","subject":"Price list update","status":"opened","sentAt":"2026-08-21T16:21:00.000Z","openedAt":"2026-08-21T18:57:00.000Z","sample":true},
+      {"messageId":"MSG-20030","accountId":"ACC-0008","contactName":"Sione Fenwick","contactEmail":"sione.fenwick@example.test","channel":"email","templateId":"TPL-106","campaign":"Price list update","subject":"Price list update","status":"delivered","sentAt":"2026-08-24T15:35:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20031","accountId":"ACC-0014","contactName":"Callum Okafor","contactEmail":"callum.okafor@example.test","channel":"in_app","templateId":"TPL-100","campaign":"Order confirmed","subject":"Order confirmed","status":"opened","sentAt":"2026-08-25T14:58:00.000Z","openedAt":"2026-08-25T20:33:00.000Z","sample":true},
+      {"messageId":"MSG-20032","accountId":"ACC-0008","contactName":"Sione Fenwick","contactEmail":"sione.fenwick@example.test","channel":"in_app","templateId":"TPL-104","campaign":"Quote follow-up","subject":"Quote follow-up","status":"delivered","sentAt":"2026-08-28T15:12:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20033","accountId":"ACC-0020","contactName":"Zane Kereama","contactEmail":"zane.kereama@example.test","channel":"sms","templateId":"TPL-102","campaign":"Delivery on its way","subject":"Delivery on its way","status":"delivered","sentAt":"2026-09-01T10:30:00.000Z","openedAt":null,"sample":true},
+      {"messageId":"MSG-20034","accountId":"ACC-0026","contactName":"Mere Tasman","contactEmail":"mere.tasman@example.test","channel":"email","templateId":"TPL-101","campaign":"Order ready for collection","subject":"Order ready for collection","status":"opened","sentAt":"2026-09-01T16:30:00.000Z","openedAt":"2026-09-01T19:17:00.000Z","sample":true}
+    ],
+    "contacts": [
+      {"contactId":"CON-0001","accountId":"ACC-0001","name":"Tessa Thornbury","email":"tessa.thornbury@example.test","phone":"021 555 8421","emailOptIn":false,"sample":true},
+      {"contactId":"CON-0002","accountId":"ACC-0002","name":"Grace Hartley","email":"grace.hartley@example.test","phone":"021 555 1072","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0003","accountId":"ACC-0003","name":"Mason Nguyen","email":"mason.nguyen@example.test","phone":"021 555 4483","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0004","accountId":"ACC-0004","name":"Quinn Thornbury","email":"quinn.thornbury@example.test","phone":"021 555 3454","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0005","accountId":"ACC-0005","name":"Hemi Penrose","email":"hemi.penrose@example.test","phone":"021 555 9735","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0006","accountId":"ACC-0006","name":"Xavier Dunmore","email":"xavier.dunmore@example.test","phone":"021 555 3356","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0007","accountId":"ACC-0007","name":"Wendy Ngata","email":"wendy.ngata@example.test","phone":"021 555 6197","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0008","accountId":"ACC-0008","name":"Sione Fenwick","email":"sione.fenwick@example.test","phone":"021 555 7748","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0009","accountId":"ACC-0009","name":"Hemi Tomlinson","email":"hemi.tomlinson@example.test","phone":"021 555 5689","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0010","accountId":"ACC-0010","name":"Yvette Kereama","email":"yvette.kereama@example.test","phone":"021 555 3380","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0011","accountId":"ACC-0011","name":"Kiri Pemberton","email":"kiri.pemberton@example.test","phone":"021 555 3801","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0012","accountId":"ACC-0012","name":"Una Pemberton","email":"una.pemberton@example.test","phone":"021 555 4702","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0013","accountId":"ACC-0013","name":"Ben Okafor","email":"ben.okafor@example.test","phone":"021 555 1313","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0014","accountId":"ACC-0014","name":"Callum Okafor","email":"callum.okafor@example.test","phone":"021 555 7334","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0015","accountId":"ACC-0015","name":"Owen Vance","email":"owen.vance@example.test","phone":"021 555 2375","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0016","accountId":"ACC-0016","name":"Kyle Mackie","email":"kyle.mackie@example.test","phone":"021 555 9356","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0017","accountId":"ACC-0017","name":"Fiona Sutherland","email":"fiona.sutherland@example.test","phone":"021 555 3337","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0018","accountId":"ACC-0018","name":"Priya Talbot","email":"priya.talbot@example.test","phone":"021 555 2578","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0019","accountId":"ACC-0019","name":"Ruth Halloran","email":"ruth.halloran@example.test","phone":"021 555 3319","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0020","accountId":"ACC-0020","name":"Zane Kereama","email":"zane.kereama@example.test","phone":"021 555 6120","emailOptIn":false,"sample":true},
+      {"contactId":"CON-0021","accountId":"ACC-0021","name":"Ruth Mackie","email":"ruth.mackie@example.test","phone":"021 555 3591","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0022","accountId":"ACC-0022","name":"Aroha Fenwick","email":"aroha.fenwick@example.test","phone":"021 555 9952","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0023","accountId":"ACC-0023","name":"Wendy Nguyen","email":"wendy.nguyen@example.test","phone":"021 555 7673","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0024","accountId":"ACC-0024","name":"Wiremu Paterson","email":"wiremu.paterson@example.test","phone":"021 555 6364","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0025","accountId":"ACC-0025","name":"Priya Redfern","email":"priya.redfern@example.test","phone":"021 555 5015","emailOptIn":false,"sample":true},
+      {"contactId":"CON-0026","accountId":"ACC-0026","name":"Mere Tasman","email":"mere.tasman@example.test","phone":"021 555 1326","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0027","accountId":"ACC-0027","name":"Leah Stanbridge","email":"leah.stanbridge@example.test","phone":"021 555 5487","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0028","accountId":"ACC-0028","name":"Graham Harlow","email":"graham.harlow@example.test","phone":"021 555 5158","emailOptIn":false,"sample":true},
+      {"contactId":"CON-0029","accountId":"ACC-0029","name":"Ruth Whitaker","email":"ruth.whitaker@example.test","phone":"021 555 7619","emailOptIn":true,"sample":true},
+      {"contactId":"CON-0030","accountId":"ACC-0030","name":"Jess Ngata","email":"jess.ngata@example.test","phone":"021 555 2440","emailOptIn":true,"sample":true}
+    ],
+    "templates": [
+      {"templateId":"TPL-100","name":"Order confirmed","channel":"email","sample":true},
+      {"templateId":"TPL-101","name":"Order ready for collection","channel":"email","sample":true},
+      {"templateId":"TPL-102","name":"Delivery on its way","channel":"sms","sample":true},
+      {"templateId":"TPL-103","name":"Delivery rescheduled","channel":"email","sample":true},
+      {"templateId":"TPL-104","name":"Quote follow-up","channel":"email","sample":true},
+      {"templateId":"TPL-105","name":"Credit note issued","channel":"sms","sample":true},
+      {"templateId":"TPL-106","name":"Price list update","channel":"email","sample":true},
+      {"templateId":"TPL-107","name":"Back in stock","channel":"email","sample":true}
+    ]
+  }
+}

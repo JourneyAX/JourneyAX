@@ -125,6 +125,15 @@ async function runMembershipTests() {
 
     const check = await membershipService.verifyMembership('user1@example.com', 'tenant-alpha');
     assert.equal(check.role, 'manager');
+    assert.deepEqual(check.teams, [], 'a member with no teams has an empty list, not nothing');
+  });
+
+  // Test 3b: the gateway signs a member's teams as their groups, so the check returns them
+  await test('verifyMembership returns the member\'s teams', async () => {
+    await mockMembersCol.updateOne({ email: 'user1@example.com', projectId: 'tenant-alpha' }, { $set: { teams: ['Customer Service', 'sales'] } });
+    const check = await membershipService.verifyMembership('user1@example.com', 'tenant-alpha');
+    assert.equal(check.isMember, true);
+    assert.deepEqual(check.teams, ['Customer Service', 'sales']);
   });
 
   // Test 4: Member soft revocation

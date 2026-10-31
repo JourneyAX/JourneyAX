@@ -50,6 +50,7 @@ export interface CanonicalProduct {
   variants: ProductVariant[];
   variantCount: number;
   totalStock?: number;
+  attributes?: Record<string, string>;
 }
 
 /* ─────────────────────────── shared helpers ─────────────────────────── */
@@ -155,11 +156,174 @@ export class VariantPopulator implements Populator<FeedRow, CanonicalProduct> {
   }
 }
 
+/**
+ * Attribute extraction populator for index-time structured attribute extraction.
+ * Reads attributeDefinitions from constructor or ConversionContext flags,
+ * runs regex patterns against title, name, description, specs, and row data,
+ * and sets normalized values on target.attributes.
+ */
+export class AttributeExtractionPopulator implements Populator<FeedRow, CanonicalProduct> {
+  readonly id = 'attribute-extraction';
+  readonly order = 35;
+  private readonly attributeDefinitions?: Record<string, any>;
+
+  constructor(attributeDefinitions?: Record<string, any>) {
+    this.attributeDefinitions = attributeDefinitions;
+  }
+
+  populate(row: FeedRow, t: CanonicalProduct, ctx?: ConversionContext): void {
+    const defs = this.attributeDefinitions || (ctx?.flags?.attributeDefinitions as Record<string, any>);
+    if (!defs || typeof defs !== 'object') return;
+
+    t.attributes ||= {};
+    const fullText = [
+      t.name,
+      t.description,
+      t.features,
+      t.category,
+      row.Item_Name,
+      row.Item_Description,
+      row.Features,
+      row.Size,
+    ].filter(Boolean).join(' ');
+
+    for (const [attrName, def] of Object.entries(defs)) {
+      if (!def || typeof def !== 'object') continue;
+      let matchedVal: string | undefined;
+
+      if (row[attrName]) {
+        matchedVal = clean(row[attrName]);
+      }
+
+      if (!matchedVal && Array.isArray((def as any).extractionPatterns)) {
+        for (const pattern of (def as any).extractionPatterns) {
+          try {
+            const m = fullText.match(new RegExp(pattern, 'i'));
+            if (m) {
+              matchedVal = (m[1] || m[0]).trim();
+              break;
+            }
+          } catch {
+            // ignore regex error
+          }
+        }
+      }
+
+      if (matchedVal) {
+        let norm = matchedVal.trim();
+        const normalizer = (def as any).normalizer;
+        if (normalizer === 'remove_spaces') {
+          norm = norm.replace(/\s+/g, '');
+        } else if (normalizer === 'trim_lower') {
+          norm = norm.toLowerCase();
+        }
+
+        // Canonicalize to primary equivalence key if present in equivalenceTable
+        const table = (def as any).equivalenceTable;
+        if (table && typeof table === 'object') {
+          const normKey = norm.toLowerCase().replace(/\s+/g, '');
+          for (const [canonicalKey, cluster] of Object.entries(table)) {
+            if (
+              canonicalKey.toLowerCase().replace(/\s+/g, '') === normKey ||
+              (Array.isArray(cluster) && cluster.some((c: string) => c.toLowerCase().replace(/\s+/g, '') === normKey))
+            ) {
+              norm = canonicalKey;
+              break;
+            }
+          }
+        }
+
+        t.attributes[attrName] = norm;
+      }
+    }
+  }
+}
+
+/**
+ * Standalone attribute extraction function to extract structured attributes
+ * from any product document using catalogue attribute definitions.
+ */
+export function extractProductAttributes(
+  doc: {
+    name?: string;
+    title?: string;
+    description?: string;
+    features?: string;
+    category?: string;
+    specs?: Record<string, any>;
+    attributes?: Record<string, any>;
+    [k: string]: any;
+  },
+  attributeDefinitions?: Record<string, any>
+): Record<string, string> {
+  if (!attributeDefinitions || typeof attributeDefinitions !== 'object') return {};
+  const extracted: Record<string, string> = {};
+  const specText = doc.specs ? Object.entries(doc.specs).map(([k, v]) => `${k}: ${v}`).join(' ') : '';
+  const fullText = [doc.title || doc.name, doc.description, doc.features, doc.category, specText].filter(Boolean).join(' ');
+
+  for (const [attrName, def] of Object.entries(attributeDefinitions)) {
+    if (!def || typeof def !== 'object') continue;
+    let matchedVal: string | undefined;
+
+    if (doc.specs?.[attrName] != null) {
+      matchedVal = String(doc.specs[attrName]).trim();
+    } else if (doc.attributes?.[attrName] != null) {
+      matchedVal = String(doc.attributes[attrName]).trim();
+    } else if (doc[attrName] != null && typeof doc[attrName] === 'string') {
+      matchedVal = String(doc[attrName]).trim();
+    }
+
+    if (!matchedVal && Array.isArray((def as any).extractionPatterns)) {
+      for (const pattern of (def as any).extractionPatterns) {
+        try {
+          const m = fullText.match(new RegExp(pattern, 'i'));
+          if (m) {
+            matchedVal = (m[1] || m[0]).trim();
+            break;
+          }
+        } catch {
+          // ignore regex error
+        }
+      }
+    }
+
+    if (matchedVal) {
+      let norm = matchedVal.trim();
+      const normalizer = (def as any).normalizer;
+      if (normalizer === 'remove_spaces') {
+        norm = norm.replace(/\s+/g, '');
+      } else if (normalizer === 'trim_lower') {
+        norm = norm.toLowerCase();
+      }
+
+      // Canonicalize to primary equivalence key if present in equivalenceTable
+      const table = (def as any).equivalenceTable;
+      if (table && typeof table === 'object') {
+        const normKey = norm.toLowerCase().replace(/\s+/g, '');
+        for (const [canonicalKey, cluster] of Object.entries(table)) {
+          if (
+            canonicalKey.toLowerCase().replace(/\s+/g, '') === normKey ||
+            (Array.isArray(cluster) && cluster.some((c: string) => c.toLowerCase().replace(/\s+/g, '') === normKey))
+          ) {
+            norm = canonicalKey;
+            break;
+          }
+        }
+      }
+
+      extracted[attrName] = norm;
+    }
+  }
+
+  return extracted;
+}
+
 /** The default ordered set for a standard product feed. */
-export const defaultProductPopulators = (): Populator<FeedRow, CanonicalProduct>[] => [
+export const defaultProductPopulators = (attributeDefinitions?: Record<string, any>): Populator<FeedRow, CanonicalProduct>[] => [
   new IdentityPopulator(),
   new ImagePopulator(),
   new ColourSizePopulator(),
+  new AttributeExtractionPopulator(attributeDefinitions),
   new PricePopulator(),
   new VariantPopulator(),
 ];

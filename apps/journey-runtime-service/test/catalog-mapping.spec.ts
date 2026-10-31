@@ -3,6 +3,7 @@ import { createSuite } from '@journeyax/test-support';
 import { CatalogSearchHandler } from '../src/capabilities/handlers/catalog-search.handler';
 import {
   classifyAvailability,
+  normalizeCatalogProduct,
   resolveCatalogMapping,
   CatalogMappingSchema,
 } from '@journeyax/business-pack';
@@ -119,6 +120,22 @@ async function main() {
     const result = await search({ query: 'boot' }, { searchPaths: ['$where'] });
     assert.equal(result.items.length, 0);
     assert.match(result.error, /invalid/);
+  });
+
+  await suite.test('feature statements, a rating and branch availability are read from the mapped fields, and warnings are kept apart from highlights', () => {
+    const mapping = resolveCatalogMapping();
+    const item = normalizeCatalogProduct({
+      sku: 'W1', name: 'Wet board', price: 10, currency: 'NZD',
+      featuresList: ['Suitable for bathrooms', ' Suitable for bathrooms ', 'Should not be used where it will be exposed to water', 'Water resistant core', '', 'x', 'Not suitable for exterior use'],
+      rating: { value: 4.9, count: 88 }, stock: { branchCount: 87, availableBranchCount: 22 },
+    }, mapping, { title: 'Product', category: 'General' });
+    assert.deepEqual(item.highlights, ['Suitable for bathrooms', 'Water resistant core']);
+    assert.deepEqual(item.cautions, ['Should not be used where it will be exposed to water', 'Not suitable for exterior use']);
+    assert.deepEqual([item.rating, item.ratingCount, item.branchesAvailable, item.branchesTotal], [4.9, 88, 22, 87]);
+    const bare = normalizeCatalogProduct({ sku: 'W2', name: 'Plain', rating: { value: 'high' } }, mapping, { title: 'Product', category: 'General' });
+    assert.deepEqual([bare.highlights, bare.cautions, bare.rating, bare.branchesAvailable], [[], [], undefined, undefined]);
+    const custom = normalizeCatalogProduct({ sku: 'W3', name: 'X', featuresList: ['Not for kids', 'Strong'] }, resolveCatalogMapping({ cautionPatterns: ['^not for'] }), { title: 'Product', category: 'General' });
+    assert.deepEqual(custom.cautions, ['Not for kids'], 'the warning patterns are the tenant\'s own data');
   });
 
   await suite.test('classifyAvailability exposes the vocabulary to other callers', () => {

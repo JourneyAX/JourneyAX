@@ -7,6 +7,8 @@
 
 import { BusinessPackRelease } from './schemas/business-pack.schema';
 import { validateSecretReference } from './schemas/capability-binding.schema';
+import { pluginGate } from './plugins';
+import { shopperCanUse } from './access';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning';
@@ -60,6 +62,20 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
     }
   }
 
+  // 4a. Skills: every skill an agent carries must be defined in the pack
+  const definedSkills = new Set(((pack as any).extensions?.skills || []).map((skill: any) => skill?.skillId));
+  for (const agent of pack.agents) {
+    for (const skillId of agent.skills || []) {
+      if (!definedSkills.has(skillId)) {
+        issues.push({
+          severity: 'error',
+          path: `agents[${agent.agentId}].skills`,
+          message: `Agent '${agent.agentId}' carries skill '${skillId}' which is not defined in extensions.skills`,
+        });
+      }
+    }
+  }
+
   // 4b. Validate configured default journey exists (never guessed or fabricated)
   const configuredDefaultJourneyId = pack.routingPolicy?.defaultJourneyId;
   if (configuredDefaultJourneyId && !pack.journeys.some((j) => j.journeyId === configuredDefaultJourneyId)) {
@@ -68,6 +84,210 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
       path: 'routingPolicy.defaultJourneyId',
       message: `routingPolicy.defaultJourneyId '${configuredDefaultJourneyId}' does not match any journey in the pack`,
     });
+  }
+
+  // 4c. Validate Agent Default Configuration (exactly one default when there are several agents)
+  const agents = pack.agents || [];
+  const configuredDefaultAgentId = (pack as any).defaultAgentId || pack.routingPolicy?.defaultAgentId;
+  const isDefaultAgents = agents.filter((a) => a.isDefault === true);
+
+  if (configuredDefaultAgentId && !agents.some((a) => a.agentId === configuredDefaultAgentId)) {
+    issues.push({
+      severity: 'error',
+      path: 'defaultAgentId',
+      message: `defaultAgentId '${configuredDefaultAgentId}' does not match any agent in the pack`,
+    });
+  }
+
+  if (agents.length > 1) {
+    const hasExplicitDefaultId = Boolean(configuredDefaultAgentId && agents.some((a) => a.agentId === configuredDefaultAgentId));
+    const hasSingleFlag = isDefaultAgents.length === 1;
+
+    if (!hasExplicitDefaultId && !hasSingleFlag) {
+      if (isDefaultAgents.length > 1) {
+        issues.push({
+          severity: 'error',
+          path: 'agents',
+          message: `Multiple agents marked with isDefault (${isDefaultAgents.map((a) => a.agentId).join(', ')}). Exactly one default agent is required when a pack declares several agents.`,
+        });
+      } else {
+        issues.push({
+          severity: 'error',
+          path: 'agents',
+          message: `Pack declares ${agents.length} agents but no default agent is designated. Provide defaultAgentId or mark exactly one agent with isDefault: true.`,
+        });
+      }
+    } else if (hasExplicitDefaultId && isDefaultAgents.length > 1) {
+      issues.push({
+        severity: 'error',
+        path: 'agents',
+        message: `Ambiguous default agents: defaultAgentId is '${configuredDefaultAgentId}' and multiple agents have isDefault: true (${isDefaultAgents.map((a) => a.agentId).join(', ')}).`,
+      });
+    }
+  }
+
+  // 4e. Validate who may use which agent (extensions.agentAccess). A row naming an agent that is not in the pack is a typo that would
+  // silently leave an agent open or closed; a shopper row cannot name groups (groups are staff-only); and shoppers must keep an agent,
+  // including the one the pack opens by default, or the shop's own chat would have nobody to answer it.
+  const accessRows = (pack as any).extensions?.agentAccess?.rows as Array<{ agentId: string; audience: string; groups?: string[]; level: string }> | undefined;
+  if (Array.isArray(accessRows) && accessRows.length > 0) {
+    const knownAgentIds = new Set(agents.map((a) => a.agentId));
+    accessRows.forEach((row, index) => {
+      if (!knownAgentIds.has(row.agentId)) {
+        issues.push({ severity: 'error', path: `extensions.agentAccess.rows[${index}].agentId`, message: `Access row names agent '${row.agentId}', which is not in the pack.` });
+      }
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) {
+        issues.push({ severity: 'error', path: `extensions.agentAccess.rows[${index}].groups`, message: `A shopper row for '${row.agentId}' names groups; groups apply to staff rows only.` });
+      }
+      if (row.level === 'required' && row.audience === 'staff' && (row.groups || []).length === 0) {
+        issues.push({ severity: 'warning', path: `extensions.agentAccess.rows[${index}].level`, message: `'${row.agentId}' is required for every member of staff: nobody on staff could use any other agent.` });
+      }
+    });
+    const shopperAgents = agents.filter((a) => shopperCanUse(a.agentId, (pack as any).extensions.agentAccess));
+    if (agents.length > 0 && shopperAgents.length === 0) {
+      issues.push({ severity: 'error', path: 'extensions.agentAccess', message: 'No agent is available to shoppers: the shop\'s own chat would have nobody to answer it.' });
+    }
+    const openingId = configuredDefaultAgentId && knownAgentIds.has(configuredDefaultAgentId) ? configuredDefaultAgentId : isDefaultAgents[0]?.agentId;
+    if (openingId && agents.length > 1 && shopperAgents.length > 0 && !shopperCanUse(openingId, (pack as any).extensions.agentAccess)) {
+      issues.push({ severity: 'error', path: 'extensions.agentAccess', message: `The pack's default agent '${openingId}' is not available to shoppers, so a shopper's chat could not open on it. Give shoppers a row for it or choose another default agent.` });
+    }
+  }
+
+  // 4f. Validate who has which skill (extensions.skillAccess). A row naming a skill the pack does not define is a typo that would leave
+  // a skill carried as its own tier says (or hidden) without anyone noticing, and a shopper row cannot name groups.
+  const skillRows = (pack as any).extensions?.skillAccess?.rows as Array<{ skillId: string; audience: string; groups?: string[]; level: string }> | undefined;
+  if (Array.isArray(skillRows) && skillRows.length > 0) {
+    const knownSkillIds = new Set((((pack as any).extensions?.skills as Array<{ skillId: string }> | undefined) || []).map((skill) => skill.skillId));
+    skillRows.forEach((row, index) => {
+      if (!knownSkillIds.has(row.skillId)) {
+        issues.push({ severity: 'error', path: `extensions.skillAccess.rows[${index}].skillId`, message: `Skill access row names skill '${row.skillId}', which the pack does not define.` });
+      }
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) {
+        issues.push({ severity: 'error', path: `extensions.skillAccess.rows[${index}].groups`, message: `A shopper row for skill '${row.skillId}' names groups; groups apply to staff rows only.` });
+      }
+    });
+  }
+
+  // 4i. Validate the connectors the chat may reach (extensions.connectors). A policy row that names a connector or tool the pack does not
+  // list is a typo that would silently leave a tool blocked (or, worse, look as if it were governed); a shopper row cannot name groups;
+  // a secret reference must be a reference to this pack's own tenant and environment; a tool that changes data and is set to "allow" is
+  // flagged so it is a decision and not an accident; and a connector nobody can use is flagged because new tools start blocked.
+  const connectorsExt = (pack as any).extensions?.connectors as
+    | { connectors?: Array<{ connectorId: string; enabled?: boolean; sample?: boolean; secretRef?: string; tools?: Array<{ name: string; sideEffect?: string }> }>; policy?: Array<{ connectorId: string; tool: string; audience: string; groups?: string[]; state: string }> }
+    | undefined;
+  if (connectorsExt && Array.isArray(connectorsExt.connectors)) {
+    const byId = new Map<string, NonNullable<typeof connectorsExt.connectors>[number]>();
+    connectorsExt.connectors.forEach((connector, index) => {
+      if (byId.has(connector.connectorId)) {
+        issues.push({ severity: 'error', path: `extensions.connectors.connectors[${index}].connectorId`, message: `Connector '${connector.connectorId}' is declared twice.` });
+      }
+      byId.set(connector.connectorId, connector);
+      const toolNames = (connector.tools || []).map((tool) => tool.name);
+      if (new Set(toolNames).size !== toolNames.length) {
+        issues.push({ severity: 'error', path: `extensions.connectors.connectors[${index}].tools`, message: `Connector '${connector.connectorId}' lists the same tool twice.` });
+      }
+      if (connector.secretRef) {
+        for (const refIssue of validateSecretReference(connector.secretRef, pack.manifest?.tenantId, pack.manifest?.environmentId)) {
+          issues.push({ severity: 'error', path: `extensions.connectors.connectors[${index}].secretRef`, message: refIssue.message });
+        }
+      }
+      if (connector.sample && pack.manifest?.environmentId === 'production') {
+        issues.push({ severity: 'warning', path: `extensions.connectors.connectors[${index}].sample`, message: `Connector '${connector.connectorId}' runs on sample data but this pack is for production.` });
+      }
+    });
+    const rows = connectorsExt.policy || [];
+    rows.forEach((row, index) => {
+      const connector = byId.get(row.connectorId);
+      if (!connector) {
+        issues.push({ severity: 'error', path: `extensions.connectors.policy[${index}].connectorId`, message: `Policy row names connector '${row.connectorId}', which is not in the pack.` });
+        return;
+      }
+      const tool = row.tool === '*' ? undefined : (connector.tools || []).find((entry) => entry.name === row.tool);
+      if (row.tool !== '*' && !tool) {
+        issues.push({ severity: 'error', path: `extensions.connectors.policy[${index}].tool`, message: `Policy row names tool '${row.tool}', which connector '${row.connectorId}' does not list. Tools that are not listed start blocked.` });
+      }
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) {
+        issues.push({ severity: 'error', path: `extensions.connectors.policy[${index}].groups`, message: `A shopper row for connector '${row.connectorId}' names groups; groups apply to staff rows only.` });
+      }
+      if (row.state === 'allow') {
+        // A default row only covers the tools that have no row of their own.
+        const writes = row.tool === '*'
+          ? (connector.tools || []).filter((entry) => entry.sideEffect === 'write' && !rows.some((other) => other.connectorId === row.connectorId && other.tool === entry.name)).map((entry) => entry.name)
+          : tool?.sideEffect === 'write' ? [tool.name] : [];
+        if (writes.length > 0) {
+          issues.push({ severity: 'warning', path: `extensions.connectors.policy[${index}].state`, message: `Connector '${row.connectorId}': ${writes.join(', ')} change data in the other system but ${row.tool === '*' ? 'the default row' : 'this row'} lets ${row.audience === 'shopper' ? 'everyone' : 'staff'} run it without asking first.` });
+        }
+      }
+    });
+    byId.forEach((connector, id) => {
+      if (connector.enabled !== false && !rows.some((row) => row.connectorId === id && row.state !== 'blocked')) {
+        issues.push({ severity: 'warning', path: `extensions.connectors.connectors[${id}]`, message: `Connector '${id}' is enabled but no policy row lets anyone use any of its tools: new tools start blocked.` });
+      }
+    });
+  }
+
+  // 4g. Validate what each tool may do for whom (extensions.toolStates). A row naming a tool no agent of the pack can call is a typo (a
+  // warning: the tool may be added later), and a shopper row cannot name groups.
+  const toolRows = (pack as any).extensions?.toolStates?.rows as Array<{ toolId: string; audience: string; groups?: string[]; state: string }> | undefined;
+  if (Array.isArray(toolRows) && toolRows.length > 0) {
+    const callable = new Set(agents.flatMap((a) => (Array.isArray((a as any).allowedTools) ? (a as any).allowedTools : [])));
+    toolRows.forEach((row, index) => {
+      if (callable.size > 0 && !callable.has(row.toolId)) {
+        issues.push({ severity: 'warning', path: `extensions.toolStates.rows[${index}].toolId`, message: `Tool state row names '${row.toolId}', which no agent of the pack lists in its allowed tools.` });
+      }
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) {
+        issues.push({ severity: 'error', path: `extensions.toolStates.rows[${index}].groups`, message: `A shopper row for tool '${row.toolId}' names groups; groups apply to staff rows only.` });
+      }
+    });
+  }
+
+  // 4h. Validate the forms the shop offers (extensions.forms): two forms with one id would open the wrong one, and a form the assistant
+  // is never allowed to open (no agent lists open_form) would never be seen.
+  const forms = (pack as any).extensions?.forms as Array<{ formId: string }> | undefined;
+  if (Array.isArray(forms) && forms.length > 0) {
+    const seenForms = new Set<string>();
+    forms.forEach((form, index) => {
+      if (seenForms.has(form.formId)) issues.push({ severity: 'error', path: `extensions.forms[${index}].formId`, message: `Two forms are called '${form.formId}'.` });
+      seenForms.add(form.formId);
+    });
+    if (!agents.some((a) => Array.isArray((a as any).allowedTools) && (a as any).allowedTools.includes('open_form'))) {
+      issues.push({ severity: 'warning', path: 'extensions.forms', message: 'The pack has forms but no agent lists open_form in its allowed tools, so the assistant can never open one.' });
+    }
+  }
+
+  // 4j. Validate the plugins (extensions.plugins). A plugin names things the pack defines; a name that matches nothing is a typo that would
+  // leave the bundle half empty. Plugins must never leave shoppers without an agent (the shop's own chat would have nobody to answer it).
+  const pluginsExt = (pack as any).extensions?.plugins as { plugins?: Array<{ pluginId: string; provides?: Record<string, string[]> }>; access?: Array<{ pluginId: string; audience: string; groups?: string[] }> } | undefined;
+  if (pluginsExt && Array.isArray(pluginsExt.plugins) && pluginsExt.plugins.length > 0) {
+    const known = {
+      agents: new Set(agents.map((a) => a.agentId)),
+      skills: new Set((((pack as any).extensions?.skills as Array<{ skillId: string }> | undefined) || []).map((s) => s.skillId)),
+      forms: new Set((((pack as any).extensions?.forms as Array<{ formId: string }> | undefined) || []).map((f) => f.formId)),
+      connectors: new Set((((pack as any).extensions?.connectors?.connectors as Array<{ connectorId: string }> | undefined) || []).map((c) => c.connectorId)),
+    };
+    const seenPlugins = new Set<string>();
+    pluginsExt.plugins.forEach((plugin, index) => {
+      if (seenPlugins.has(plugin.pluginId)) issues.push({ severity: 'error', path: `extensions.plugins.plugins[${index}].pluginId`, message: `Two plugins are called '${plugin.pluginId}'.` });
+      seenPlugins.add(plugin.pluginId);
+      const provides = plugin.provides || {};
+      for (const kind of ['agents', 'skills', 'forms', 'connectors'] as const) {
+        for (const id of provides[kind] || []) {
+          if (!known[kind].has(id)) issues.push({ severity: 'error', path: `extensions.plugins.plugins[${index}].provides.${kind}`, message: `Plugin '${plugin.pluginId}' names ${kind.slice(0, -1)} '${id}', which the pack does not define.` });
+        }
+      }
+      if (Object.values(provides).every((list) => !list || list.length === 0)) {
+        issues.push({ severity: 'warning', path: `extensions.plugins.plugins[${index}].provides`, message: `Plugin '${plugin.pluginId}' names nothing, so switching it on or off changes nothing.` });
+      }
+    });
+    (pluginsExt.access || []).forEach((row, index) => {
+      if (!seenPlugins.has(row.pluginId)) issues.push({ severity: 'error', path: `extensions.plugins.access[${index}].pluginId`, message: `Plugin access row names plugin '${row.pluginId}', which is not in the pack.` });
+      if (row.audience === 'shopper' && (row.groups || []).length > 0) issues.push({ severity: 'error', path: `extensions.plugins.access[${index}].groups`, message: `A shopper row for plugin '${row.pluginId}' names groups; groups apply to staff rows only.` });
+    });
+    const shopperGate = pluginGate(pluginsExt as any, { audience: 'shopper', groups: [] });
+    const shopperAgentsLeft = agents.filter((a) => shopperGate.allows('agents', a.agentId) && shopperCanUse(a.agentId, (pack as any).extensions?.agentAccess));
+    if (agents.length > 0 && shopperAgentsLeft.length === 0) {
+      issues.push({ severity: 'error', path: 'extensions.plugins', message: 'With these plugins no agent is available to shoppers: the shop\'s own chat would have nobody to answer it.' });
+    }
   }
 
   // 5. Validate Journeys and Stages
@@ -292,6 +512,43 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
           message: `Rule expression '${expr}' in rule '${rule.ruleId}' could not be parsed by runtime evaluator`,
         });
       }
+    }
+  }
+
+  // 12. Validate Calculators: Reject any calculator with an unresolved verificationRef
+  const knownVerificationIds = new Set<string>();
+  if (Array.isArray((pack as any).factRegistry?.verifications)) {
+    for (const v of (pack as any).factRegistry.verifications) {
+      if (v.recordId) knownVerificationIds.add(v.recordId);
+      if (v.id) knownVerificationIds.add(v.id);
+    }
+  }
+  if (Array.isArray((pack as any).knowledgeModel?.verifications)) {
+    for (const v of (pack as any).knowledgeModel.verifications) {
+      if (v.recordId) knownVerificationIds.add(v.recordId);
+      if (v.id) knownVerificationIds.add(v.id);
+    }
+  }
+  if (Array.isArray((pack as any).verifications)) {
+    for (const v of (pack as any).verifications) {
+      if (v.recordId) knownVerificationIds.add(v.recordId);
+      if (v.id) knownVerificationIds.add(v.id);
+    }
+  }
+
+  for (const calc of pack.calculators || []) {
+    if (!calc.verificationRef) {
+      issues.push({
+        severity: 'error',
+        path: `calculators[${calc.calculatorId}].verificationRef`,
+        message: `Calculator '${calc.calculatorId}' must have an authoritative verificationRef to be included in a release`,
+      });
+    } else if (!knownVerificationIds.has(calc.verificationRef)) {
+      issues.push({
+        severity: 'error',
+        path: `calculators[${calc.calculatorId}].verificationRef`,
+        message: `Calculator '${calc.calculatorId}' references unresolved verificationRef '${calc.verificationRef}'`,
+      });
     }
   }
 

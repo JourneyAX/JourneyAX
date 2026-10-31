@@ -347,5 +347,19 @@
     "relationship_unverified",
     "default_goal",
     "default_journey_label"
+  ],
+  "agentRelationshipTypes": [
+    "relevant_to",
+    "solves",
+    "diagnoses",
+    "requires",
+    "compatible_with",
+    "incompatible_with",
+    "alternative_to",
+    "installed_with",
+    "care_for",
+    "document_for",
+    "escalates_to",
+    "cross_sell"
   ]
 }

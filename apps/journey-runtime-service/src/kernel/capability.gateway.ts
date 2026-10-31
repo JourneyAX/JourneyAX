@@ -1,9 +1,13 @@
 import {
   CapabilityDispatcher,
   CapabilityResolver,
+  EnvMcpServerDirectory,
+  McpClientPool,
   NativeCapabilityHandler,
   ExecutionContext,
   ExecutionResponse,
+  type McpClientProvider,
+  type SecretResolver,
 } from '@journeyax/capability-sdk';
 import { BusinessPackRelease } from '@journeyax/business-pack';
 import { WorkspaceState } from '@journeyax/journey-core';
@@ -22,6 +26,7 @@ import {
   ProjectPlanHandler,
 } from '../capabilities/handlers';
 
+import { ConnectorRuntime, type ConnectorAuditEvent } from './connector.runtime';
 import type { KnowledgeRetrievalPortResolver, LegacyKnowledgeRetrievalPortResolver } from './knowledge-retrieval.port';
 import {
   IConnectionOwnershipRepository,
@@ -37,19 +42,28 @@ export interface CapabilityGatewayOptions {
   activepiecesApiUrl?: string;
   activepiecesApiKey?: string;
   activepiecesWebhookSecret?: string;
+  /** Where `mcp_tool` calls get their client. Default: a pool over the servers named in CONNECTOR_MCP_SERVERS / CONNECTOR_MCP_BASE_URL. */
+  mcpClients?: McpClientProvider;
+  /** Turns a connector's secret reference into the secret. Default: the development resolver (CONNECTOR_SECRET_<NAME>). */
+  secretResolver?: SecretResolver;
+  /** Receives one event per connector call (no arguments, no results). */
+  connectorAudit?: (event: ConnectorAuditEvent) => void;
 }
 
 export class CapabilityGateway {
   private dispatcher: CapabilityDispatcher;
   private resolver: CapabilityResolver;
   private ownershipRepository: IConnectionOwnershipRepository;
+  private connectorRuntime: ConnectorRuntime;
 
   constructor(options: CapabilityGatewayOptions = {}) {
     this.ownershipRepository =
       options.ownershipRepository ||
       new DurableConnectionOwnershipRepository(options.db ? () => options.db : undefined);
 
+    const mcpClients = options.mcpClients || new McpClientPool({ directory: new EnvMcpServerDirectory(), secrets: options.secretResolver });
     this.dispatcher = new CapabilityDispatcher({
+      mcpClients,
       activepiecesApiUrl: options.activepiecesApiUrl || process.env.ACTIVEPIECES_API_URL,
       activepiecesApiKey: options.activepiecesApiKey || process.env.ACTIVEPIECES_API_KEY,
       activepiecesWebhookSecret:
@@ -58,6 +72,7 @@ export class CapabilityGateway {
         this.ownershipRepository.validateOwnership(tenantId, environmentId, connectionRef),
     });
     this.resolver = new CapabilityResolver();
+    this.connectorRuntime = new ConnectorRuntime({ dispatcher: this.dispatcher, mcpClients, audit: options.connectorAudit });
 
     // Register generic domain-neutral platform handlers
     this.dispatcher.registerNativeHandler('catalog.search', new CatalogSearchHandler());
@@ -87,6 +102,11 @@ export class CapabilityGateway {
     this.dispatcher.registerNativeHandler('quote-update', new QuoteUpdateHandler());
   }
 
+  /** Reaches the connectors a pack declares (other systems over MCP), through this gateway's dispatcher and policy gate. */
+  getConnectorRuntime(): ConnectorRuntime {
+    return this.connectorRuntime;
+  }
+
   getOwnershipRepository(): IConnectionOwnershipRepository {
     return this.ownershipRepository;
   }
@@ -96,6 +116,10 @@ export class CapabilityGateway {
    */
   registerCustomAdapter(toolId: string, handler: NativeCapabilityHandler): void {
     this.dispatcher.registerNativeHandler(toolId, handler);
+  }
+
+  getNativeHandler(toolId: string): NativeCapabilityHandler | undefined {
+    return this.dispatcher.getNativeHandler(toolId);
   }
 
   /**
@@ -182,7 +206,17 @@ export class CapabilityGateway {
       toolDef,
       toolBinding,
       { toolId, input: payload, idempotencyKey: ctx.correlationId },
-      { ...ctx, packSettings: { ...ctx.packSettings, catalogMapping: (release as any).catalogMapping } }
+      {
+        ...ctx,
+        release,
+        vocabulary: (release as any).vocabulary,
+        packSettings: {
+          ...ctx.packSettings,
+          catalogMapping: (release as any).catalogMapping,
+          vocabulary: (release as any).vocabulary,
+          extensions: (release as any).extensions,
+        },
+      }
     );
   }
 }

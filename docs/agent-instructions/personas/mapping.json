@@ -1,0 +1,396 @@
+{
+  "$comment": "The decisions that turn the owner's three sheets (personas, use cases, access model) into something the pack can use. Hand-written and meant to be read: change a line here and run import-personas.ts again. Anything not named as ready, sample or pending counts as not connected.",
+  "systemStates": {
+    "ready": [
+      "SAP Commerce",
+      "SAP Commerce Cloud",
+      "Salesforce",
+      "Salesforce Sales Cloud",
+      "Salesforce Service Cloud",
+      "Service Cloud",
+      "branch inventory",
+      "Trade Portal",
+      "account permissions",
+      "account dashboard"
+    ],
+    "sample": [
+      "ACE",
+      "ACE finance",
+      "ACE ERP",
+      "ERP",
+      "ERP/AP",
+      "PIM",
+      "Salsify",
+      "Salsify PIM",
+      "Bloomreach",
+      "Salesforce Marketing Cloud",
+      "Marketing Cloud",
+      "loyalty",
+      "MuleSoft",
+      "UXCam"
+    ],
+    "pending": [
+      "GA4",
+      "Power BI",
+      "BI",
+      "reporting"
+    ]
+  },
+  "systemNotes": {
+    "SAP Commerce": "commercetools stands in for SAP Commerce in this demo (real trial project, B2B structure loaded).",
+    "SAP Commerce Cloud": "commercetools stands in for SAP Commerce in this demo.",
+    "Trade Portal": "counted as PlaceMakers' own site: the chat sits beside it.",
+    "account permissions": "the B2B associate roles in commercetools (account-admin, buyer, site-manager, accounts-payable).",
+    "ACE": "the ERP: prices on account, balances, deliveries. Sample data only until the real details arrive.",
+    "Salesforce Marketing Cloud": "stays sample data by decision.",
+    "GA4": "needs a GA4 property and a Google service-account key.",
+    "Power BI": "needs a Power BI workspace the owner controls."
+  },
+  "displayNames": {
+    "ACE ERP": "SAP ERP",
+    "ACE finance": "SAP finance",
+    "ACE": "SAP"
+  },
+  "teams": [
+    {
+      "team": "customer-service",
+      "name": "Customer Service",
+      "status": "live",
+      "agent": "placemakers_customer_service",
+      "note": "Cases, orders, accounts and stock; raises a case after asking."
+    },
+    {
+      "team": "sales",
+      "name": "Sales",
+      "status": "live",
+      "agent": "placemakers_sales_quote",
+      "note": "Accounts, deals, leads, campaigns; quotes."
+    },
+    {
+      "team": "sales-managers",
+      "name": "Sales Managers",
+      "status": "live",
+      "agent": "placemakers_sales_quote",
+      "note": "Everything sales sees plus the pipeline and reports."
+    },
+    {
+      "team": "branch",
+      "name": "Branch",
+      "status": "live",
+      "agent": "placemakers_customer_service",
+      "note": "Counter staff and branch managers: stock by branch, orders, accounts, cases (read only)."
+    },
+    {
+      "team": "finance",
+      "name": "Finance",
+      "status": "live",
+      "agent": "placemakers_customer_service",
+      "note": "Credit control: orders, account terms and cases (read only). Balances wait for the ERP."
+    },
+    {
+      "team": "marketing",
+      "name": "Marketing",
+      "status": "live",
+      "agent": "placemakers_product_advisor",
+      "note": "Campaigns, messages, web traffic."
+    },
+    {
+      "team": "insights",
+      "name": "Insights",
+      "status": "live",
+      "agent": "placemakers_product_advisor",
+      "note": "Web traffic and reports; no customer records."
+    },
+    {
+      "team": "leadership",
+      "name": "Leadership",
+      "status": "live",
+      "agent": "placemakers_product_advisor",
+      "note": "Reads everything; changes nothing."
+    },
+    {
+      "team": "operations",
+      "name": "Operations",
+      "status": "planned",
+      "agent": null,
+      "note": "Pickers, yard, dispatch, drivers: needs the ERP, delivery planning and tracking."
+    },
+    {
+      "team": "estimating",
+      "name": "Estimating",
+      "status": "planned",
+      "agent": null,
+      "note": "Estimators and planners: needs the Estimations system."
+    },
+    {
+      "team": "product-data",
+      "name": "Product Data",
+      "status": "planned",
+      "agent": null,
+      "note": "Product information and merchandising: needs the product-information system (Salsify) and Bloomreach live."
+    },
+    {
+      "team": "digital-product",
+      "name": "Digital Product",
+      "status": "planned",
+      "agent": null,
+      "note": "Digital commerce product owner: needs Jira and GA4."
+    },
+    {
+      "team": "it-integration",
+      "name": "IT and Integration",
+      "status": "planned",
+      "agent": null,
+      "note": "CRM admin, integration and support engineers: needs MuleSoft, ACE logs and Jira."
+    }
+  ],
+  "personaTeams": {
+    "B01": "sales",
+    "B02": "customer-service",
+    "B03": "customer-service",
+    "B04": "branch",
+    "B05": "branch",
+    "B06": "estimating",
+    "B07": "estimating",
+    "B08": "sales",
+    "B09": "operations",
+    "B10": "operations",
+    "B11": "operations",
+    "B12": "operations",
+    "B13": "customer-service",
+    "B14": "finance",
+    "B15": "finance",
+    "B16": "product-data",
+    "B17": "product-data",
+    "B18": "marketing",
+    "B19": "insights",
+    "B20": "digital-product",
+    "B21": "it-integration",
+    "B22": "it-integration",
+    "B23": "it-integration",
+    "B24": "leadership"
+  },
+  "teamLeads": {
+    "B03": "team leader",
+    "B05": "branch manager"
+  },
+  "personaRoles": {
+    "C01": [
+      "Guest retail user",
+      "Registered retail customer"
+    ],
+    "C02": [
+      "Registered retail customer"
+    ],
+    "C03": [
+      "Trade Cash account holder"
+    ],
+    "C04": [
+      "Trade Charge account holder",
+      "Trade account administrator"
+    ],
+    "C05": [
+      "Trade Charge account holder"
+    ],
+    "C06": [
+      "Delegated buyer",
+      "Order/Job viewer"
+    ],
+    "C07": [
+      "Order/Job viewer"
+    ],
+    "C08": [
+      "Delegated buyer"
+    ],
+    "C09": [
+      "Delegated buyer",
+      "Trade Charge account holder"
+    ],
+    "C10": [
+      "Delegated buyer"
+    ],
+    "C11": [
+      "Trade finance viewer"
+    ],
+    "C12": [
+      "Trade Cash account holder",
+      "Trade Charge account holder"
+    ],
+    "C13": [
+      "Trade Cash account holder",
+      "Trade Charge account holder"
+    ],
+    "C14": [
+      "Trade Cash account holder",
+      "Trade Charge account holder"
+    ],
+    "C15": [
+      "Trade Cash account holder",
+      "Trade Charge account holder"
+    ],
+    "C16": [
+      "Guest retail user",
+      "Registered retail customer"
+    ],
+    "C17": [
+      "Buying-group user"
+    ],
+    "C18": [
+      "Supplier portal user"
+    ],
+    "C19": [],
+    "B01": [
+      "Trade account manager"
+    ],
+    "B02": [
+      "Customer service case agent"
+    ],
+    "B03": [
+      "Customer service case agent"
+    ],
+    "B04": [
+      "Branch / warehouse operator"
+    ],
+    "B05": [
+      "Branch / warehouse operator"
+    ],
+    "B08": [
+      "Trade account manager"
+    ],
+    "B09": [
+      "Branch / warehouse operator"
+    ],
+    "B10": [
+      "Branch / warehouse operator"
+    ],
+    "B11": [
+      "Branch / warehouse operator"
+    ],
+    "B12": [
+      "Branch / warehouse operator"
+    ],
+    "B13": [
+      "Customer service case agent"
+    ],
+    "B14": [
+      "Finance controller"
+    ],
+    "B15": [
+      "Finance controller"
+    ],
+    "B19": [
+      "Digital analyst"
+    ],
+    "B21": [
+      "Technology support"
+    ],
+    "B22": [
+      "Technology support"
+    ],
+    "B23": [
+      "Technology support"
+    ]
+  },
+  "roles": {
+    "Guest retail user": {
+      "signIn": "guest",
+      "note": "Not signed in."
+    },
+    "Registered retail customer": {
+      "signIn": "buyer",
+      "note": "A signed-in shopper; no company."
+    },
+    "Trade Cash account holder": {
+      "signIn": "buyer",
+      "commercetoolsRole": "buyer",
+      "note": "One person, pays at purchase."
+    },
+    "Trade Charge account holder": {
+      "signIn": "buyer",
+      "commercetoolsRole": "account-admin",
+      "note": "The company on credit terms; its holder administers it."
+    },
+    "Trade account administrator": {
+      "signIn": "buyer",
+      "commercetoolsRole": "account-admin"
+    },
+    "Delegated buyer": {
+      "signIn": "buyer",
+      "commercetoolsRole": "buyer",
+      "note": "Spend caps and expiry are not modelled in commercetools yet."
+    },
+    "Order/Job viewer": {
+      "signIn": "buyer",
+      "commercetoolsRole": "site-manager",
+      "gap": "A view-only job role does not exist yet: site-manager can also place orders, which this role must not."
+    },
+    "Trade finance viewer": {
+      "signIn": "buyer",
+      "commercetoolsRole": "accounts-payable"
+    },
+    "Buying-group user": {
+      "signIn": "buyer",
+      "gap": "GroupGate sign-in is not connected."
+    },
+    "Supplier portal user": {
+      "signIn": "buyer",
+      "gap": "The iSupplier portal is not connected."
+    },
+    "Customer service case agent": {
+      "team": "customer-service"
+    },
+    "Trade account manager": {
+      "team": "sales"
+    },
+    "Branch / warehouse operator": {
+      "team": "branch",
+      "alsoTeams": [
+        "operations"
+      ]
+    },
+    "Finance controller": {
+      "team": "finance"
+    },
+    "Digital analyst": {
+      "team": "insights"
+    },
+    "Technology support": {
+      "team": "it-integration"
+    }
+  },
+  "playbooks": {
+    "account-360": [
+      "B01-UC01",
+      "B02-UC01",
+      "B05-UC02",
+      "B24-UC01"
+    ],
+    "order-enquiry": [
+      "B02-UC02",
+      "B04-UC02",
+      "B13-UC01"
+    ],
+    "case-queue-review": [
+      "B03-UC01",
+      "B03-UC02"
+    ],
+    "branch-stock-check": [
+      "B04-UC01",
+      "B05-UC01"
+    ],
+    "overdue-and-invoice-query": [
+      "B14-UC01",
+      "B14-UC02"
+    ],
+    "escalated-account-brief": [
+      "B05-UC02"
+    ],
+    "special-order-handover": [
+      "B01-UC02",
+      "B08-UC02"
+    ],
+    "price-and-stock": [
+      "B04-UC01"
+    ]
+  }
+}

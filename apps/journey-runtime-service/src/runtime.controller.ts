@@ -66,9 +66,14 @@ export class RuntimeController {
       turnId: dto.turnId,
       principalId: authContext.principalId,
       principalRole: authContext.principalRole,
+      principalGroups: authContext.principalGroups,
+      disabledConnectors: dto.disabledConnectors,
       correlationId: dto.correlationId,
       message: dto.message,
       event: dto.event as ChannelEvent | undefined,
+      customerEvent: (dto.customerEvent || dto.customer_event) as any,
+      agentId: dto.agentId,
+      parentMessageId: dto.parentMessageId,
       inputFacts: dto.inputFacts,
       approvalRequestId: dto.approvalRequestId,
       idempotencyKey: dto.idempotencyKey,
@@ -93,6 +98,55 @@ export class RuntimeController {
       }
       throw err;
     }
+  }
+
+  /**
+   * The connectors the signed-in person may use, for the chat's "+" menu. The person is the one the verified identity names (the same
+   * one a turn is answered for), so the list is exactly what the assistant would be allowed to use for them.
+   */
+  @Get('connectors')
+  async getConnectors(
+    @Param('tenantId') tenantId: string,
+    @Param('environmentId') environmentId: string | undefined,
+    @Req() req: any
+  ) {
+    const authContext = req.authContext;
+    const env = (environmentId || authContext?.environmentId || 'production') as any;
+    return this.runtimeService.listConnectors(authContext.tenantId, env, {
+      userId: authContext.principalId,
+      role: authContext.principalRole,
+      groups: authContext.principalGroups,
+    });
+  }
+
+  /**
+   * The corner tile and the dashboard for the signed-in person (pack `extensions.dashboard`). The person is the one the verified identity
+   * names; the figures are read through the same connector gate the assistant uses, so they are only what this person may see.
+   */
+  @Get('dashboard')
+  async getDashboard(
+    @Param('tenantId') tenantId: string,
+    @Param('environmentId') environmentId: string | undefined,
+    @Req() req: any
+  ) {
+    const authContext = req.authContext;
+    const env = (environmentId || authContext?.environmentId || 'production') as any;
+    return this.runtimeService.getDashboard(authContext.tenantId, env, {
+      userId: authContext.principalId,
+      role: authContext.principalRole,
+      groups: authContext.principalGroups,
+    });
+  }
+
+  @InternalOnly()
+  @Get('engine-mode')
+  async getEngineMode(
+    @Param('tenantId') tenantId: string,
+    @Param('environmentId') environmentId: string | undefined,
+    @Req() req: any
+  ) {
+    const env = (environmentId || req.authContext?.environmentId || 'production') as any;
+    return this.runtimeService.getEngineMode(tenantId, env);
   }
 
   /**
@@ -132,9 +186,14 @@ export class RuntimeController {
       turnId: dto.turnId,
       principalId: authContext.principalId,
       principalRole: authContext.principalRole,
+      principalGroups: authContext.principalGroups,
+      disabledConnectors: dto.disabledConnectors,
       correlationId: dto.correlationId,
       message: dto.message,
       event: dto.event as ChannelEvent | undefined,
+      customerEvent: (dto.customerEvent || dto.customer_event) as any,
+      agentId: dto.agentId,
+      parentMessageId: dto.parentMessageId,
       inputFacts: dto.inputFacts,
       approvalRequestId: dto.approvalRequestId,
       idempotencyKey: dto.idempotencyKey,
@@ -200,6 +259,17 @@ export class RuntimeController {
       throw new NotFoundException(`Workspace '${workspaceId}' not found for tenant '${tenantId}'`);
     }
     return workspace;
+  }
+
+  @Get('transcripts/:workspaceId')
+  async getTranscript(
+    @Param('tenantId') tenantId: string,
+    @Param('environmentId') environmentId: string | undefined,
+    @Param('workspaceId') workspaceId: string,
+    @Req() req: any
+  ) {
+    const env = (environmentId || req.authContext?.environmentId || 'production') as any;
+    return this.runtimeService.getTranscript(req.authContext.tenantId, env, workspaceId);
   }
 
   @Post('workspaces/:workspaceId/facts')

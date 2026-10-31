@@ -223,6 +223,8 @@ export function checkCatalogMapping(input: unknown, products: unknown[], options
       'No sampled product has a price at any configured price source, so nothing could be quoted.', issuesData.unpriced, sellable);
     else if (issuesData.unpriced.length) add('warning', 'price_missing', 'pricing.sources',
       `${issuesData.unpriced.length} of ${sellable} products have no readable price and will be shown without one.`, issuesData.unpriced, sellable);
+    if (mapping.pricing.demoFallback?.enabled) add('info', 'demo_prices', 'pricing.demoFallback',
+      `Demo prices are on: a product with no real price is shown with a made-up one between ${mapping.pricing.demoFallback.min} and ${mapping.pricing.demoFallback.max} ${mapping.pricing.demoFallback.currency}. Real prices always win. Switch this off before selling for real.`, [], sellable);
     if (issuesData.undeclared.length) add(share(issuesData.undeclared.length, sellable) >= 0.5 ? 'error' : 'warning', 'currency_undeclared', 'pricing.sources',
       `${issuesData.undeclared.length} of ${sellable} products have a price but no declared currency, so the price would not be quoted. Point a source at the field that holds the currency, or state the currency the feed is priced in.`, issuesData.undeclared, sellable);
     if (Object.keys(currencies).length > 1) add('warning', 'mixed_currencies', 'pricing.sources',

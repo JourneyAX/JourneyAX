@@ -3,30 +3,32 @@ import {
   UnauthorizedException, BadRequestException, Inject,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { readPublicRegistration } from './public-registration';
 
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   /**
-   * Register a new user.
+   * Open sign-up: creates a plain customer (role `buyer`) in a customer-facing project.
    * POST /api/v1/auth/register
+   *
+   * Anyone can call this without signing in, so the body can never choose a role: a `role` field is ignored (and noted in the log),
+   * as is every field other than email, password, tenantId and fullName. Staff and admin logins come from the seed scripts.
    */
   @Post('register')
-  async register(
-    @Body() body: {
-      email: string;
-      password: string;
-      tenantId: string;
-      fullName: string;
-      role?: 'admin' | 'buyer' | 'manager';
-    }
-  ) {
-    if (!body.email || !body.password || !body.tenantId || !body.fullName) {
-      throw new BadRequestException('email, password, tenantId, and fullName are required.');
+  async register(@Body() body: unknown) {
+    const read = readPublicRegistration(body);
+    if (read.status === 'refused') {
+      throw new BadRequestException(read.message);
     }
 
-    const result = await this.authService.register(body);
+    const requestedRole = (body as Record<string, unknown>).role;
+    if (requestedRole !== undefined) {
+      console.warn(`[AuthController] Open sign-up asked for a role; ignored, created a buyer: ${JSON.stringify({ email: read.value.email, requestedRole: String(requestedRole).slice(0, 40) })}`);
+    }
+
+    const result = await this.authService.register(read.value);
     if (!result.success) {
       throw new BadRequestException(result.message);
     }

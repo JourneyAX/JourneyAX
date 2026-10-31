@@ -21,8 +21,33 @@ import {
   compileGraphToJourneyDefinition,
   compileModelPolicy,
   validatePolicyOverrides,
+  SkillDefinitionSchema,
+  QuantityHelperSchema,
+  VisualiserSchema,
+  EventPrefetchSchema,
+  ProductGuidesSchema,
+  CustomerAccountSchema,
+  ContentPagesSchema,
+  CheckoutReviewSchema,
+  AccessoryHelperSchema,
+  BuyerFeedbackSchema,
+  PaymentSchema,
+  BrandThemeSchema,
+  VoiceSchema,
+  WelcomeSchema,
+  DashboardSchema,
+  QuestionCardsSchema,
+  AgentAccessSchema,
+  SkillAccessSchema,
+  ToolStatesSchema,
+  FormsSchema,
+  PluginsSchema,
+  ConnectorsSchema,
 } from '@journeyax/business-pack';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
+import { buildAccessPreview, type AccessPreview, type AccessPreviewInput } from './access-preview';
+import { PersonaLibraryStore, PERSONA_LIBRARY_COLLECTION } from './persona-library';
+import { CompanyLinkStore, COMPANY_LINK_COLLECTION } from './company-links';
 import { PublicationGateValidator } from './publication-gate-validator';
 import { ReleaseValidationPort } from './release-validation.port';
 
@@ -56,6 +81,8 @@ export { STANDARD_TOOL_SCHEMAS, PLATFORM_TOOL_CONTRACTS };
 export class ProjectService {
   private db!: Db;
   private runtimeDb?: Db;
+  private personaStore?: PersonaLibraryStore;
+  private companyLinkStore?: CompanyLinkStore;
   private projectsCol!: Collection<ProjectConfig>;
   private membersCol!: Collection<ProjectMember & { projectId: string; orgId: string }>;
   private teamsCol!: Collection<ProjectTeam & { projectId: string; orgId: string }>;
@@ -154,6 +181,7 @@ export class ProjectService {
   }
 
   setDbForTesting(db: any): void {
+    this.personaStore = undefined;
     this.db          = db;
     this.projectsCol = db.collection(PROJECTS);
     this.membersCol  = db.collection(MEMBERS);
@@ -162,6 +190,18 @@ export class ProjectService {
     this.versionsCol = db.collection(VERSIONS);
     this.isConnected = true;
     this.publicationService = undefined;
+  }
+
+  /** The project's persona library (reference material for configuring the assistant, kept in the project database; see persona-library.ts). */
+  getPersonaLibraryStore(): PersonaLibraryStore {
+    if (!this.isConnected || !this.db) throw new Error('The project database is not connected.');
+    return (this.personaStore ??= new PersonaLibraryStore(this.db.collection(PERSONA_LIBRARY_COLLECTION) as any));
+  }
+
+  /** Which company each trade customer's login is linked to (see company-links.ts). */
+  getCompanyLinkStore(): CompanyLinkStore {
+    if (!this.isConnected || !this.db) throw new Error('The project database is not connected.');
+    return (this.companyLinkStore ??= new CompanyLinkStore(this.db.collection(COMPANY_LINK_COLLECTION) as any));
   }
 
   async ensureIndexes() {
@@ -484,6 +524,23 @@ export class ProjectService {
     if (Array.isArray((dto as any).capabilities)) $set.capabilities = (dto as any).capabilities;
     if (Array.isArray((dto as any).contextDimensions)) $set.contextDimensions = (dto as any).contextDimensions;
     if ((dto as any).console) $set.console = (dto as any).console;
+    // Tenant settings that ride in the pack's extensions: only these keys, each checked against its schema.
+    if ((dto as any).extensions && typeof (dto as any).extensions === 'object') {
+      const allowed: Record<string, { safeParse: (value: unknown) => any }> = { quantityHelper: QuantityHelperSchema, visualiser: VisualiserSchema, eventPrefetch: EventPrefetchSchema, productGuides: ProductGuidesSchema, customerAccount: CustomerAccountSchema, contentPages: ContentPagesSchema, checkoutReview: CheckoutReviewSchema, accessoryHelper: AccessoryHelperSchema, buyerFeedback: BuyerFeedbackSchema, payment: PaymentSchema, brandTheme: BrandThemeSchema, voice: VoiceSchema, welcome: WelcomeSchema, dashboard: DashboardSchema, questionCards: QuestionCardsSchema, agentAccess: AgentAccessSchema, skillAccess: SkillAccessSchema, toolStates: ToolStatesSchema, forms: FormsSchema, plugins: PluginsSchema, connectors: ConnectorsSchema };
+      for (const [key, value] of Object.entries((dto as any).extensions)) {
+        const schema = allowed[key];
+        if (!schema) return { success: false, message: `Unknown pack extension '${key}' (allowed: ${Object.keys(allowed).join(', ')}).` };
+        const parsed = schema.safeParse(value);
+        if (!parsed.success) return { success: false, message: `Invalid ${key}: ${parsed.error.issues.slice(0, 3).map((i: any) => `${i.path.join('.')}: ${i.message}`).join('; ')}` };
+        $set[`extensions.${key}`] = parsed.data;
+      }
+    }
+    // Skills (reusable instruction modules agents carry) are tenant data kept under `extensions.skills`; replaced wholesale and checked here.
+    if ((dto as any).skills !== undefined) {
+      const parsed = SkillDefinitionSchema.array().safeParse((dto as any).skills);
+      if (!parsed.success) return { success: false, message: `Invalid skills: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}` };
+      $set['extensions.skills'] = parsed.data;
+    }
     if ((dto as any).knowledgeSource) $set.knowledgeSource = (dto as any).knowledgeSource;
     // Pack settings are validated at write time so an invalid one can never reach a publish.
     const $unset: Record<string, ''> = {};
@@ -1023,7 +1080,7 @@ export class ProjectService {
   async verifyMembership(
     email: string,
     projectId: string
-  ): Promise<{ isMember: boolean; role?: MemberRole; orgId?: string; status?: MembershipStatus }> {
+  ): Promise<{ isMember: boolean; role?: MemberRole; orgId?: string; status?: MembershipStatus; teams?: string[] }> {
     if (!this.isConnected) return { isMember: false };
     const cleanEmail = email.toLowerCase().trim();
     const member = await this.membersCol.findOne({
@@ -1034,7 +1091,14 @@ export class ProjectService {
     if (!member || member.status === 'revoked' || member.status === 'expired') {
       return { isMember: false };
     }
-    return { isMember: true, role: member.role, orgId: member.orgId, status: member.status || 'active' };
+    return { isMember: true, role: member.role, orgId: member.orgId, status: member.status || 'active', teams: Array.isArray(member.teams) ? member.teams : [] };
+  }
+
+  /** "View as": which agents a person of this kind would get from the project's current settings (read-only). */
+  async previewAccess(projectId: string, input: AccessPreviewInput): Promise<AccessPreview | null> {
+    const project = await this.getProject(projectId);
+    if (!project) return null;
+    return buildAccessPreview(project as any, await this.listTeams(projectId), input);
   }
 
   async addTeam(

@@ -18,7 +18,7 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
  * never touched — the two surfaces are picked by config in ProjectPanel.
  */
 export default function RetailCartPanel() {
-  const { state, dispatch, bom, totals, handleApprove } = useJourney();
+  const { state, dispatch, bom, totals, requestCheckout } = useJourney();
   const cfg = useStorefrontConfig();
   const ordering = !!state.ordering;
   const orderError = state.orderError;
@@ -125,7 +125,7 @@ export default function RetailCartPanel() {
             </div>
           </div>
           <div className="quote-footer__actions">
-            <button className="btn-approve" onClick={handleApprove} disabled={ordering || !canOrder} style={{ width: '100%' }}>
+            <button className="btn-approve" onClick={requestCheckout} disabled={ordering || !canOrder} style={{ width: '100%' }}>
               {ordering ? 'Starting secure checkout…' : 'Checkout securely'}
               {!ordering && (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 9 }}>

@@ -175,8 +175,9 @@ export class ReactAgentOrchestrator {
 
     const brandTone = (projectConfig as any)?.brandVoice || (projectConfig as any)?.tone || projectConfig?.journeyGuidance || 'Pragmatic, helpful, knowledgeable trade professional.';
 
-    // 2. Retrieve Google OKF Business Knowledge context for the query
-    const okfContext = await this.okfLoader.getBusinessContext(tenantId, userMessage);
+    // 2. Business knowledge context
+    // Removed per Prompt P2: no code may build a search or OKF query from the latest message alone.
+    const okfContext = '';
 
     // 3. Assemble System Prompt with Persona + OKF Context + Tool Instructions
     const systemPrompt = [
@@ -307,7 +308,7 @@ export class ReactAgentOrchestrator {
         if (tc.name === 'consultTradeKnowledge') {
           toolOutput = await this.tradeKnowledge.consult({
             tenantId,
-            topic: args.topic || userMessage,
+            topic: String(args.topic || '').trim(),
           });
         } else if (tc.name === 'searchProducts' || tc.name === 'searchKnowledge') {
           toolOutput = await this.executeProductSearch(tenantId, args);
@@ -362,8 +363,8 @@ export class ReactAgentOrchestrator {
                   title: name,
                   name,
                   price: typeof p.price === 'number' ? p.price : undefined,
-                  priceFormatted: p.priceFormatted || (typeof p.price === 'number' ? `$${p.price.toFixed(2)}` : 'Price on request'),
-                  currency: p.currency || 'NZD',
+                  priceFormatted: p.priceFormatted || (typeof p.price === 'number' ? (p.currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency: p.currency }).format(p.price) : p.price.toFixed(2)) : 'Price on request'),
+                  currency: p.currency || (projectConfig as any)?.pricing?.currency || '',
                   imageUrl: img,
                   image: img,
                   reason,

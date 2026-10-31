@@ -122,6 +122,7 @@ export class CanonicalRuntimeAdapter {
           environmentId: command.environmentId || 'production',
           sub: command.principalId || 'anonymous',
           role: (command.principalRole as any) || 'customer',
+          groups: command.principalGroups,
         },
         assertionSecret
       );
@@ -136,6 +137,58 @@ export class CanonicalRuntimeAdapter {
     }
 
     return headers;
+  }
+
+  /**
+   * The connectors this person may use, asked of the runtime as that person: the verified role and staff groups are signed into the call,
+   * so the runtime answers for them (a shopper, with no identity, gets what a shopper may use, usually nothing).
+   */
+  async listConnectors(
+    tenantId: string,
+    person: { sub?: string; role?: string; groups?: string[] } | undefined,
+    environmentId: string = 'production'
+  ): Promise<{ connectors: any[]; packVersion?: string; welcome?: any }> {
+    const url = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/connectors`;
+    const headers = await this.buildAuthenticatedHeaders({
+      tenantId,
+      environmentId: environmentId as any,
+      correlationId: `connectors_${Date.now()}`,
+      principalId: person?.sub || 'anonymous',
+      principalRole: person?.role || 'customer',
+      principalGroups: person?.groups,
+    } as any);
+    const res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`Runtime /connectors returned status ${res.status}`);
+    const body: any = await res.json();
+    return {
+      connectors: Array.isArray(body?.connectors) ? body.connectors : [],
+      ...(body?.packVersion ? { packVersion: String(body.packVersion) } : {}),
+      ...(body?.welcome && typeof body.welcome === 'object' ? { welcome: body.welcome } : {}),
+    };
+  }
+
+  /**
+   * The corner tile and dashboard for this person, worked out by the runtime as that person (the verified role and staff groups are signed
+   * into the call). The runtime may need a few seconds when a system is slow, so this waits longer than the connector list does.
+   */
+  async getDashboard(
+    tenantId: string,
+    person: { sub?: string; role?: string; groups?: string[] } | undefined,
+    environmentId: string = 'production'
+  ): Promise<{ dashboard?: any }> {
+    const url = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/dashboard`;
+    const headers = await this.buildAuthenticatedHeaders({
+      tenantId,
+      environmentId: environmentId as any,
+      correlationId: `dashboard_${Date.now()}`,
+      principalId: person?.sub || 'anonymous',
+      principalRole: person?.role || 'customer',
+      principalGroups: person?.groups,
+    } as any);
+    const res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`Runtime /dashboard returned status ${res.status}`);
+    const body: any = await res.json();
+    return body?.dashboard && typeof body.dashboard === 'object' ? { dashboard: body.dashboard } : {};
   }
 
   /**
@@ -167,6 +220,12 @@ export class CanonicalRuntimeAdapter {
         workspaceId: command.workspaceId || command.sessionId,
         message: command.message,
         event: command.event,
+        // What the customer did on a card: without it the agent only sees the line the thread shows.
+        customerEvent: (command as any).customerEvent || (command as any).customer_event,
+        agentId: (command as any).agentId,
+        // The earlier message this one continues from (try again, edit): without it the runtime follows the newest message.
+        parentMessageId: (command as any).parentMessageId,
+        disabledConnectors: (command as any).disabledConnectors,
         inputFacts: command.inputFacts,
         approvalRequestId: command.approvalRequestId,
       }),
@@ -220,17 +279,26 @@ export class CanonicalRuntimeAdapter {
           },
         });
       }
+      const engine = result.trace?.engine || (result.trace?.agentMode ? 'agent' : 'canonical');
+      const agentId = result.trace?.agentId;
+      const messageIds = command.turnId ? { customer: `${command.turnId}:customer`, assistant: `${command.turnId}:assistant` } : undefined;
       emit('data', {
         sessionId: command.sessionId,
         workspaceId: command.workspaceId,
         decision: result.decision,
         trace: result.trace,
+        engine,
+        agentId,
+        messageIds,
       });
       emit('done', {
         sessionId: command.sessionId,
         workspaceId: command.workspaceId,
         decision: result.decision,
         trace: result.trace,
+        engine,
+        agentId,
+        messageIds,
         response: result.assistantMessage || '',
         assistantMessage: result.assistantMessage || '',
         message: { role: 'assistant', content: result.assistantMessage || '' },
@@ -259,6 +327,12 @@ export class CanonicalRuntimeAdapter {
         workspaceId: command.workspaceId || command.sessionId,
         message: command.message,
         event: command.event,
+        // What the customer did on a card: without it the agent only sees the line the thread shows.
+        customerEvent: (command as any).customerEvent || (command as any).customer_event,
+        agentId: (command as any).agentId,
+        // The earlier message this one continues from (try again, edit): without it the runtime follows the newest message.
+        parentMessageId: (command as any).parentMessageId,
+        disabledConnectors: (command as any).disabledConnectors,
         inputFacts: command.inputFacts,
         approvalRequestId: command.approvalRequestId,
       }),
@@ -305,6 +379,14 @@ export class CanonicalRuntimeAdapter {
         }
         if (currentEvent === 'token' && typeof parsedData === 'string') {
           parsedData = { token: parsedData, delta: parsedData };
+        }
+        if (currentEvent === 'done' && typeof parsedData === 'object' && parsedData !== null) {
+          if (!parsedData.engine && parsedData.trace?.engine) {
+            parsedData.engine = parsedData.trace.engine;
+          }
+          if (!parsedData.agentId && parsedData.trace?.agentId) {
+            parsedData.agentId = parsedData.trace.agentId;
+          }
         }
         emit(currentEvent, parsedData);
       }

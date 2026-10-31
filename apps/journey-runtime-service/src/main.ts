@@ -4,6 +4,7 @@ import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 import { NestFactory } from '@nestjs/core';
 import { RuntimeModule } from './runtime.module';
+import { TurnApplicationService } from './kernel/turn-application.service';
 import * as express from 'express';
 
 async function bootstrap() {
@@ -43,9 +44,24 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
+  const gitCommit = (() => {
+    if (process.env.GIT_COMMIT) return process.env.GIT_COMMIT;
+    if (process.env.COMMIT_SHA) return process.env.COMMIT_SHA;
+    try {
+      const { execSync } = require('child_process');
+      return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    } catch {
+      return 'unknown';
+    }
+  })();
+  console.log(`[Startup] Git commit: ${gitCommit}`);
+
   const port = process.env.JOURNEY_RUNTIME_PORT || process.env.PORT || 3012;
   await app.listen(port);
-  console.log(`🚀 Journey Runtime Service running on port ${port}`);
+  console.log(`🚀 Journey Runtime Service running on port ${port} (commit: ${gitCommit})`);
+
+  // In the background: the catalogue copy of the tenants named in CATALOGUE_INDEX_WARM_TENANTS (only when the index is on).
+  void app.get(TurnApplicationService).warmCatalogueIndex();
 }
 
 bootstrap().catch((err) => {

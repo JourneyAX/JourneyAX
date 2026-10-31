@@ -38,6 +38,9 @@ const DIALOGUE_SHAPE = object({
   }),
   reason: object({ maxChars: whole(40, 400), maxSentences: whole(1, 3) }),
   wording: { kind: 'choice', values: ['template', 'model'] },
+  history: object({ maxTurns: whole(1, 20), maxChars: whole(500, 20000) }),
+  streaming: bool,
+  agentMode: bool,
   templates: object({
     ask: texts, askMany: texts, recommendOne: texts, recommendMany: texts, show: texts, showNeeds: texts,
     why: text, whyNoExcerpt: text, howTo: text, howToNone: text, headingRecommend: text, headingShow: text, eyebrowRecommend: text, eyebrowShow: text,
@@ -89,6 +92,7 @@ export function validatePackSettings(dto: {
   workspacePinPolicy?: unknown;
   routingPolicy?: unknown;
   dialoguePolicy?: unknown;
+  agentMode?: unknown;
 }): PackSettingsResult {
   const set: Record<string, unknown | null> = {};
 
@@ -118,11 +122,30 @@ export function validatePackSettings(dto: {
       if (policy.replyStyle !== undefined) {
         const style = policy.replyStyle;
         if (!style || typeof style !== 'object' || Array.isArray(style)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle must be an object' };
-        const unknownStyle = Object.keys(style).filter((key) => !['maxSentences', 'dropListLines', 'dropCompanyName', 'forbiddenPhrases', 'rules'].includes(key));
+        const allowedStyleKeys = ['maxSentences', 'maxListLines', 'dropListLines', 'dropCompanyName', 'forbiddenPhrases', 'rules', 'allowFollowUpQuestion', 'maxQuestions', 'turnStyles'];
+        const unknownStyle = Object.keys(style).filter((key) => !allowedStyleKeys.includes(key));
         if (unknownStyle.length) return { ok: false, message: `Invalid interpretationPolicy: replyStyle has unknown key(s) ${unknownStyle.join(', ')}` };
-        if (style.maxSentences !== undefined && (!Number.isInteger(style.maxSentences) || style.maxSentences < 1 || style.maxSentences > 8)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.maxSentences must be a whole number from 1 to 8' };
-        for (const flag of ['dropListLines', 'dropCompanyName']) if (style[flag] !== undefined && typeof style[flag] !== 'boolean') return { ok: false, message: `Invalid interpretationPolicy: replyStyle.${flag} must be true or false` };
+        if (style.maxSentences !== undefined && (!Number.isInteger(style.maxSentences) || style.maxSentences < 1 || style.maxSentences > 16)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.maxSentences must be a whole number from 1 to 16' };
+        if (style.maxListLines !== undefined && (!Number.isInteger(style.maxListLines) || style.maxListLines < 1 || style.maxListLines > 200)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.maxListLines must be a whole number from 1 to 200' };
+        for (const flag of ['dropListLines', 'dropCompanyName', 'allowFollowUpQuestion']) if (style[flag] !== undefined && typeof style[flag] !== 'boolean') return { ok: false, message: `Invalid interpretationPolicy: replyStyle.${flag} must be true or false` };
+        if (style.maxQuestions !== undefined && (!Number.isInteger(style.maxQuestions) || style.maxQuestions < 0 || style.maxQuestions > 5)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.maxQuestions must be a whole number from 0 to 5' };
         for (const list of ['forbiddenPhrases', 'rules']) if (style[list] !== undefined && !isStringArray(style[list])) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.${list} must be a list of non-empty strings` };
+        if (style.turnStyles !== undefined) {
+          if (!style.turnStyles || typeof style.turnStyles !== 'object' || Array.isArray(style.turnStyles)) return { ok: false, message: 'Invalid interpretationPolicy: replyStyle.turnStyles must be an object' };
+          const allowedTurnKinds = ['fact', 'card', 'answer', 'recommend', 'howto'];
+          const unknownKinds = Object.keys(style.turnStyles).filter((k) => !allowedTurnKinds.includes(k));
+          if (unknownKinds.length) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.turnStyles has unknown kind(s) ${unknownKinds.join(', ')}` };
+          for (const [kind, ts] of Object.entries(style.turnStyles as Record<string, any>)) {
+            if (!ts || typeof ts !== 'object' || Array.isArray(ts)) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.turnStyles.${kind} must be an object` };
+            const allowedSubKeys = ['maxSentences', 'dropListLines', 'allowFollowUpQuestion', 'maxQuestions', 'forbiddenPhrases', 'rules'];
+            const unknownSub = Object.keys(ts).filter((k) => !allowedSubKeys.includes(k));
+            if (unknownSub.length) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.turnStyles.${kind} has unknown key(s) ${unknownSub.join(', ')}` };
+            if (ts.maxSentences !== undefined && (!Number.isInteger(ts.maxSentences) || ts.maxSentences < 1 || ts.maxSentences > 16)) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.turnStyles.${kind}.maxSentences must be a whole number from 1 to 16` };
+            for (const flag of ['dropListLines', 'allowFollowUpQuestion']) if (ts[flag] !== undefined && typeof ts[flag] !== 'boolean') return { ok: false, message: `Invalid interpretationPolicy: replyStyle.turnStyles.${kind}.${flag} must be true or false` };
+            if (ts.maxQuestions !== undefined && (!Number.isInteger(ts.maxQuestions) || ts.maxQuestions < 0 || ts.maxQuestions > 5)) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.turnStyles.${kind}.maxQuestions must be a whole number from 0 to 5` };
+            for (const list of ['forbiddenPhrases', 'rules']) if (ts[list] !== undefined && !isStringArray(ts[list])) return { ok: false, message: `Invalid interpretationPolicy: replyStyle.turnStyles.${kind}.${list} must be a list of non-empty strings` };
+          }
+        }
       }
       for (const key of MONEY_KEYS) {
         if (policy.money?.[key] !== undefined && !isStringArray(policy.money[key])) return { ok: false, message: `Invalid interpretationPolicy: money.${key} must be a list of non-empty strings` };
@@ -184,5 +207,34 @@ export function validatePackSettings(dto: {
     }
   }
 
+  // Agent mode: enables tool calling and autonomous reasoning. Defaults to off.
+  if (dto.agentMode !== undefined) {
+    if (dto.agentMode === null) {
+      set['extensions.agentMode'] = null;
+    } else if (typeof dto.agentMode === 'boolean') {
+      set['extensions.agentMode'] = { enabled: dto.agentMode };
+    } else if (typeof dto.agentMode === 'object' && !Array.isArray(dto.agentMode)) {
+      const modeObj = dto.agentMode as any;
+      if (typeof modeObj.enabled !== 'boolean') {
+        return { ok: false, message: 'Invalid agentMode: enabled must be true or false' };
+      }
+      set['extensions.agentMode'] = { enabled: modeObj.enabled };
+    } else {
+      return { ok: false, message: 'Invalid agentMode: must be a boolean or an object with { enabled: boolean }' };
+    }
+  }
+
   return { ok: true, set };
+}
+
+/**
+ * Checks whether agent mode is enabled for a given release or pack.
+ * Agent mode is switched on per tenant by pack setting (default off).
+ */
+export function isAgentModeEnabled(release?: any): boolean {
+  if (!release) return false;
+  const ext = release.extensions;
+  if (ext?.agentMode?.enabled === true || ext?.agentMode === true) return true;
+  if (ext?.dialoguePolicy?.agentMode === true) return true;
+  return false;
 }

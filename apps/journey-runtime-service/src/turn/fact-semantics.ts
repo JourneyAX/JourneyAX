@@ -1,5 +1,8 @@
 import type { BusinessPackRelease } from '@journeyax/business-pack';
 import defaults from '../defaults/interpretation-policy.json';
+import type { TurnKind } from './turn-kind';
+
+export type { TurnKind };
 
 /**
  * What a fact MEANS comes from the published pack (fact registry `role`/`multiple`, entity attribute
@@ -17,9 +20,23 @@ export interface InterpretationPolicy {
   replyStyle: ReplyStyle;
 }
 
+export interface TurnStyleConfig {
+  maxSentences?: number;
+  dropListLines?: boolean;
+  allowFollowUpQuestion?: boolean;
+  maxQuestions?: number;
+  forbiddenPhrases?: string[];
+  rules?: string[];
+}
+
 export interface ReplyStyle {
   /** The reply keeps at most this many sentences. */
   maxSentences: number;
+  /**
+   * When set, list items and table rows are counted against this limit instead of `maxSentences`: a list of records is data, not
+   * chatter, and cutting it in the middle of an item helps nobody. Unset, they count as sentences, as they always did.
+   */
+  maxListLines?: number;
   /** Bullet and numbered lines are removed: cards show options and steps. */
   dropListLines: boolean;
   /** A sentence that names the company is removed: the customer is already in its shop. */
@@ -28,6 +45,12 @@ export interface ReplyStyle {
   forbiddenPhrases: string[];
   /** Style rules sent to the model with every reply it writes. */
   rules: string[];
+  /** Allow one follow-up question in answers, recommendations, and how-to guidance. */
+  allowFollowUpQuestion?: boolean;
+  /** Maximum number of questions allowed (defaults to 1 when allowed, 0 when forbidden). */
+  maxQuestions?: number;
+  /** Contextual style overrides depending on turn kind (fact, card, answer, recommend, howto). */
+  turnStyles?: Partial<Record<TurnKind, TurnStyleConfig>>;
 }
 
 const PLATFORM_POLICY = defaults as InterpretationPolicy;
@@ -46,7 +69,14 @@ export function resolveInterpretationPolicy(release?: BusinessPackRelease): Inte
     grounding: { ...PLATFORM_POLICY.grounding, ...(override.grounding || {}) },
     promptRules: Array.isArray(override.promptRules) ? override.promptRules : PLATFORM_POLICY.promptRules,
     messages: { ...PLATFORM_POLICY.messages, ...(override.messages || {}) },
-    replyStyle: { ...PLATFORM_POLICY.replyStyle, ...(override.replyStyle || {}) },
+    replyStyle: {
+      ...PLATFORM_POLICY.replyStyle,
+      ...(override.replyStyle || {}),
+      turnStyles: {
+        ...(PLATFORM_POLICY.replyStyle?.turnStyles || {}),
+        ...(override.replyStyle?.turnStyles || {}),
+      },
+    },
   };
   cache.set(override, merged);
   return merged;

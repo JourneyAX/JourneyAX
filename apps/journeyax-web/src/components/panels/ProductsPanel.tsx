@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import TryOn from './TryOn';
+import { linkProps } from '@/lib/links';
 
 function specStr(v: unknown): string {
   if (v == null) return '';
@@ -423,8 +424,7 @@ export default function ProductsPanel() {
           {p.url && (
             <a
               href={p.url}
-              target="_blank"
-              rel="noopener noreferrer"
+              {...linkProps}
               className="product-card__link"
               style={{ display: 'inline-block', marginTop: '0.5rem', color: '#002855', fontWeight: 600 }}
             >
@@ -540,8 +540,7 @@ export default function ProductsPanel() {
                   {product.url && (
                     <a
                       href={product.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      {...linkProps}
                       className="product-card__link"
                       onClick={(e) => e.stopPropagation()}
                       style={{ display: 'inline-block', marginTop: '0.35rem', color: '#002855', fontSize: '0.75rem' }}

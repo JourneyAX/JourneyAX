@@ -16,6 +16,7 @@
  */
 import { useJourney } from '@/context/JourneyContext';
 import type { SchoolResearch } from '@/lib/types';
+import { linkProps } from '@/lib/links';
 
 const CONF: Record<string, { label: string; color: string }> = {
   high:   { label: 'High confidence',   color: 'var(--success)' },
@@ -130,7 +131,7 @@ export default function ResearchPanel() {
       {r.logo && (
         <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--text-secondary)', background: 'var(--surface-alt)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
           <b style={{ color: 'var(--text)' }}>Logo:</b> we design in your colours and add <b>your approved artwork</b> — we don’t recreate the official mark.
-          {r.logo.officialArtworkSource && <> Official artwork: <a href={r.logo.officialArtworkSource} target="_blank" rel="noreferrer" style={{ color: 'var(--gold)' }}>source ↗</a></>}
+          {r.logo.officialArtworkSource && <> Official artwork: <a href={r.logo.officialArtworkSource} {...linkProps} style={{ color: 'var(--gold)' }}>source ↗</a></>}
         </div>
       )}
 
@@ -140,7 +141,7 @@ export default function ResearchPanel() {
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--text-muted)', marginBottom: 6 }}>Sources</div>
           <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12.5, color: 'var(--text-secondary)' }}>
             {r.sources.slice(0, 5).map((s, i) => (
-              <li key={i}><a href={s.url} target="_blank" rel="noreferrer" style={{ color: 'var(--gold)' }}>{s.title || s.url}</a></li>
+              <li key={i}><a href={s.url} {...linkProps} style={{ color: 'var(--gold)' }}>{s.title || s.url}</a></li>
             ))}
           </ul>
         </div>

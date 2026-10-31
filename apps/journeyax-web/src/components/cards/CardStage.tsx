@@ -11,14 +11,24 @@
  * `<CardTile>`. `useCardActions` (the action → behaviour switch) is unchanged
  * and shared by every `<CardTile>` instance.
  */
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { CardRenderer } from '@journeyax/ui-cards/react';
 import { answerSummary } from '@journeyax/ui-cards/answers';
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { resolveTemplate } from '@/lib/cards/resolveTemplate';
-import { mapClarifyCard, usableImage } from '@/lib/cards/mappers';
+import { clarifyProgress, mapClarifyCard } from '@/lib/cards/mappers';
+import { buildDetailProduct, fetchProductDetail } from '@/lib/cards/productDetail';
+import { matchBuyerFeedback } from '@/lib/cards/buyerFeedback';
+import { MAX_COMPARE, clearCompare, getCompareSelection, toggleCompare, useCompareSelection } from '@/lib/cards/compareStore';
+import { decorateProductRows } from '@/lib/cards/productTiles';
+import { buildComparisonCard, toCompareSource } from '@/lib/cards/comparison';
+import { requestQuantity } from '@/lib/cards/quantityStep';
 import type { CardInstance } from '@/lib/types';
+import { openCanvas, openPanelCard, rememberPanelOpener } from '@/lib/shell/sidePanelStore';
+import { openLink } from '@/lib/links';
+import FormCard from './FormCard';
+import RecordsCard from './RecordsCard';
 
 /**
  * Action → storefront behaviour (docs/v3-card-cms-architecture.md
@@ -64,6 +74,25 @@ function findCardProduct(cards: CardInstance[], sku: string): { sku: string; nam
   return undefined;
 }
 
+function postCustomerEvent(event: { type: string; payload?: any; sourceCard?: any }) {
+  if (typeof window !== 'undefined') {
+    const w = window as any;
+    if (typeof w.__journeySendEvent === 'function') {
+      w.__journeySendEvent(event);
+    } else {
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: w.__journeySessionId,
+          workspaceId: w.__journeyWorkspaceId,
+          customer_event: event,
+        }),
+      }).catch(() => {});
+    }
+  }
+}
+
 export function useCardActions() {
   const { state, dispatch, handleApprove, addToCart, removeFromCart, setQuantity, setCartOpen } = useJourney();
   const cfg = useStorefrontConfig();
@@ -77,8 +106,10 @@ export function useCardActions() {
   closingRef.current = cfg.commerceMode === 'cart' ? 'bag' : 'quote';
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
+  // The quantity step calls back into this same handler once the customer has chosen a number.
+  const selfRef = useRef<((name: string, params?: Record<string, unknown>) => void) | null>(null);
 
-  return useCallback((name: string, params?: Record<string, unknown>) => {
+  const handler = useCallback((name: string, params?: Record<string, unknown>) => {
     const state = stateRef.current;
     const closing = closingRef.current;
     const w = typeof window !== 'undefined' ? (window as any) : {};
@@ -90,9 +121,13 @@ export function useCardActions() {
         const questionId = String(params?.questionId ?? '');
         const value = String(params?.value ?? '');
         if (!questionId) break;
-        dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value });
+        const kept = params?.kept === true;
+        dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value, kept });
 
         const cardId = params?.cardId ? String(params.cardId) : undefined;
+        // No event is posted for a tap on an option: the chat sends all the answers together once every question on the card is
+        // answered, and an event per tap would show as a message of its own and answer half a set of answers.
+
         const card = cardId
           ? state.cards.find((c) => c.id === cardId)
           : [...state.cards].reverse().find((c) => c.cardType === 'clarify');
@@ -116,14 +151,7 @@ export function useCardActions() {
             return ans !== undefined && ans !== null && ans !== '';
           }).length;
           const left = total - answeredCount;
-
-          const progress = total === 0
-            ? undefined
-            : left === 0
-              ? `All ${total === 1 ? 'set' : `${total} answered`} — sending your answers…`
-              : total === 1
-                ? 'Pick one to continue.'
-                : `${answeredCount} of ${total} answered — pick the ${left === 1 ? 'last one' : 'rest'} whenever you're ready, nothing sends until then.`;
+          const progress = clarifyProgress(total, answeredCount);
 
           dispatch({
             type: 'PATCH_CARD',
@@ -138,7 +166,7 @@ export function useCardActions() {
           // ChatPanel's useEffect monitors dynamicAnswers and will submit with fingerprint deduplication once all questions are answered
           if (!w.__handleClarifySubmit && (left === 0 || total <= 1)) {
             // Only if ChatPanel bridge is somehow absent, fallback to direct send
-            const clarificationText = `My answers:\n${answerSummary(updatedQuestions, answers)}`;
+            const clarificationText = `My answers:\n${answerSummary(updatedQuestions, answers, { ...state.dynamicKept, [questionId]: kept })}`;
             w.__journeySend?.(clarificationText);
           }
         } else {
@@ -147,11 +175,40 @@ export function useCardActions() {
         }
         break;
       }
+      case 'confirmTool': {
+        // An ask-first card: the person's answer goes to the server, which holds the exact call; only the id and the choice travel.
+        const confirmationId = String(params?.confirmationId ?? '').trim();
+        const decision = params?.decision === 'allow' ? 'allow' : 'deny';
+        if (!confirmationId) break;
+        const card = state.cards.find((c) => c.cardType === 'confirm' && (c.state as any)?.confirmationId === confirmationId);
+        if (card) {
+          const said = decision === 'allow' ? (card.state as any)?.allowedText : (card.state as any)?.deniedText;
+          dispatch({ type: 'PATCH_CARD', id: card.id, state: { ...card.state, pending: false, outcome: said || (decision === 'allow' ? 'Allowed.' : 'Not now.') } });
+        }
+        postCustomerEvent({ type: 'confirmTool', payload: { confirmationId, decision }, sourceCard: { id: card?.id, cardType: 'confirm' } });
+        break;
+      }
+      case 'submitForm': {
+        // The form's id and what was typed go to the server, which checks it against the shop's own definition and keeps it.
+        const formId = String(params?.formId ?? '').trim();
+        const values = params?.values && typeof params.values === 'object' ? (params.values as Record<string, unknown>) : {};
+        if (!formId) break;
+        const card = state.cards.find((c) => c.cardType === 'form' && (c.state as any)?.formId === formId && (c.state as any)?.status !== 'sent');
+        if (card) dispatch({ type: 'PATCH_CARD', id: card.id, state: { ...card.state, status: 'sent', sentText: 'Sent. Thank you.' } });
+        postCustomerEvent({ type: 'submitForm', payload: { formId, values }, sourceCard: { id: card?.id, cardType: 'form' } });
+        break;
+      }
       case 'selectItem': {
         const sku = String(params?.sku ?? '').trim();
         const title = String(params?.title || params?.name || params?.label || '').trim();
         const value = String(params?.value ?? params?.id ?? params?.key ?? '').trim();
         const questionId = String(params?.questionId ?? '').trim();
+
+        postCustomerEvent({
+          type: 'selectItem',
+          payload: { sku, title, value, questionId },
+          sourceCard: { id: params?.cardId, cardType: 'selection' },
+        });
 
         if (questionId && (value || title)) {
           dispatch({ type: 'SET_DYNAMIC_ANSWER', questionId, value: value || title });
@@ -170,6 +227,11 @@ export function useCardActions() {
       case 'selectTheme':
       case 'selectDesign': {
         const label = String(params?.name || params?.title || params?.label || params?.theme || params?.design || params?.value || params?.id || 'this design').trim();
+        postCustomerEvent({
+          type: 'selectDesign',
+          payload: { label, ...params },
+          sourceCard: { id: params?.cardId },
+        });
         w.__journeySend?.(`I choose ${label}`);
         break;
       }
@@ -178,6 +240,11 @@ export function useCardActions() {
       case 'proceed':
       case 'continue': {
         const text = String(params?.text || params?.label || params?.step || 'Continue to next step').trim();
+        postCustomerEvent({
+          type: 'nextStep',
+          payload: { text, ...params },
+          sourceCard: { id: params?.cardId },
+        });
         w.__journeySend?.(text);
         break;
       }
@@ -187,37 +254,80 @@ export function useCardActions() {
         // card whose items never entered recommendedProducts — fall back to
         // whatever card is showing that SKU, so every tile opens its detail.
         const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
-        if (p) {
-          const count = typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined;
-          const rawSpecs = (p as any).specs || {};
-          const specList = Array.isArray((p as any).specList) && (p as any).specList.length > 0
-            ? (p as any).specList
-            : Object.entries(rawSpecs).map(([label, value]) => ({ label, value: String(value) }));
+        // The event names the product, not just its code: the thread then reads "View product: <name>" and the agent
+        // knows which one the customer is looking at without having to guess from the last list it showed.
+        const viewedTitle = p ? String((p as any).name || (p as any).title || '').trim() : '';
+        // The details sit right under the customer's own "View product" line, ahead of the consultant's reply (see compareProducts).
+        const at = String(((typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined) ?? 0) + 1);
+        // The details open in the side panel; remember what was pressed so closing the panel can hand focus back to it.
+        rememberPanelOpener();
+        postCustomerEvent({
+          type: 'viewProduct',
+          payload: { sku, ...(viewedTitle ? { title: viewedTitle } : {}) },
+          sourceCard: { id: params?.cardId },
+        });
+        // The tile only knows a title, a price and a picture. The catalogue knows the rest (description, features,
+        // specifications, documents, what goes with it, availability): ask for it, and open the card with whatever came back.
+        // If the catalogue cannot answer, the card opens with the tile's own facts, as it always did.
+        void (async () => {
+          const detail = await fetchProductDetail(sku, cfgRef.current.projectId);
+          if (!p && !detail) return;
+          const built = buildDetailProduct(p as any, detail, sku);
+          const feedback = matchBuyerFeedback(cfgRef.current.buyerFeedback, { title: String(built.title || ''), category: built.category as string | undefined });
+          const product = feedback ? { ...built, ...feedback } : built;
+          const detailId = `productDetail-${sku}-${Date.now()}`;
+          openPanelCard(detailId, 'productDetail');
           dispatch({
             type: 'PUSH_CARD',
             card: {
-              id: `productDetail-${sku}-${Date.now()}`,
+              id: detailId,
               cardType: 'productDetail',
+              beforeReply: true,
               state: {
-                product: {
-                  sku,
-                  title: p.name || (p as any).title,
-                  description: p.description || (p as any).narrative,
-                  imageUrl: usableImage(p.imageUrl) || (p as any).image,
-                  price: p.price ?? null,
-                  category: p.category,
-                  specs: rawSpecs,
-                  specList,
-                  featuresList: (p as any).featuresList || [],
-                  documents: (p as any).documents || [],
-                },
+                product,
                 closing,
-                handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: p.name, category: p.category }),
+                handoff: matchHandoff(cfgRef.current.handoffs, { sku, name: String(product.title || ''), category: product.category as string | undefined }),
               },
-              createdAt: String(count ?? 0),
+              createdAt: at,
             },
           });
-        }
+        })();
+        break;
+      }
+      case 'toggleCompare': {
+        const sku = String(params?.sku ?? '').trim();
+        if (sku) toggleCompare({ sku, title: String(params?.title ?? '') });
+        break;
+      }
+      case 'compareProducts': {
+        const named = Array.isArray(params?.skus) ? (params!.skus as unknown[]).map((entry) => String(entry).trim()).filter(Boolean) : [];
+        const skus = [...new Set(named.length > 0 ? named : getCompareSelection().map((entry) => entry.sku))].slice(0, MAX_COMPARE);
+        if (skus.length < 2) break;
+        const ticked = getCompareSelection();
+        const tiles = skus.map((sku) => state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku));
+        const titles = skus.map((sku, i) => String((tiles[i] as any)?.name || (tiles[i] as any)?.title || ticked.find((entry) => entry.sku === sku)?.title || sku));
+        // The table belongs right under the customer's own "Compare products" line, before the consultant's reply: the position is
+        // the thread length once that line is added, taken now because the reply starts streaming before the records come back.
+        const at = String(((typeof window !== 'undefined' ? (window as any).__journeyMessageCount : undefined) ?? 0) + 1);
+        // The consultant is told which products are being compared, so it can say which one fits what the customer asked for.
+        rememberPanelOpener();
+        postCustomerEvent({ type: 'compareProducts', payload: { skus, titles, title: titles.join(' vs ') }, sourceCard: { id: params?.cardId } });
+        clearCompare();
+        void (async () => {
+          const details = await Promise.all(skus.map((sku) => fetchProductDetail(sku, cfgRef.current.projectId)));
+          const comparisonId = `comparison-${skus.join('-')}-${Date.now()}`;
+          openPanelCard(comparisonId, 'comparison');
+          dispatch({
+            type: 'PUSH_CARD',
+            card: {
+              id: comparisonId,
+              cardType: 'comparison',
+              beforeReply: true,
+              state: buildComparisonCard(skus.map((sku, i) => toCompareSource(tiles[i] as any, details[i], sku))),
+              createdAt: at,
+            },
+          });
+        })();
         break;
       }
       case 'addToCart': {
@@ -228,8 +338,29 @@ export function useCardActions() {
         const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
         const name = title || p?.name || (p as any)?.title || sku;
 
-        // Optimistic UI feedback: immediately mark inBag so the button becomes 'Added ✓'
+        // Nothing is added blindly: the customer says how many first (or asks for help working it out from their area).
+        // A tap that already carries a confirmed number (the quantity card's own button) goes straight through.
+        if (params?.confirmed !== true) {
+          requestQuantity({
+            sku,
+            title: name,
+            imageUrl: (p as any)?.imageUrl ?? null,
+            price: (p as any)?.price ?? null,
+            initial: qty,
+            onConfirm: (chosen) => selfRef.current?.('addToCart', { ...params, sku, title: name, qty: chosen, confirmed: true }),
+            onWorkItOut: () => w.__journeySend?.(String((cfgRef.current as any)?.labels?.quantityHelpMessage || 'Help me work out how many I need of') + ` ${name}`),
+          });
+          break;
+        }
+
         const cardId = params?.cardId ? String(params.cardId) : undefined;
+        postCustomerEvent({
+          type: 'addToCart',
+          payload: { sku, quantity: qty, title: name },
+          sourceCard: { id: cardId, cardType: 'products' },
+        });
+
+        // Optimistic UI feedback: immediately mark inBag so the button becomes 'Added ✓'
         if (cardId) {
           const card = state.cards.find((c) => c.id === cardId);
           if (card && card.cardType === 'products') {
@@ -243,18 +374,18 @@ export function useCardActions() {
         // Await authoritative quote pricing then open drawer and confirm in conversation
         (async () => {
           await addToCart(sku, qty, title, p);
-          setCartOpen(true);
-          dispatch({
-            type: 'ADD_MESSAGE',
-            role: 'ai',
-            text: `Added **${name}** (SKU ${sku}) to your ${closing}. You can review your materials list, adjust quantities, or check branch stock in the panel on the right, or let me know what other materials you need!`,
-          });
+          // The cart count in the header is the confirmation; the consultant's reply (its own turn) says what goes with it.
         })();
         break;
       }
       case 'addAllToCart': {
         const items = Array.isArray(params?.items) ? (params!.items as any[]) : [];
         if (items.length > 0) {
+          postCustomerEvent({
+            type: 'addAllToCart',
+            payload: { items: items.map((i) => ({ sku: i?.sku, quantity: i?.quantity ?? i?.qty, title: i?.title || i?.name })) },
+            sourceCard: { cardType: 'products' },
+          });
           (async () => {
             for (const item of items) {
               const sku = String(item?.sku || '').trim();
@@ -264,7 +395,6 @@ export function useCardActions() {
               const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
               await addToCart(sku, qty, title, p);
             }
-            setCartOpen(true);
             dispatch({
               type: 'ADD_MESSAGE',
               role: 'ai',
@@ -278,6 +408,11 @@ export function useCardActions() {
         const sku = String(params?.sku ?? '').trim();
         const qty = Math.max(0, Math.floor(Number(params?.qty ?? params?.quantity) || 0));
         if (sku) {
+          postCustomerEvent({
+            type: 'setQuantity',
+            payload: { sku, quantity: qty },
+            sourceCard: { cardType: 'cart' },
+          });
           setQuantity(sku, qty);
         }
         break;
@@ -285,6 +420,11 @@ export function useCardActions() {
       case 'removeFromCart': {
         const sku = String(params?.sku ?? '').trim();
         if (sku) {
+          postCustomerEvent({
+            type: 'removeFromCart',
+            payload: { sku },
+            sourceCard: { cardType: 'cart' },
+          });
           removeFromCart(sku);
         }
         break;
@@ -292,6 +432,11 @@ export function useCardActions() {
       case 'selectBranch': {
         const branchId = String(params?.branchId ?? '');
         if (!branchId) break;
+        postCustomerEvent({
+          type: 'selectBranch',
+          payload: { branchId },
+          sourceCard: { cardType: 'fulfilment' },
+        });
         (async () => {
           try {
             const res = await fetch('/api/branch-stock' + window.location.search, {
@@ -314,13 +459,15 @@ export function useCardActions() {
         break;
       case 'openPanel':
         if (params?.panel === 'quote' || params?.panel === 'cart' || params?.panel === 'bag') {
-          setCartOpen(true);
+          openCanvas({ kind: 'cart' });
+        } else if (params?.panel === 'order' && params?.orderId) {
+          openCanvas({ kind: 'order', orderId: String(params.orderId) });
         } else if (params?.panel) {
           dispatch({ type: 'SET_PHASE', phase: params.panel as any });
         }
         break;
       case 'openUrl':
-        if (params?.url) window.open(String(params.url), '_blank', 'noopener');
+        if (params?.url) openLink(String(params.url));
         break;
       default: {
         const fallbackText = params?.text || params?.label || params?.value;
@@ -332,6 +479,8 @@ export function useCardActions() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, handleApprove, addToCart, removeFromCart, setQuantity, setCartOpen]);
+  useEffect(() => { selfRef.current = handler; }, [handler]);
+  return handler;
 }
 
 /** Every card list keyed by SKU (products, bundle items, quote lines, order
@@ -353,12 +502,34 @@ function dedupeSkuLists<T extends Record<string, unknown>>(state: T): T {
 /** One card, rendered inline at its place in the conversation thread. */
 export function CardTile({ card, onAction }: { card: CardInstance; onAction: (name: string, params?: Record<string, unknown>) => void }) {
   const cfg = useStorefrontConfig();
+  // A form is the shop's own fields filled in by the person: it needs its own state, so it is drawn by its own component.
+  if (card.cardType === 'form') {
+    return (
+      <div className="jx-root chat-inline-card" data-card-type="form">
+        <FormCard state={card.state as any} onAction={(name, params) => onAction(name, { ...params, cardId: card.id })} />
+      </div>
+    );
+  }
+  // Records read from a connected system (open deals, cases, a customer) are the shop's own wording over the system's own answer.
+  if (card.cardType === 'records') {
+    return (
+      <div className="jx-root chat-inline-card" data-card-type="records">
+        <RecordsCard state={card.state as any} />
+      </div>
+    );
+  }
+  const ticked = useCompareSelection();
+  const base = dedupeSkuLists(card.state as Record<string, unknown>) as Record<string, unknown>;
+  // Product rows carry what depends on this customer's moment: ticked for comparison, how many branches hold it, no price to show.
+  const state = card.cardType === 'products' && Array.isArray(base.products)
+    ? { ...base, products: decorateProductRows(base.products as any[], { comparing: new Set(ticked.map((entry) => entry.sku)) }) }
+    : base;
   return (
     <div className="jx-root chat-inline-card" data-card-type={card.cardType}>
       <CardRenderer
         template={resolveTemplate(cfg, card.cardType)}
         // The brand's own logo backs any tile whose catalogue has no picture ("Image coming soon").
-        state={{ ...dedupeSkuLists(card.state as Record<string, unknown>), brandLogo: cfg.theme?.logoUrl || null }}
+        state={{ ...state, brandLogo: cfg.theme?.logoUrl || null }}
         settings={cfg.uiTheme?.cards?.[card.cardType]?.options}
         onAction={(name, params) => onAction(name, { ...params, cardId: card.id })}
         stateKey={card.id}

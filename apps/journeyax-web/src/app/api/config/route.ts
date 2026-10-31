@@ -6,7 +6,7 @@
  * ?project= param → X-Tenant-ID header → Host domain → env fallback.
  */
 import { resolveTenant } from '../../../lib/tenant';
-import { resolveTenantRouting } from '../../../lib/routing/cutover';
+import { handleConfigFailure, json } from '../../../lib/config/configFailure';
 
 const PROJECT_API = process.env.PROJECT_API || 'http://localhost:8082';
 
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
       }
       return await handleConfigFailure(PROJECT_ID);
     }
-    const p: any = await res.json();
+    const p: any = withPreviewDraft(await res.json());
     return json({
       projectId: p.projectId || PROJECT_ID,
       companyName: p.companyName || 'JourneyAX',
@@ -41,6 +41,20 @@ export async function GET(req: Request) {
       // Commerce surface — DECLARED per brand ('cart' B2C vs 'quote' B2B). Default
       // 'quote' so existing fixtures/kit tenants are unchanged when unset.
       commerceMode: p?.commerceMode === 'cart' ? 'cart' : 'quote',
+      checkoutReview: p?.extensions?.checkoutReview?.enabled === true,
+      // What buyers often mention about a kind of product (pack extension buyerFeedback): shown on the product's details.
+      buyerFeedback: Array.isArray(p?.extensions?.buyerFeedback?.rules)
+        ? p.extensions.buyerFeedback.rules
+            .filter((rule: any) => rule && Array.isArray(rule.when) && Array.isArray(rule.mentions))
+            .map((rule: any) => ({
+              when: rule.when.map(String),
+              mentions: rule.mentions.map(String),
+              ...(Array.isArray(rule.watchFor) ? { watchFor: rule.watchFor.map(String) } : {}),
+            }))
+        : [],
+      payment: p?.extensions?.payment?.embedded === true
+        ? { embedded: true, collectShipping: p.extensions.payment.collectShipping === true, shippingCountries: Array.isArray(p.extensions.payment.shippingCountries) ? p.extensions.payment.shippingCountries.map(String) : [] }
+        : undefined,
       configurator: p?.configurator?.enabled ? p.configurator : null,
       // Opening-screen copy — starters + input placeholder, set per tenant in the
       // back office (no hardcoded generic example).
@@ -60,7 +74,8 @@ export async function GET(req: Request) {
       // + per-card settings; `cardTemplates` → tenant json-render overrides
       // (resolveTemplate falls back to DEFAULT_TEMPLATES); `fulfilment` → mode,
       // labels and the branch list the quote/cart cards offer via selectBranch.
-      uiTheme: p?.uiTheme && typeof p.uiTheme === 'object' ? p.uiTheme : null,
+      // The shop's own button, link and panel-header colours (pack extension brandTheme) sit on top of its brand colours.
+      uiTheme: withBrandTheme(p?.uiTheme && typeof p.uiTheme === 'object' ? p.uiTheme : null, p?.extensions?.brandTheme),
       cardTemplates: p?.cardTemplates && typeof p.cardTemplates === 'object' ? p.cardTemplates : null,
       fulfilment: p?.fulfilment && typeof p.fulfilment === 'object' ? p.fulfilment : null,
       // Quote card copy (mapQuoteCard's sub/compliance) — real config, not a
@@ -90,111 +105,36 @@ export async function GET(req: Request) {
   }
 }
 
+
+const BRAND_KEYS = ['action', 'actionText', 'link', 'canvasHeader', 'canvasHeaderText'] as const;
+function withBrandTheme(uiTheme: any, brand: any) {
+  const picked: Record<string, string> = {};
+  for (const key of BRAND_KEYS) if (typeof brand?.[key] === 'string' && /^#[0-9A-Fa-f]{6}$/.test(brand[key])) picked[key] = brand[key];
+  if (Object.keys(picked).length === 0) return uiTheme;
+  // The cards' main buttons (and the older storefront buttons that follow the same brand token) take the shop's button colour too.
+  if (picked.action) { picked.brand = picked.action; if (picked.actionText) picked.brandText = picked.actionText; }
+  if (picked.link) picked.accent = picked.link;
+  const tokens = uiTheme?.tokens && typeof uiTheme.tokens === 'object' ? uiTheme.tokens : {};
+  return { ...(uiTheme || {}), tokens: { ...tokens, colors: { ...(tokens.colors && typeof tokens.colors === 'object' ? tokens.colors : {}), ...picked } } };
+}
+
 /**
- * Handles configuration load failure by checking cutover state.
- * A tenant with an active canonical pack/config must fail closed when loading it fails.
- * Legacy fallback is permitted ONLY when the cutover repository explicitly says that tenant is not activated.
+ * Preview only: when the preview launcher names a draft (PREVIEW_DRAFT), its storefront settings (extensions checkoutReview, payment,
+ * brandTheme, buyerFeedback) are laid over the project's own, in this response only, so a draft can be tried before it is published. Without that
+ * variable (every real deployment) the project is returned as it is.
  */
-export async function handleConfigFailure(projectId: string): Promise<Response> {
-  const routing = await resolveTenantRouting(projectId, 'production');
-  if (routing.cutoverState === 'migrated') {
-    return json(
-      {
-        error: 'CanonicalConfigurationUnavailable',
-        message: `Canonical storefront configuration failed to load for activated tenant '${projectId}'. Legacy fallback is prohibited after canonical activation.`,
-        tenantId: projectId,
-        cutoverState: routing.cutoverState,
-      },
-      { status: 503 }
-    );
+function withPreviewDraft(project: any) {
+  const file = process.env.PREVIEW_DRAFT;
+  if (!file) return project;
+  try {
+    const { readFileSync } = require('node:fs');
+    const path = require('node:path');
+    const draft = JSON.parse(readFileSync(path.resolve(process.cwd(), '../..', file), 'utf8'));
+    const keep = ['checkoutReview', 'payment', 'brandTheme', 'buyerFeedback'];
+    const extensions = { ...(project?.extensions || {}) };
+    for (const key of keep) if (draft?.extensions?.[key]) extensions[key] = draft.extensions[key];
+    return { ...project, extensions };
+  } catch {
+    return project;
   }
-
-  return json(fallback(projectId));
-}
-
-function fallback(projectId: string) {
-  if (projectId === 'placemakers') {
-    return {
-      projectId: 'placemakers',
-      companyName: 'PlaceMakers (Fletcher Building)',
-      theme: {
-        primaryColor: '#002855',
-        accentColor: '#FFD200',
-        fontFamily: "'Arial', 'Helvetica Neue', sans-serif",
-        logoUrl: '/brands/placemakers.png',
-        visualizerEnabled: true,
-        sidebarStyle: 'dark',
-        sidebarColor: '#002855',
-      },
-      labels: { items: 'Trade Building Products', itemsSingular: 'Product', headerTitle: 'PlaceMakers Project Consultant' },
-      greeting: "Kia ora! I'm your PlaceMakers project and materials consultant. Whether you're planning a complete laundry or bathroom makeover, building a compliant deck, or estimating materials across our branches, how can I help you today?",
-      systemName: 'PlaceMakers Consultant',
-      capabilities: ['products', 'quote', 'steps', 'installGuide', 'warranty', 'buildProjectPlan', 'checkBranchStock', 'openSpacePlanner'],
-      commerceMode: 'quote',
-      components: {
-        productCard: { layout: 'technical', showBranchStock: true, showSpecs: true },
-        quoteCard: { layout: 'multi-trade-bom', showTradeDiscounts: true, fulfillmentOptions: ['branch-pickup', 'delivery', 'trade-dispatch'], defaultBranch: 'Mount Wellington / Cook St' },
-        spacePlanner: { enabled: true, roomTypes: ['laundry', 'bathroom', 'decking'], defaultRoom: 'laundry' },
-      },
-      intro: {
-        heroHeadline: 'Build it right with PlaceMakers.',
-        heroSubtitle: 'Instant multi-trade material estimation, compliant project packs, and 60-minute branch pickup.',
-        inputPlaceholder: 'e.g. I want to plan a complete laundry makeover for a 2.4m space...',
-        starters: [
-          { label: '🧺 Laundry Room Makeover', prompt: 'I want to do a complete laundry room makeover with cabinetry, tub, and wall linings.' },
-          { label: '🪵 Kwila Deck Estimator', prompt: 'Estimate Kwila decking, SG8 framing, and stainless screws for a 5m x 4m deck.' },
-          { label: '🛁 GIB Aqualine & Wet Walls', prompt: 'What moisture-resistant linings and waterproofing do I need for my wet area?' },
-          { label: '📍 Branch Stock Check', prompt: 'Check stock availability for Robinhood SuperTub and GIB Aqualine at Mt Wellington branch.' },
-        ],
-      },
-      uiTheme: null,
-      cardTemplates: null,
-      // Branch list the storefront used to hardcode (QuotePanel PM_BRANCHES) —
-      // now config so the quote card reads `cfg.fulfilment.branches`. `id` keeps
-      // the value the branch-stock endpoint already understands.
-      fulfilment: {
-        mode: 'both',
-        label: 'Branch fulfilment & pickup',
-        badge: '60-min Click & Collect',
-        branches: [
-          { id: 'Mt Wellington', name: 'PlaceMakers Mount Wellington', address: '106 Carbine Rd' },
-          { id: 'Cook Street', name: 'PlaceMakers Cook Street', address: '124 Cook St' },
-          { id: 'Albany', name: 'PlaceMakers Albany', address: '21 Corinthian Dr' },
-          { id: 'Te Rapa', name: 'PlaceMakers Te Rapa', address: 'Maui St' },
-          { id: 'Petone', name: 'PlaceMakers Petone', address: '43 Bouverie St' },
-          { id: 'Riccarton', name: 'PlaceMakers Riccarton', address: 'Mandeville St' },
-        ],
-      },
-      // Real quote-card copy (mapQuoteCard's sub/compliance) — was hardcoded
-      // `isPlaceMakers` text inside QuotePanel.tsx; now config, same as fulfilment above.
-      quoteIntro: 'Review your PlaceMakers materials list below. Select branch fulfillment or site delivery before placing your order.',
-      complianceBadge: 'NZ Building Code Verified',
-      spacePlanner: null,
-    };
-  }
-
-  return {
-    projectId,
-    companyName: 'JourneyAX',
-    theme: {},
-    labels: { items: 'Products', itemsSingular: 'Product', headerTitle: 'AI Configurator' },
-    greeting: '',
-    systemName: '',
-    commerceMode: 'quote',
-    components: null,
-    spacePlanner: null,
-    multiTradeBundles: null,
-    uiTheme: null,
-    cardTemplates: null,
-    fulfilment: null,
-    quoteIntro: null,
-    complianceBadge: null,
-  };
-}
-
-function json(data: any, init?: ResponseInit) {
-  return new Response(JSON.stringify(data), {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }
-  });
 }

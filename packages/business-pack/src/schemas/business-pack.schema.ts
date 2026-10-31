@@ -11,10 +11,19 @@ import { CapabilityBindingsCollectionSchema } from './capability-binding.schema'
 import { ExperienceSchema } from './experience.schema';
 import { EvaluationSuiteSchema } from './evaluation.schema';
 import { SpacePlannerExtensionSchema } from './space-planner.schema';
+import { AccessoryHelperSchema, BuyerFeedbackSchema, SkillDefinitionSchema, QuantityHelperSchema, VisualiserSchema, EventPrefetchSchema, ProductGuidesSchema, CustomerAccountSchema, ContentPagesSchema, CheckoutReviewSchema, PaymentSchema, BrandThemeSchema, VoiceSchema, QuestionCardsSchema, WelcomeSchema, DashboardSchema } from './skill.schema';
+import { CalculatorDefinitionSchema } from './calculator.schema';
+import { AgentAccessSchema } from './access.schema';
+import { SkillAccessSchema } from './skill-access.schema';
+import { ToolStatesSchema } from './tool-states.schema';
+import { FormsSchema } from './forms.schema';
+import { PluginsSchema } from './plugins.schema';
+import { ConnectorsSchema } from './connectors.schema';
 import { CatalogMappingSchema } from '../catalog-mapping';
 
 export const RoutingPolicySchema = z.object({
   defaultJourneyId: z.string().nullish(),
+  defaultAgentId: z.string().nullish(),
   fallbackOnCatalogSearch: z.boolean().nullish(),
 });
 
@@ -147,6 +156,7 @@ export const CANONICAL_CONTENT_KEYS = [
   'evaluations',
   'extensions',
   'factRegistry',
+  'calculators',
   'knowledgeModel',
   'catalogMapping',
   'checksumSchemaVersion',
@@ -165,6 +175,13 @@ export type ChecksumSchemaVersion = typeof SUPPORTED_CHECKSUM_SCHEMA_VERSIONS[nu
 
 export const ChecksumSchemaVersionSchema = z.union([z.literal(1), z.literal(2)]);
 
+export const CustomerEventsPolicySchema = z.object({
+  autoTurnEvents: z.array(z.string()).default([]),
+  recordOnlyEvents: z.array(z.string()).default([]),
+});
+
+export type CustomerEventsPolicy = z.infer<typeof CustomerEventsPolicySchema>;
+
 export const ConversationPolicySchema = z.object({
   fencingRules: z.array(z.string()).default([]),
   prohibitedTopics: z.array(z.string()).default([]),
@@ -178,6 +195,46 @@ export const ConversationPolicySchema = z.object({
     sentimentFloor: -0.6,
     maxTurnsWithoutProgress: 4,
   }),
+  customerEvents: CustomerEventsPolicySchema.optional(),
+  eventPolicy: CustomerEventsPolicySchema.optional(),
+  referrals: z.union([z.array(z.string()), z.record(z.string(), z.array(z.string()))]).optional(),
+  extraClaimPatterns: z.record(z.string(), z.union([z.array(z.string()), z.record(z.string(), z.array(z.string()))])).optional(),
+  withheldAnswerMessage: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
+  /** Said, ahead of the product cards, when the claim guard removed a whole reply about products and nothing it removed was about safety, care or the law. */
+  foundMessage: z.union([z.string(), z.record(z.string(), z.string())]).optional(),
+  /**
+   * How strict the claim guard is about what the model says from its own knowledge rather than from a tool result.
+   * `hedgedKnowHow`: off unless `enabled`. When on, a clause that carries a hedge word ("generally", "usually"…) is not removed for an
+   * installation step, a requirement or a compatibility claim, so true general trade guidance can be said as such. It never covers
+   * warranty, legal, price, stock, safety or care claims, nor a clause that says "must", "required", "by law" or a length of time.
+   */
+  claimPolicy: z
+    .object({
+      hedgedKnowHow: z
+        .object({
+          enabled: z.boolean().default(false),
+          classes: z.array(z.enum(['installation_step', 'requirement', 'compatibility'])).min(1).optional(),
+          hedgeWords: z.union([z.array(z.string().min(2).max(40)).min(1).max(40), z.record(z.string(), z.array(z.string().min(2).max(40)).min(1).max(40))]).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  /** How long a whole agent turn may take before the customer is handed to a person (default 20 s when unset). */
+  turnDeadlineMs: z.number().int().min(5000).max(120000).optional(),
+  /**
+   * When the claim guard removes statements from an answer, the model gets one chance to answer again without them.
+   * `thinBelowChars`: an answer left shorter than this counts as gutted and is repaired.
+   * `minChars`: a rewrite replaces the answer only if it is at least this long.
+   * `removedShareAbove`: an answer is also repaired when the removed sentences were at least this share of what the model wrote, even if product cards are shown.
+   * Platform defaults apply when unset.
+   */
+  repair: z
+    .object({
+      thinBelowChars: z.number().int().min(20).max(2000).optional(),
+      minChars: z.number().int().min(10).max(1000).optional(),
+      removedShareAbove: z.number().min(0.1).max(1).optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -200,6 +257,7 @@ export const BusinessPackContentSchema = z.object({
   entities: EntitiesSchema,
   conversationPolicy: ConversationPolicySchema,
   modelPolicy: ModelPolicySchema,
+  defaultAgentId: z.string().optional(),
   agents: z.array(AgentDefinitionSchema).min(1),
   journeys: z.array(JourneyDefinitionSchema).min(1),
   rules: z.array(RuleDefinitionSchema),
@@ -209,9 +267,32 @@ export const BusinessPackContentSchema = z.object({
   extensions: z
     .object({
       spacePlanner: SpacePlannerExtensionSchema.optional(),
+      skills: z.array(SkillDefinitionSchema).optional(),
+      quantityHelper: QuantityHelperSchema.optional(),
+      visualiser: VisualiserSchema.optional(),
+      eventPrefetch: EventPrefetchSchema.optional(),
+      productGuides: ProductGuidesSchema.optional(),
+      customerAccount: CustomerAccountSchema.optional(),
+      contentPages: ContentPagesSchema.optional(),
+      checkoutReview: CheckoutReviewSchema.optional(),
+      accessoryHelper: AccessoryHelperSchema.optional(),
+      buyerFeedback: BuyerFeedbackSchema.optional(),
+      payment: PaymentSchema.optional(),
+      brandTheme: BrandThemeSchema.optional(),
+      voice: VoiceSchema.optional(),
+      welcome: WelcomeSchema.optional(),
+      dashboard: DashboardSchema.optional(),
+      questionCards: QuestionCardsSchema.optional(),
+      agentAccess: AgentAccessSchema.optional(),
+      skillAccess: SkillAccessSchema.optional(),
+      toolStates: ToolStatesSchema.optional(),
+      forms: FormsSchema.optional(),
+      plugins: PluginsSchema.optional(),
+      connectors: ConnectorsSchema.optional(),
     })
     .catchall(z.any()),
   factRegistry: FactRegistrySchema.optional(),
+  calculators: z.array(CalculatorDefinitionSchema).optional(),
   knowledgeModel: KnowledgeModelRefSchema.optional(),
   catalogMapping: CatalogMappingSchema.optional(),
   checksumSchemaVersion: ChecksumSchemaVersionSchema.optional(),
@@ -273,6 +354,7 @@ export const BusinessPackEnvelopeSchema = z
     evaluations: ArraySlot.optional(),
     extensions: PlainObjectSlot.optional(),
     factRegistry: PlainObjectSlot.optional(),
+    calculators: ArraySlot.optional(),
     knowledgeModel: PlainObjectSlot.optional(),
     catalogMapping: PlainObjectSlot.optional(),
     checksumSchemaVersion: ChecksumSchemaVersionSchema.optional(),

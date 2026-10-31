@@ -153,7 +153,7 @@ X-Auth-Type:   jwt | anonymous
 ### Endpoints
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | Public | bcrypt hash, MongoDB user store, tenant-scoped |
+| POST | `/api/v1/auth/register` | Public | Open sign-up: bcrypt hash, MongoDB user store. Always creates a `buyer` in a real customer-facing project; a `role` in the body is ignored and `platform`/`system`/`global` (and other reserved names) are refused. Staff and admin logins come from `seed-admin.ts` and `scripts/placemakers/seed-demo-staff.ts`, never from this route |
 | POST | `/api/v1/auth/login` | Public | Verify password, issue Access (15min) + Refresh (7d) JWT pair |
 | POST | `/api/v1/auth/verify` | Public | Verify JWT — called by API Gateway AuthGuard on every request |
 | POST | `/api/v1/auth/refresh` | Public | Rotate tokens — old refresh revoked, new pair issued |

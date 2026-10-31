@@ -6,7 +6,7 @@
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "tsx test/gateway.registry.spec.ts && tsx test/gateway.assertion.spec.ts"
+    "test": "tsx test/gateway.registry.spec.ts && tsx test/group-directory.spec.ts && tsx test/gateway.assertion.spec.ts && tsx test/open-sign-up.spec.ts"
   },
   "dependencies": {
     "@journeyax/database": "*",
@@ -22,6 +22,7 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@journeyax/test-support": "*",
     "@types/express": "^5.0.0",
     "@types/node": "^20.17.9",
     "tsx": "^4.19.2",

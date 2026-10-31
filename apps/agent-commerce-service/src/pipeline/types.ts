@@ -68,6 +68,12 @@ export interface ChatRequest {
   sessionId?: string;
   customerId?: string;
   demoPrincipalId?: string;
+  /** The earlier message this one continues from (try again, edit); see the runtime's conversation thread. */
+  parentMessageId?: string;
+  /** Who the gateway says is asking (role and staff groups); set by the server from the signed assertion, never from the body. */
+  verifiedIdentity?: { sub: string; role: string; groups: string[] };
+  /** Connectors the person switched off for this chat; they can only narrow what the pack allows. */
+  disabledConnectors?: string[];
   imageBase64?: string;
   imageUrl?: string;
   idempotencyKey?: string;
@@ -78,6 +84,9 @@ export interface ChatRequest {
   journeyId?: string;
   environment?: string;
   environmentId?: string;
+  customerEvent?: unknown;
+  customer_event?: unknown;
+  agentId?: string;
 }
 
 export interface ChatResponse {

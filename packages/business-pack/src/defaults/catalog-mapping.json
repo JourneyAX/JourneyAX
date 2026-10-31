@@ -96,6 +96,7 @@
     ]
   },
   "attributeAliases": {},
+  "attributeDefinitions": {},
   "attributeContainers": [
     "attributes",
     "safety",
@@ -110,9 +111,45 @@
     "safety.certifications",
     "certifications"
   ],
+  "accessoryPaths": [
+    "accessories"
+  ],
   "quantityPaths": [
     "stock.availableQuantity",
     "inventory.availableUnits"
+  ],
+  "highlightPaths": [
+    "featuresList",
+    "features"
+  ],
+  "ratingValuePaths": [
+    "rating.value",
+    "rating.average"
+  ],
+  "ratingCountPaths": [
+    "rating.count",
+    "rating.total"
+  ],
+  "branchAvailablePaths": [
+    "stock.availableBranchCount"
+  ],
+  "branchTotalPaths": [
+    "stock.branchCount"
+  ],
+  "pickupOnlyPaths": [
+    "pickupOnly"
+  ],
+  "deliveryOptionPaths": [
+    "deliveryOptions"
+  ],
+  "cautionPatterns": [
+    "\\b(?:should|must|can|may|shall|is|are)\\s+not\\b",
+    "\\bnot\\s+(?:suitable|recommended|intended|designed|approved)\\b",
+    "\\bunsuitable\\b",
+    "\\bavoid\\b",
+    "\\bwarning\\b",
+    "\\bcaution\\b",
+    "\\bnever\\b"
   ],
   "candidateLimit": 150,
   "componentCategoryRules": {}

@@ -175,6 +175,152 @@ async function runTests() {
   }
   console.log('  ✅ PASS: SSE streaming emits incremental ordered token events and closes with data/done once');
 
+  // Test 5: Injected ReactAgent is NOT bypassed by default (ENABLE_REACT_AGENT not true)
+  const previousEnv = process.env.ENABLE_REACT_AGENT;
+  delete process.env.ENABLE_REACT_AGENT;
+
+  let reactAgentCalled = false;
+  const dummyReactAgent: any = {
+    executeAgentTurnStream: async () => {
+      reactAgentCalled = true;
+      return { message: { role: 'assistant', content: 'from react' } };
+    },
+  };
+
+  let canonicalCalled = false;
+  const canonicalForTest5: any = {
+    runTurn: async () => {
+      canonicalCalled = true;
+      return { assistantMessage: 'from canonical', trace: { engine: 'agent', agentId: 'default-agent' } };
+    },
+    streamTurn: async (cmd: any, emit: any) => {
+      canonicalCalled = true;
+      emit('done', {
+        sessionId: cmd.sessionId,
+        engine: 'agent',
+        agentId: 'default-agent',
+        trace: { engine: 'agent', agentId: 'default-agent' },
+      });
+    },
+  };
+
+  const coordinatorWithReact = new JourneyCoordinator(
+    { resolveActivation: async () => ({ action: 'CANONICAL' }) } as any,
+    canonicalForTest5,
+    new LegacyJourneyAdapter(),
+    new ConfigLoader(),
+    dummyReactAgent
+  );
+
+  const resChat = await coordinatorWithReact.executeChat({ tenantId: 'test-tenant', message: 'Hi' });
+  if (reactAgentCalled || !canonicalCalled) {
+    throw new Error('Test 5 failed: Default behavior must route to canonical runtime, not bypass to ReAct agent');
+  }
+  if ((resChat as any).engine !== 'agent') {
+    throw new Error(`Test 5 failed: Expected engine="agent", got "${(resChat as any).engine}"`);
+  }
+  console.log('  ✅ PASS: Default behavior routes through canonical runtime and does not bypass to ReAct agent');
+
+  // Test 6: Migrated tenants with agent mode report engine=agent and agentId across fixture tenants
+  const fixtureTenants = [
+    { tenantId: 'placemakers', agentId: 'placemakers_trade_consultant', type: 'building-materials quote tenant' },
+    { tenantId: 'abercrombie', agentId: 'cart_assistant', type: 'apparel cart tenant' },
+  ];
+
+  for (const fixture of fixtureTenants) {
+    let streamedDone: any = null;
+    const fixtureCanonical: any = {
+      runTurn: async () => ({
+        assistantMessage: `Hello from ${fixture.tenantId}`,
+        trace: { engine: 'agent', agentId: fixture.agentId, agentMode: true },
+      }),
+      streamTurn: async (cmd: any, emit: any) => {
+        emit('data', { sessionId: cmd.sessionId, engine: 'agent', agentId: fixture.agentId });
+        emit('done', {
+          sessionId: cmd.sessionId,
+          engine: 'agent',
+          agentId: fixture.agentId,
+          trace: { engine: 'agent', agentId: fixture.agentId },
+          response: `Stream from ${fixture.tenantId}`,
+        });
+      },
+    };
+
+    const fixtureCoordinator = new JourneyCoordinator(
+      { resolveActivation: async () => ({ action: 'CANONICAL' }) } as any,
+      fixtureCanonical,
+      new LegacyJourneyAdapter(),
+      new ConfigLoader()
+    );
+
+    // Test buffered executeChat
+    const turnRes = await fixtureCoordinator.executeChat({ tenantId: fixture.tenantId, message: 'Looking for items' });
+    if ((turnRes as any).engine !== 'agent') {
+      throw new Error(`Test 6 failed for ${fixture.type} (${fixture.tenantId}): Expected engine="agent", got "${(turnRes as any).engine}"`);
+    }
+    if ((turnRes as any).agentId !== fixture.agentId) {
+      throw new Error(`Test 6 failed for ${fixture.type}: Expected agentId="${fixture.agentId}", got "${(turnRes as any).agentId}"`);
+    }
+
+    // Test executeChatStream
+    await fixtureCoordinator.executeChatStream(
+      { tenantId: fixture.tenantId, message: 'Streaming query' },
+      (ev, data) => {
+        if (ev === 'done') streamedDone = data;
+      }
+    );
+
+    if (!streamedDone || streamedDone.engine !== 'agent') {
+      throw new Error(`Test 6 streaming failed for ${fixture.type}: Expected done.engine="agent", got "${streamedDone?.engine}"`);
+    }
+    if (streamedDone.agentId !== fixture.agentId) {
+      throw new Error(`Test 6 streaming failed for ${fixture.type}: Expected done.agentId="${fixture.agentId}", got "${streamedDone?.agentId}"`);
+    }
+    console.log(`  ✅ PASS: Fixture tenant ${fixture.tenantId} (${fixture.type}) correctly reports engine=agent and agentId=${fixture.agentId}`);
+  }
+
+  // Test 7: Rollback flag ENABLE_REACT_AGENT=true routes to react and reports engine=react
+  process.env.ENABLE_REACT_AGENT = 'true';
+  let rollbackReactCalled = false;
+  const rollbackReactAgent: any = {
+    executeAgentTurnStream: async (req: any, emit?: any) => {
+      rollbackReactCalled = true;
+      if (emit) {
+        emit('done', { sessionId: req.sessionId, message: { content: 'from react stream' } });
+      }
+      return { message: { role: 'assistant', content: 'from react' } };
+    },
+  };
+
+  const rollbackCoordinator = new JourneyCoordinator(
+    { resolveActivation: async () => ({ action: 'CANONICAL' }) } as any,
+    canonicalForTest5,
+    new LegacyJourneyAdapter(),
+    new ConfigLoader(),
+    rollbackReactAgent
+  );
+
+  const rollbackRes = await rollbackCoordinator.executeChat({ tenantId: 'test-tenant', message: 'Hi' });
+  if (!rollbackReactCalled || (rollbackRes as any).engine !== 'react') {
+    throw new Error('Test 7 failed: Rollback flag ENABLE_REACT_AGENT=true must route to react engine');
+  }
+
+  let rollbackStreamDone: any = null;
+  await rollbackCoordinator.executeChatStream({ tenantId: 'test-tenant', message: 'Hi' }, (ev, data) => {
+    if (ev === 'done') rollbackStreamDone = data;
+  });
+  if (rollbackStreamDone?.engine !== 'react') {
+    throw new Error(`Test 7 streaming failed: Expected engine="react", got "${rollbackStreamDone?.engine}"`);
+  }
+  console.log('  ✅ PASS: Rollback flag ENABLE_REACT_AGENT=true routes to react and emits engine=react');
+
+  // Restore env
+  if (previousEnv !== undefined) {
+    process.env.ENABLE_REACT_AGENT = previousEnv;
+  } else {
+    delete process.env.ENABLE_REACT_AGENT;
+  }
+
   console.log('🎉 ALL JOURNEY COORDINATOR TESTS PASSED!\n');
 }
 

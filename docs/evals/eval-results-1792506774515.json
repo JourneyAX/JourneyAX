@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "category": "Timber & Dimensions",
+    "promptType": "product_lookup",
+    "prompt": "Do you have 100x50 H3.2 treated timber in stock?",
+    "purpose": "Numeric dimension code + treatment grade recognition",
+    "groundTruthReference": "[FEED-VERIFIED] VERIFIED — e.g. SKU 1002835 \"Radiata Structural Grade 8 Planer Gauged Kiln Dried H3.2 CCA Treated 100 x 50mm (90 x 45mm)\" (framing timber; priced per branch/quote, not a listed national price).",
+    "assistantMessage": "It appears that we don't have the exact 100x50 H3.2 treated timber in stock at the moment. However, we do have the following treated timber options available:\n1. **Radiata Gauged No.1 Grade Kiln Dried H3.2 Treated 50 x 50mm (45 x 45mm)** - $15 NZD (in stock) An economical option ideal for general-purpose use. Would you like to know more about this option or check for any other specific products?",
+    "cards": [],
+    "toolCalls": 1,
+    "toolsCalled": [
+      "search_products"
+    ],
+    "timing": {
+      "tenantId": "placemakers",
+      "turnId": "turn-1-1",
+      "timeToFirstEventMs": 1176,
+      "timeToFirstTextMs": 2662,
+      "interpretMs": 3667,
+      "responseMs": 0,
+      "phraseMs": 0,
+      "retrievalMs": 0,
+      "totalMs": 4018,
+      "modelCalls": 1,
+      "tokens": {
+        "prompt": 0,
+        "completion": 0,
+        "total": 0
+      }
+    },
+    "checks": {
+      "answerNotEmpty": true,
+      "noInternalIds": true,
+      "forbiddenClaimsAbsent": false,
+      "expectedSkuPresent": false
+    },
+    "passed": false,
+    "failureReasons": [
+      "Forbidden claims present: catalog_fact",
+      "Expected SKU not found (expected: 1002835, 1003586, 1003591)"
+    ]
+  }
+]

@@ -9,12 +9,15 @@ import {
   NativeCapabilityHandler,
 } from './types';
 import { PolicyGate } from './policy-gate';
+import type { McpClientProvider } from './mcp/pool';
 
 export interface DispatcherOptions {
   activepiecesApiUrl?: string;
   activepiecesApiKey?: string;
   activepiecesWebhookSecret?: string;
   validateConnectionOwnership?: (tenantId: string, environmentId: string, connectionRef: string) => Promise<boolean> | boolean;
+  /** Where `mcp_tool` bindings get their client. Absent: an `mcp_tool` call fails closed. */
+  mcpClients?: McpClientProvider;
 }
 
 export class CapabilityDispatcher {
@@ -28,6 +31,10 @@ export class CapabilityDispatcher {
    */
   registerNativeHandler(name: string, handler: NativeCapabilityHandler): void {
     this.nativeHandlers.set(name, handler);
+  }
+
+  getNativeHandler(name: string): NativeCapabilityHandler | undefined {
+    return this.nativeHandlers.get(name);
   }
 
   /**
@@ -108,6 +115,11 @@ export class CapabilityDispatcher {
           break;
         }
 
+        case 'mcp_tool': {
+          output = await this.invokeMcpTool(executor as any, tool, request.input, effectiveCtx);
+          break;
+        }
+
         default:
           throw new Error(`Unsupported executor type: ${executor.type}`);
       }
@@ -138,6 +150,70 @@ export class CapabilityDispatcher {
     }
   }
 
+  /**
+   * A connection reference must be well formed and owned by the calling tenant and environment. Fails closed: with no validator
+   * configured a call that names a connection does not run.
+   */
+  private async assertConnectionOwned(label: string, connectionRef: string | undefined | null, tenantId: string, environmentId: string): Promise<void> {
+    if (connectionRef === undefined || connectionRef === null) return;
+    const normConn = connectionRef.trim();
+    if (!normConn || !/^[a-zA-Z0-9_.\-]+$/.test(normConn)) {
+      throw new Error(`${label} failed: invalid connectionRef '${connectionRef}'`);
+    }
+    if (!this.options.validateConnectionOwnership) {
+      throw new Error(
+        `${label} failed: validateConnectionOwnership validator is mandatory when connectionRef is provided; failing closed`
+      );
+    }
+    let isOwner: boolean;
+    try {
+      isOwner = await this.options.validateConnectionOwnership(tenantId, environmentId, normConn);
+    } catch (err: any) {
+      throw new Error(`${label} failed: connectionRef ownership validation error: ${err.message || err}`);
+    }
+    if (!isOwner) {
+      throw new Error(`${label} failed: connectionRef '${normConn}' not owned by tenant '${tenantId}' (${environmentId})`);
+    }
+  }
+
+  /**
+   * Calls a tool on an MCP server. The server is named, never addressed, in the binding; its address and the secret it is called with
+   * are resolved by the client provider from configuration and a secret reference. The result is capped in size and scrubbed of secrets.
+   */
+  private async invokeMcpTool(
+    executor: { mcpServerName?: string; mcpToolName?: string; connectionRef?: string; secretRef?: string },
+    tool: ToolDefinition,
+    input: any,
+    ctx: ExecutionContext
+  ): Promise<any> {
+    const tenantId = (ctx.tenantId || '').trim();
+    const environmentId = (ctx.environmentId || '').trim();
+    const serverName = (executor.mcpServerName || '').trim();
+    const toolName = (executor.mcpToolName || tool.toolId || '').trim();
+    if (!tenantId) throw new Error('MCP dispatch failed: tenantId is required');
+    if (!environmentId) throw new Error('MCP dispatch failed: environmentId is required');
+    if (!serverName || !/^[a-zA-Z0-9_\-]+$/.test(serverName)) throw new Error(`MCP dispatch failed: invalid or missing mcpServerName '${executor.mcpServerName}'`);
+    if (!toolName || !/^[A-Za-z0-9][A-Za-z0-9_\-.]*$/.test(toolName)) throw new Error(`MCP dispatch failed: invalid tool name '${toolName}'`);
+    if (!this.options.mcpClients) throw new Error('MCP dispatch failed: no MCP client is configured; failing closed');
+
+    await this.assertConnectionOwned('MCP dispatch', executor.connectionRef, tenantId, environmentId);
+    const connectionRef = executor.connectionRef?.trim() || undefined;
+
+    const client = await this.options.mcpClients.getClient(serverName, { tenantId, environmentId, connectionRef, secretRef: executor.secretRef });
+    const result = await client.callTool(toolName, input && typeof input === 'object' ? input : {}, {
+      tenantId,
+      environmentId,
+      correlationId: ctx.correlationId,
+      principalId: ctx.principalId,
+      connectionRef,
+    });
+    if (result.isError) {
+      throw new Error(`The tool '${toolName}' on '${serverName}' reported an error: ${result.text || 'no detail given'}`.slice(0, 400));
+    }
+    const { isError: _isError, ...output } = result;
+    return output;
+  }
+
   private async invokeActivepiecesFlow(
     flowId: string,
     input: any,
@@ -160,30 +236,7 @@ export class CapabilityDispatcher {
     }
 
     // 2. Validate connectionRef ownership (mandatory and fail-closed)
-    if (connectionRef !== undefined && connectionRef !== null) {
-      const normConn = connectionRef.trim();
-      if (!normConn || !/^[a-zA-Z0-9_.\-]+$/.test(normConn)) {
-        throw new Error(`Activepieces dispatch failed: invalid connectionRef '${connectionRef}'`);
-      }
-      if (!this.options.validateConnectionOwnership) {
-        throw new Error(
-          'Activepieces dispatch failed: validateConnectionOwnership validator is mandatory when connectionRef is provided; failing closed'
-        );
-      }
-      let isOwner: boolean;
-      try {
-        isOwner = await this.options.validateConnectionOwnership(normTenant, normEnv, normConn);
-      } catch (err: any) {
-        throw new Error(
-          `Activepieces dispatch failed: connectionRef ownership validation error: ${err.message || err}`
-        );
-      }
-      if (!isOwner) {
-        throw new Error(
-          `Activepieces dispatch failed: connectionRef '${normConn}' not owned by tenant '${normTenant}' (${normEnv})`
-        );
-      }
-    }
+    await this.assertConnectionOwned('Activepieces dispatch', connectionRef, normTenant, normEnv);
 
     // 3. Require authenticated and HMAC-signed invocation (Fail Closed)
     const apiKey = this.options.activepiecesApiKey || process.env.ACTIVEPIECES_API_KEY;

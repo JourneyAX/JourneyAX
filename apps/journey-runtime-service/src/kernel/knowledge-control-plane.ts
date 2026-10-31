@@ -36,6 +36,11 @@ export interface KnowledgeControlPlanePort {
     items: Array<{ sku: string; quantity?: number }>,
     operation?: { operation: 'cart.update' | 'order.commit'; cartId?: string },
   ): Promise<OkfBasketCommerceDecision | null>;
+  getReleaseContent?(
+    tenantId: string,
+    environmentId: string,
+    ref: { releaseId: string; version: string; checksum: string }
+  ): Promise<OkfReleaseContent | null>;
 }
 
 /** Candidate identifier in a message; shape rules come from the resolved policy. */
@@ -349,6 +354,36 @@ export class OkfKnowledgeControlPlane implements KnowledgeControlPlanePort {
       });
     } catch {
       return blocked;
+    }
+  }
+
+  async getReleaseContent(
+    tenantId: string,
+    environmentId: string,
+    ref: { releaseId: string; version: string; checksum: string }
+  ): Promise<OkfReleaseContent | null> {
+    if (!ref || !ref.releaseId) return null;
+    const cacheKey = `${tenantId}:${environmentId}:${ref.releaseId}:${ref.checksum}`;
+    const cached = this.releaseCache.get(cacheKey);
+    if (cached) return cached;
+    try {
+      const db = await this.dbProvider();
+      const loaded = await loadPinnedOkfRelease(db, {
+        tenantId,
+        environmentId,
+        releaseId: ref.releaseId,
+        version: ref.version,
+        checksum: ref.checksum,
+      });
+      if (this.releaseCache.size >= this.maxReleaseCacheEntries) {
+        const oldest = this.releaseCache.keys().next().value;
+        if (oldest) this.releaseCache.delete(oldest);
+      }
+      this.releaseCache.set(cacheKey, loaded.release.content);
+      return loaded.release.content;
+    } catch (err: any) {
+      console.warn(`[OkfControlPlane] Failed to load OKF release ${ref.releaseId}:`, err.message);
+      return null;
     }
   }
 

@@ -34,6 +34,14 @@ export const actions = {
     description: 'Send text to the agent as if the customer typed it (suggestion chips, "Ask about this").',
     params: z.object({ text: z.string() }),
   },
+  toggleCompare: {
+    description: 'Tick or untick a product on a card for side-by-side comparison.',
+    params: z.object({ sku: z.string(), title: z.string().optional() }),
+  },
+  compareProducts: {
+    description: 'Show the ticked products side by side.',
+    params: z.object({ skus: z.array(z.string()).optional() }),
+  },
   openPanel: {
     description: 'Open a named stage panel (e.g. tryOn, configurator, spacePlanner, fitment).',
     params: z.object({ panel: z.string(), sku: z.string().optional() }),
@@ -45,6 +53,14 @@ export const actions = {
   chooseOption: {
     description: 'Answer a clarifying choice (question id + chosen value).',
     params: z.object({ questionId: z.string(), value: z.string() }),
+  },
+  confirmTool: {
+    description: 'Answer an ask-first card: allow the assistant to do what it asked once, or not.',
+    params: z.object({ confirmationId: z.string(), decision: z.enum(['allow', 'deny']) }),
+  },
+  submitForm: {
+    description: 'Send a filled-in form (its id and the values typed). The server checks it against the shop\'s form definition.',
+    params: z.object({ formId: z.string(), values: z.record(z.string(), z.union([z.string(), z.boolean()])) }),
   },
   selectBranch: {
     description: 'Choose a fulfilment branch / store.',

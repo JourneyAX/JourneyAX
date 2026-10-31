@@ -15,7 +15,7 @@ delete process.env.MONGODB_URI;
 import assert from 'node:assert/strict';
 import { CrmConnectorBindingResolver } from '../apps/lead-service/src/crm-binding-resolver';
 import { LeadController } from '../apps/lead-service/src/lead.controller';
-import { handleConfigFailure } from '../apps/journeyax-web/src/app/api/config/route';
+import { handleConfigFailure } from '../apps/journeyax-web/src/lib/config/configFailure';
 import { BusinessPackLoader } from '@journeyax/business-pack';
 
 console.log('🧪 Running Architecture Closure Spec...\n');

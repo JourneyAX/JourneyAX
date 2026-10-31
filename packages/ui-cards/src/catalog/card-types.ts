@@ -34,6 +34,15 @@ export const ProductFact = z.object({
   badges: z.array(z.string()).optional(),
   rating: z.number().optional(),
   ratingCount: z.number().optional(),
+  /** Short feature statements from the catalogue record (never model-written), shown under the product's name. */
+  highlights: z.array(z.string()).optional(),
+  /** A warning the catalogue's own record gives about this product ("should not be used where..."), shown as a caution and never as a reason. */
+  cautions: z.array(z.string()).optional(),
+  /** Branches holding the product and branches asked, for an availability line the storefront words. */
+  branchesAvailable: z.number().optional(),
+  branchesTotal: z.number().optional(),
+  /** Set by the storefront while the customer has this product ticked for comparison. */
+  comparing: z.boolean().optional(),
   variants: z.array(z.record(z.string(), z.unknown())).optional(),
   attributes: z.record(z.string(), z.unknown()).optional(),
   reason: z.string().optional(),
@@ -42,6 +51,24 @@ export const ProductFact = z.object({
   /** Set by the storefront once this SKU is in the bag/quote — the tile's Add turns into "Added". */
   inBag: z.boolean().optional(),
 });
+
+/** One line of the pre-payment check: what was found, and at most one thing the customer can do about it. */
+const ReviewRow = z.object({
+  key: z.string(),
+  title: z.string(),
+  detail: z.string().optional(),
+  ok: z.boolean(),
+  warn: z.boolean(),
+  imageUrl: z.string().optional(),
+  actionLabel: z.string().optional(),
+  /** What the button says for the customer, as if they had typed it. */
+  actionText: z.string().optional(),
+  /** The product the button adds to the order. */
+  actionSku: z.string().optional(),
+  hasMessage: z.boolean(),
+  hasAdd: z.boolean(),
+});
+const ReviewSection = z.object({ title: z.string(), summary: z.string(), ok: z.boolean(), warn: z.boolean(), rows: z.array(ReviewRow) });
 export type ProductFact = z.infer<typeof ProductFact>;
 
 export const QuoteLine = ProductFact.extend({
@@ -140,6 +167,8 @@ export const CARD_TYPES = {
     description: 'One order: status, lines, delivery / collection details.',
     state: z.object({
       orderId: z.string(),
+      /** The short number people read and say; the order id itself is long. */
+      orderRef: z.string().optional(),
       status: z.string(),
       placedAt: z.string().optional(),
       lines: z.array(QuoteLine),
@@ -171,6 +200,9 @@ export const CARD_TYPES = {
     title: 'Clarifying questions',
     description: 'Up to three questions with tappable options or structured inputs.',
     state: z.object({
+      /** Optional words above the questions; without a heading the card shows the questions alone. */
+      heading: z.string().optional(),
+      eyebrow: z.string().optional(),
       questions: z.array(
         z.object({
           id: z.string(),
@@ -179,6 +211,9 @@ export const CARD_TYPES = {
           multi: z.boolean().optional(),
           inputType: z.enum(['single_select', 'multi_select', 'number', 'measurement', 'text']).optional(),
           unit: z.string().optional(),
+          /** For a number question: the usual range of answers. A number outside it is questioned once ("did you mean…?"), never refused. */
+          min: z.number().optional(),
+          max: z.number().optional(),
           placeholder: z.string().optional(),
           answer: z.union([z.string(), z.number(), z.record(z.string(), z.any())]).optional(),
         })
@@ -205,6 +240,50 @@ export const CARD_TYPES = {
       groups: z.array(z.object({ key: z.string(), label: z.string(), hint: z.string().optional(), items: z.array(ProductFact) })),
     }),
   },
+  quantity: {
+    title: 'How many to buy',
+    description: 'How many of one product the customer needs for their area, with the working shown and a button that adds that number.',
+    state: z.object({
+      product: ProductFact,
+      heading: z.string().optional(),
+      /** The number to add; the runtime sets it from the quantity estimate, never from model text. */
+      quantity: z.number().int().min(1),
+      /** What the number counts ("pavers", "packs"). */
+      unitLabel: z.string().optional(),
+      /** The figures behind the number, one line each. */
+      working: z.array(z.object({ label: z.string(), value: z.string() })).default([]),
+      note: z.string().optional(),
+      ctaLabel: z.string().optional(),
+    }),
+  },
+  visual: {
+    title: 'Picture of the finished job',
+    description: 'An illustration made for the customer\'s project, clearly marked as an illustration, with the products it was made from.',
+    state: z.object({
+      imageUrl: z.string().min(1),
+      heading: z.string().optional(),
+      caption: z.string().optional(),
+      /** Says the picture is an illustration, not the exact product or a promise of the result. */
+      disclaimer: z.string().optional(),
+      products: z.array(ProductFact).default([]),
+    }),
+  },
+  review: {
+    title: 'Before you pay',
+    description: 'A last look at the order before payment: quantities, what else may be needed, pick-up or delivery, and warranty and guides, each with one way to act. The runtime builds it from the order, never from model text.',
+    state: z.object({
+      heading: z.string(),
+      intro: z.string().optional(),
+      /** One line: how many of the checks look right and how many are worth a look. */
+      summary: z.string(),
+      quantity: ReviewSection,
+      accessories: ReviewSection,
+      fulfilment: ReviewSection,
+      warranty: ReviewSection,
+      payLabel: z.string().optional(),
+      keepLabel: z.string().optional(),
+    }),
+  },
   warranty: {
     title: 'Warranty & compliance',
     description: 'Warranty terms, compliance marks, documents for a product.',
@@ -228,6 +307,74 @@ export const CARD_TYPES = {
     title: 'Disclosure',
     description: 'Policy / disclosure text the merchant requires before a step (returns, custom-print terms).',
     state: z.object({ title: z.string(), text: z.string(), acceptLabel: z.string().optional() }),
+  },
+  confirm: {
+    title: 'Ask first',
+    description: 'The assistant is about to do something and waits for the person to allow it once, or not. Built by the server only, never by the model.',
+    state: z.object({
+      confirmationId: z.string(),
+      heading: z.string().optional(),
+      summary: z.string(),
+      details: z.array(z.object({ label: z.string(), value: z.string() })).max(8).optional(),
+      allowLabel: z.string().optional(),
+      denyLabel: z.string().optional(),
+      /** What the card says after the person has answered. */
+      allowedText: z.string().optional(),
+      deniedText: z.string().optional(),
+      /** True while the card waits for an answer; the page sets it to false once the person has answered. */
+      pending: z.boolean().optional(),
+      /** What the person chose, written by the page once they have answered. */
+      outcome: z.string().optional(),
+    }),
+  },
+  records: {
+    title: 'Records',
+    description: 'A short list of records read from a connected system (open deals, cases, orders, a customer): a heading and one line each. Built by the server from the tool\'s answer and the shop\'s own card definition, so every word on it is the system\'s.',
+    state: z.object({
+      heading: z.string(),
+      rows: z.array(z.object({
+        title: z.string(),
+        subtitle: z.string().optional(),
+        detail: z.string().optional(),
+        badge: z.string().optional(),
+        tone: z.enum(['good', 'warn', 'bad', 'info']).optional(),
+        amount: z.string().optional(),
+        /** What pressing the line asks in the chat. */
+        ask: z.string().optional(),
+      })).max(12),
+      /** How many there were, and how many are shown. */
+      total: z.number().int().optional(),
+      shown: z.number().int().optional(),
+      /** The system stopped at its limit, so the true number is this or more. */
+      atLeast: z.boolean().optional(),
+    }),
+  },
+  form: {
+    title: 'Form',
+    description: 'A form the shop offers (contact us, an enquiry, a callback request): the shop\'s own fields, filled in by the person and sent for the shop to read. Built by the server from the shop\'s form definition.',
+    state: z.object({
+      formId: z.string(),
+      title: z.string(),
+      intro: z.string().optional(),
+      fields: z.array(z.object({
+        id: z.string(),
+        label: z.string(),
+        type: z.enum(['text', 'email', 'phone', 'textarea', 'select', 'checkbox']),
+        required: z.boolean().optional(),
+        placeholder: z.string().optional(),
+        options: z.array(z.string()).optional(),
+        maxLength: z.number().int().optional(),
+      })).min(1).max(20),
+      /** What the person has typed so far, or what the assistant already knew. */
+      values: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+      submitLabel: z.string().optional(),
+      /** The shop's words for a mistake in a field. */
+      messages: z.record(z.string(), z.string()).optional(),
+      /** `open` while it waits to be filled in; `sent` once it has gone, with the reference. */
+      status: z.enum(['open', 'sent']).optional(),
+      reference: z.string().optional(),
+      sentText: z.string().optional(),
+    }),
   },
   hero: {
     title: 'Intro / hero',

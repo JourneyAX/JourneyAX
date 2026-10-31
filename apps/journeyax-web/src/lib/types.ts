@@ -294,6 +294,9 @@ export interface DynamicQuestion {
   multi?: boolean;
   placeholder?: string;
   unit?: string;
+  /** For a number question: the usual range of answers (a number outside it is questioned once, not refused). */
+  min?: number;
+  max?: number;
 }
 
 // ── Message types ──────────────────────────────────────────────────────
@@ -304,6 +307,12 @@ export interface JourneyMessage {
   role: MessageRole;
   text: string;
   head?: string;             // note heading (e.g., "EasySwitch added.")
+  engine?: string;           // 'react' | 'legacy' | 'canonical' | 'agent'
+  agentId?: string;          // resolved agent ID
+  /** What the turn that produced this reply did ("Worked for 12 s" and its plain-language steps). */
+  trace?: { seconds: number; steps: string[] };
+  /** Index of the message in the chat's own list, so an edit or a try-again can name it. Absent on the greeting. */
+  rawIndex?: number;
 }
 
 // ── Quote totals ───────────────────────────────────────────────────────
@@ -389,6 +398,8 @@ export interface JourneyState {
   clarify: ClarifyAnswers;
   dynamicQuestions: DynamicQuestion[];
   dynamicAnswers: Record<string, string>;
+  /** Questions whose number the customer kept after the card questioned it ("did you mean…?"), so it is not asked about again. */
+  dynamicKept: Record<string, boolean>;
   recommendedProducts: RecommendedProduct[];
   comparison?: ComparisonData | null;
   bundle?: BundleData | null;
@@ -470,11 +481,13 @@ export interface CardInstance {
   cardType:
     | 'hero' | 'clarify' | 'products' | 'productDetail' | 'comparison' | 'bundle'
     | 'quote' | 'cart' | 'orderStatus' | 'guide' | 'plan' | 'accessories'
-    | 'warranty' | 'fitment' | 'disclosure' | 'suggestions' | 'working';
+    | 'warranty' | 'quantity' | 'review' | 'visual' | 'fitment' | 'disclosure' | 'suggestions' | 'working' | 'confirm' | 'form' | 'records';
   state: Record<string, unknown>;
   variant?: string;
   streamId?: string;
   createdAt?: string;
+  /** A card the customer asked for by tapping (details, a comparison): it sits right under their tap, ahead of the consultant's reply. */
+  beforeReply?: boolean;
 }
 
 /** Phases still rendered by a legacy React panel, not a card template.
@@ -499,6 +512,7 @@ export const INITIAL_STATE: JourneyState = {
   clarify: { mode: null, scope: null, collection: null, shower: null, finishQ: null },
   dynamicQuestions: [],
   dynamicAnswers: {},
+  dynamicKept: {},
   recommendedProducts: [],
   guideSteps: [],
   qty: 1,

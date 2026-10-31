@@ -1,5 +1,5 @@
 {
-  "_comment": "PlaceMakers catalogue price/currency mapping. The products collection prices items in priceUSD.min (and variants[0].msrpUSD) with the currency (NZD) declared on each product. Apply in Knowledge Base > Pack settings > Catalogue mapping (or PATCH /api/v1/projects/placemakers), then publish the Business Pack.",
+  "_comment": "PlaceMakers catalogue price/currency mapping and attribute definitions. The products collection prices items in priceUSD.min (and variants[0].msrpUSD) with the currency (NZD) declared on each product. Attribute definitions configure generic extraction, normalisation and equivalence for timber size, treatment and insulation R-value. Apply in Knowledge Base > Pack settings > Catalogue mapping (or PATCH /api/v1/projects/placemakers), then publish the Business Pack.",
   "catalogMapping": {
     "pricing": {
       "sources": [
@@ -15,6 +15,69 @@
           "currencyPath": "currency"
         }
       ]
+    },
+    "attributeAliases": {
+      "size": ["dimension", "dimensions", "timberSize"],
+      "treatment": ["preservative", "hazardClass"],
+      "rValue": ["thermalRating", "insulationValue", "r-value"]
+    },
+    "attributeDefinitions": {
+      "size": {
+        "description": "Nominal timber cross section or panel size",
+        "extractionPatterns": [
+          "\\b(\\d{2,4}\\s*[xX*×]\\s*\\d{2,4}(?:\\s*[xX*×]\\s*\\d{2,4})?(?:\\s*mm)?)\\b",
+          "\\b([2-9]|10|12)\\s*[xX*×]\\s*([1-9]|10|12)\\b"
+        ],
+        "normalizer": "remove_spaces",
+        "equivalenceTable": {
+          "100x50": ["100x50", "100 x 50", "100x50mm", "100 x 50mm", "4x2", "4 x 2", "4 by 2", "2x4", "2 x 4", "90x45", "90 x 45", "90x45mm", "90 x 45mm"],
+          "4x2": ["4x2", "4 x 2", "4 by 2", "2x4", "2 x 4", "100x50", "100 x 50", "100x50mm", "100 x 50mm", "90x45", "90 x 45", "90x45mm", "90 x 45mm"],
+          "150x50": ["150x50", "150 x 50", "150x50mm", "150 x 50mm", "6x2", "6 x 2", "6 by 2", "140x45", "140 x 45", "140x45mm", "140 x 45mm"],
+          "6x2": ["6x2", "6 x 2", "6 by 2", "150x50", "150 x 50", "150x50mm", "150 x 50mm", "140x45", "140 x 45", "140x45mm", "140 x 45mm"],
+          "75x50": ["75x50", "75 x 50", "75x50mm", "75 x 50mm", "3x2", "3 x 2", "3 by 2", "70x45", "70 x 45", "70x45mm", "70 x 45mm"],
+          "3x2": ["3x2", "3 x 2", "3 by 2", "75x50", "75 x 50", "75x50mm", "75 x 50mm", "70x45", "70 x 45", "70x45mm", "70 x 45mm"],
+          "200x50": ["200x50", "200 x 50", "200x50mm", "200 x 50mm", "8x2", "8 x 2", "8 by 2", "190x45", "190 x 45", "190x45mm", "190 x 45mm"],
+          "8x2": ["8x2", "8 x 2", "8 by 2", "200x50", "200 x 50", "200x50mm", "200 x 50mm", "190x45", "190 x 45", "190x45mm", "190 x 45mm"],
+          "100x100": ["100x100", "100 x 100", "100x100mm", "100 x 100mm", "4x4", "4 x 4", "4 by 4", "88x88", "88 x 88", "88x88mm", "88 x 88mm"],
+          "4x4": ["4x4", "4 x 4", "4 by 4", "100x100", "100 x 100", "100x100mm", "100 x 100mm", "88x88", "88 x 88", "88x88mm", "88 x 88mm"],
+          "250x50": ["250x50", "250 x 50", "250x50mm", "250 x 50mm", "10x2", "10 x 2", "10 by 2", "240x45", "240 x 45", "240x45mm", "240 x 45mm"],
+          "10x2": ["10x2", "10 x 2", "10 by 2", "250x50", "250 x 50", "250x50mm", "250 x 50mm", "240x45", "240 x 45", "240x45mm", "240 x 45mm"],
+          "300x50": ["300x50", "300 x 50", "300x50mm", "300 x 50mm", "12x2", "12 x 2", "12 by 2", "290x45", "290 x 45", "290x45mm", "290 x 45mm"],
+          "12x2": ["12x2", "12 x 2", "12 by 2", "300x50", "300 x 50", "300x50mm", "300 x 50mm", "290x45", "290 x 45", "290x45mm", "290 x 45mm"]
+        }
+      },
+      "treatment": {
+        "description": "Chemical treatment preservative rating",
+        "extractionPatterns": [
+          "\\b(H\\s*[1-6](?:\\.[1-2])?|CCA|Boron|LOSP|Untreated|UT)\\b"
+        ],
+        "normalizer": "uppercase",
+        "equivalenceTable": {
+          "H3.2": ["H3.2", "H32", "H3 2", "H3-2", "H 3.2", "H 32"],
+          "H1.2": ["H1.2", "H12", "H1 2", "H1-2", "H 1.2", "H 12"],
+          "H3.1": ["H3.1", "H31", "H3 1", "H3-1", "H 3.1"],
+          "H4": ["H4", "H 4", "H-4"],
+          "H5": ["H5", "H 5", "H-5"],
+          "CCA": ["CCA", "C.C.A."],
+          "BORON": ["Boron", "boron"],
+          "UNTREATED": ["Untreated", "UT", "Non-Treated"]
+        }
+      },
+      "rValue": {
+        "description": "Thermal resistance rating for insulation",
+        "extractionPatterns": [
+          "\\b(R\\s*[0-9](?:\\.[0-9])?)\\b"
+        ],
+        "normalizer": "remove_spaces",
+        "equivalenceTable": {
+          "R2.2": ["R2.2", "R22", "R 2.2", "R2-2", "R 2 2"],
+          "R2.6": ["R2.6", "R26", "R 2.6", "R2-6", "R 2 6"],
+          "R1.8": ["R1.8", "R18", "R 1.8", "R1-8"],
+          "R3.2": ["R3.2", "R32", "R 3.2", "R3-2"],
+          "R3.6": ["R3.6", "R36", "R 3.6", "R3-6"],
+          "R4.0": ["R4.0", "R40", "R 4.0", "R4-0", "R4"]
+        }
+      }
     }
   }
 }

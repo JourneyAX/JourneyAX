@@ -33,7 +33,7 @@ const productTile = (prefix: string, opts: { showReason?: boolean; cta?: 'addToC
       children: [k('img'), k('body'), k('foot')],
       on: { press: { action: 'viewProduct', params: { sku: I('sku') } } },
     }),
-    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), ratio: '4:3', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '100%', height: '96px', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
     [k('body')]: el('Box', { gap: 'xs', flex: 1 }, { children: [k('badges'), k('title'), k('reason'), k('meta')] }),
     [k('badges')]: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: [k('rec')], visible: [{ $item: 'recommended', eq: true }] }),
     [k('rec')]: el('Badge', { text: 'Recommended', tone: 'brand', icon: 'spark', uppercase: true }),
@@ -53,6 +53,140 @@ const productTile = (prefix: string, opts: { showReason?: boolean; cta?: 'addToC
     // Once the SKU is in the bag the storefront flags the item (`inBag`) and
     // the button says so — pressing it again opens the bag.
     [k('done')]: el('Button', { label: cta === 'addToCart' ? 'Added ✓' : 'Chosen ✓', variant: 'secondary', size: 'sm', icon: 'check' }, {
+      on: { press: { action: 'openPanel', params: { panel: 'quote' } } },
+      visible: [{ $item: 'inBag', eq: true }],
+    }),
+  };
+};
+
+/**
+ * One product as a consultant would put it on the counter: a small picture, the name and price, WHY this one (the catalogue's
+ * own feature that answers what the customer asked for), the other things worth knowing, a rating when the catalogue has one,
+ * where it is held, and the actions: add, open the details, tick it to compare. Every line hides itself when there is nothing
+ * true to say, so a thin catalogue record gives a short row, never an invented one.
+ *
+ * Words that depend on the numbers (the availability line, the compare label, the highlights joined into one line, the ask-for-price
+ * sentence) are prepared by the storefront, which owns the wording; the template only decides where they go.
+ */
+/** One section of the pre-payment check: a heading with its status, then a row per finding with its one button. */
+const reviewSection = (name: string): Record<string, El> => {
+  const at = (field: string) => S(`/${name}/${field}`);
+  return {
+    [name]: el('Box', { gap: 'xs' }, { children: [`${name}-head`, `${name}-rows`] }),
+    [`${name}-head`]: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: [`${name}-ok`, `${name}-warn`, `${name}-sum`] }),
+    [`${name}-ok`]: el('StatusDot', { label: at('title'), tone: 'success' }, { visible: [at('ok')] }),
+    [`${name}-warn`]: el('StatusDot', { label: at('title'), tone: 'warning' }, { visible: [at('warn')] }),
+    [`${name}-sum`]: el('Text', { text: at('summary'), variant: 'caption', tone: 'muted' }, { visible: [at('summary')] }),
+    [`${name}-rows`]: el('Box', { gap: 'xs' }, { children: [`${name}-row`], repeat: { statePath: `/${name}/rows`, key: 'key' } }),
+    [`${name}-row`]: el('Box', { direction: 'row', gap: 'sm', align: 'center', justify: 'between', wrap: true }, { children: [`${name}-text`, `${name}-msg`, `${name}-add`] }),
+    [`${name}-text`]: el('Box', { gap: 'xs', style: { flex: 1, minWidth: 0 } }, { children: [`${name}-t`, `${name}-d`] }),
+    [`${name}-t`]: el('Text', { text: I('title'), variant: 'small' }),
+    [`${name}-d`]: el('Text', { text: I('detail'), variant: 'caption', tone: 'muted' }, { visible: [I('detail')] }),
+    [`${name}-msg`]: el('Button', { label: I('actionLabel'), variant: 'ghost', size: 'sm' }, { visible: [I('hasMessage')], on: { press: { action: 'sendMessage', params: { text: I('actionText') } } } }),
+    [`${name}-add`]: el('Button', { label: I('actionLabel'), variant: 'secondary', size: 'sm', icon: 'cart' }, { visible: [I('hasAdd')], on: { press: { action: 'addToCart', params: { sku: I('actionSku'), qty: 1, title: I('title') } } } }),
+  };
+};
+
+const productRow = (prefix: string): Record<string, El> => {
+  const k = (s: string) => `${prefix}-${s}`;
+  const open = { press: { action: 'viewProduct', params: { sku: I('sku') } } };
+  return {
+    [k('card')]: el('Card', { pad: 'md', gap: 'sm', variant: 'outlined', interactive: true }, { children: [k('row')], on: open }),
+    [k('row')]: el('Box', { direction: 'row', gap: 'md', align: 'start' }, { children: [k('img'), k('body')] }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '88px', height: '88px', ratio: '1:1', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
+    [k('body')]: el('Box', { gap: 'xs', flex: 1, minWidth: '0' }, { children: [k('head'), k('badges'), k('why'), k('caution'), k('more'), k('meta'), k('actions')] }),
+    [k('head')]: el('Box', { direction: 'row', gap: 'md', align: 'start', justify: 'between' }, { children: [k('title'), k('price')] }),
+    [k('title')]: el('Text', { text: I('title'), variant: 'subheading', lines: 2, style: { flex: 1, minWidth: 0 } }),
+    [k('price')]: el('Price', { amount: I('price'), currency: I('currency'), compareAt: I('compareAtPrice'), size: 'md', emptyText: 'Price on request' }),
+    [k('badges')]: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: [k('rec')], visible: [{ $item: 'recommended', eq: true }] }),
+    [k('rec')]: el('Badge', { text: 'Recommended', tone: 'brand', icon: 'spark', uppercase: true }),
+    [k('why')]: el('Box', { direction: 'row', gap: 'xs', align: 'start' }, { children: [k('whyIcon'), k('whyText')], visible: [{ $item: 'reason' }] }),
+    [k('whyIcon')]: el('Icon', { name: 'check', size: 'sm', tone: 'success' }),
+    [k('whyText')]: el('Text', { text: I('reason'), variant: 'small', lines: 3, style: { flex: 1, minWidth: 0 } }),
+    [k('caution')]: el('Box', { direction: 'row', gap: 'xs', align: 'start' }, { children: [k('cautionIcon'), k('cautionText')], visible: [{ $item: 'cautionText' }] }),
+    [k('cautionIcon')]: el('Icon', { name: 'warning', size: 'sm', tone: 'warning' }),
+    [k('cautionText')]: el('Text', { text: I('cautionText'), variant: 'small', tone: 'warning', lines: 3, style: { flex: 1, minWidth: 0 } }),
+    [k('more')]: el('Text', { text: I('highlightsText'), variant: 'small', tone: 'muted', lines: 2 }, { visible: [{ $item: 'highlightsText' }] }),
+    [k('meta')]: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: [k('rating'), k('stock'), k('sku')] }),
+    [k('rating')]: el('Rating', { value: I('rating'), count: I('ratingCount'), size: 'sm' }, { visible: [{ $item: 'rating' }] }),
+    [k('stock')]: el('StatusDot', { label: I('stockLabel'), tone: 'success' }, { visible: [{ $item: 'stockLabel' }] }),
+    [k('sku')]: el('Text', { text: I('sku'), variant: 'mono', tone: 'muted' }),
+    [k('actions')]: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: [k('add'), k('added'), k('ask'), k('details'), k('compare')] }),
+    [k('add')]: el('Button', { label: 'Add', variant: 'primary', size: 'sm', icon: 'cart' }, {
+      on: { press: { action: 'addToCart', params: { sku: I('sku'), qty: 1, title: I('title') } } },
+      visible: [{ $item: 'inBag', neq: true }],
+    }),
+    [k('added')]: el('Button', { label: 'Added ✓', variant: 'secondary', size: 'sm', icon: 'check' }, {
+      on: { press: { action: 'openPanel', params: { panel: 'quote' } } },
+      visible: [{ $item: 'inBag', eq: true }],
+    }),
+    [k('ask')]: el('Button', { label: 'Ask for price', variant: 'secondary', size: 'sm', icon: 'tag' }, {
+      on: { press: { action: 'sendMessage', params: { text: I('askPriceText') } } },
+      visible: [{ $item: 'priceMissing', eq: true }],
+    }),
+    [k('details')]: el('Button', { label: 'Details', variant: 'ghost', size: 'sm' }, { on: open }),
+    [k('compare')]: el('Button', { label: I('compareLabel'), variant: 'ghost', size: 'sm', icon: 'plus' }, {
+      on: { press: { action: 'toggleCompare', params: { sku: I('sku'), title: I('title') } } },
+    }),
+  };
+};
+
+/**
+ * A small tile for four across: a short picture, the name, the price, WHY this one (the catalogue's own feature that answers what
+ * the customer asked for), where it is held, and the buttons. The rows wrap, so a long answer grows downwards instead of hiding
+ * products behind a sideways scroll. Every line hides itself when there is nothing true to say.
+ */
+const productCompact = (prefix: string): Record<string, El> => {
+  const k = (s: string) => `${prefix}-${s}`;
+  const open = { press: { action: 'viewProduct', params: { sku: I('sku') } } };
+  return {
+    [k('card')]: el('Card', { pad: 'sm', gap: 'xs', variant: 'outlined', interactive: true }, { children: [k('img'), k('title'), k('price'), k('why'), k('stock'), k('actions')], on: open }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '100%', height: '88px', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
+    [k('title')]: el('Text', { text: I('title'), variant: 'small', lines: 2 }),
+    [k('price')]: el('Price', { amount: I('price'), currency: I('currency'), compareAt: I('compareAtPrice'), size: 'md', emptyText: 'Price on request' }),
+    [k('why')]: el('Box', { direction: 'row', gap: 'xs', align: 'start' }, { children: [k('whyIcon'), k('whyText')], visible: [{ $item: 'reason' }] }),
+    [k('whyIcon')]: el('Icon', { name: 'check', size: 'sm', tone: 'success' }),
+    [k('whyText')]: el('Text', { text: I('reason'), variant: 'caption', tone: 'muted', lines: 3, style: { flex: 1, minWidth: 0 } }),
+    [k('stock')]: el('StatusDot', { label: I('stockLabel'), tone: 'success' }, { visible: [{ $item: 'stockLabel' }] }),
+    // The buy button on its own line; "Details" and "Compare" share the line under it, so a tile stays short at four across.
+    [k('actions')]: el('Box', { gap: 'xs' }, { children: [k('buy'), k('more')] }),
+    [k('buy')]: el('Box', { gap: 'xs' }, { children: [k('add'), k('added'), k('ask')] }),
+    [k('more')]: el('Box', { direction: 'row', gap: 'xs', align: 'center', wrap: true }, { children: [k('details'), k('compare')] }),
+    [k('add')]: el('Button', { label: 'Add', variant: 'primary', size: 'sm', icon: 'cart' }, {
+      on: { press: { action: 'addToCart', params: { sku: I('sku'), qty: 1, title: I('title') } } },
+      visible: [{ $item: 'inBag', neq: true }],
+    }),
+    [k('added')]: el('Button', { label: 'Added ✓', variant: 'secondary', size: 'sm', icon: 'check' }, {
+      on: { press: { action: 'openPanel', params: { panel: 'quote' } } },
+      visible: [{ $item: 'inBag', eq: true }],
+    }),
+    [k('ask')]: el('Button', { label: 'Ask for price', variant: 'secondary', size: 'sm', icon: 'tag' }, {
+      on: { press: { action: 'sendMessage', params: { text: I('askPriceText') } } },
+      visible: [{ $item: 'priceMissing', eq: true }],
+    }),
+    [k('details')]: el('Button', { label: 'Details', variant: 'ghost', size: 'xs', style: { paddingInline: '4px' } }, { on: open }),
+    [k('compare')]: el('Button', { label: I('compareLabel'), variant: 'ghost', size: 'xs', style: { paddingInline: '4px' } }, {
+      on: { press: { action: 'toggleCompare', params: { sku: I('sku'), title: I('title') } } },
+    }),
+  };
+};
+
+/** One accessory on one short line: a tiny picture, the name, the price and a button. The group above it says why it is needed. */
+const accessoryRow = (prefix: string): Record<string, El> => {
+  const k = (s: string) => `${prefix}-${s}`;
+  return {
+    [k('card')]: el('Card', { pad: 'sm', gap: 'sm', variant: 'outlined', interactive: true }, { children: [k('row')], on: { press: { action: 'viewProduct', params: { sku: I('sku') } } } }),
+    [k('row')]: el('Box', { direction: 'row', gap: 'sm', align: 'center' }, { children: [k('img'), k('body'), k('foot')] }),
+    [k('img')]: el('Image', { src: I('imageUrl'), alt: I('title'), width: '40px', height: '40px', ratio: '1:1', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
+    [k('body')]: el('Box', { gap: '0', flex: 1, minWidth: '0' }, { children: [k('title')] }),
+    [k('title')]: el('Text', { text: I('title'), variant: 'small', lines: 2 }),
+    [k('foot')]: el('Box', { gap: 'xs', align: 'end' }, { children: [k('price'), k('add'), k('done')] }),
+    [k('price')]: el('Price', { amount: I('price'), currency: I('currency'), size: 'sm', emptyText: 'Price on request' }),
+    [k('add')]: el('Button', { label: 'Add', variant: 'primary', size: 'sm', icon: 'cart' }, {
+      on: { press: { action: 'addToCart', params: { sku: I('sku'), qty: 1, title: I('title') } } },
+      visible: [{ $item: 'inBag', neq: true }],
+    }),
+    [k('done')]: el('Button', { label: 'Added ✓', variant: 'secondary', size: 'sm', icon: 'check' }, {
       on: { press: { action: 'openPanel', params: { panel: 'quote' } } },
       visible: [{ $item: 'inBag', eq: true }],
     }),
@@ -113,15 +247,17 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   // last one is picked (the storefront owns that, see CardStage/ChatPanel).
   clarify: spec('root', {
     root: el('Box', { gap: '0', maxWidth: '760px' }, { children: ['head', 'qs', 'foot'] }),
-    head: el('Box', { gap: 'xs', pad: 'md' }, { children: ['eyebrow', 'title'] }),
-    eyebrow: el('Text', { text: 'A couple of quick questions', variant: 'eyebrow' }),
-    title: el('Text', { text: 'Help me narrow it down', variant: 'heading' }),
+    // The words above the questions come from the card's own state, written by the consultant in the customer's language;
+    // a card that carries none shows the questions alone, right under the reply that introduced them.
+    head: el('Box', { gap: 'xs', pad: 'md' }, { children: ['eyebrow', 'title'], visible: [S('/heading')] }),
+    eyebrow: el('Text', { text: S('/eyebrow'), variant: 'eyebrow' }, { visible: [S('/eyebrow')] }),
+    title: el('Text', { text: S('/heading'), variant: 'heading' }, { visible: [S('/heading')] }),
     qs: el('Box', { gap: '0' }, { children: ['q'], repeat: { statePath: '/questions', key: 'id' } }),
     q: el('Box', { pad: 'md', gap: 'sm' }, { children: ['qt', 'qinput'] }),
     qt: el('Text', { text: I('text'), variant: 'subheading' }),
     qinput: el('QuestionInput', {
       questionId: I('id'), label: I('text'), options: I('options'), selected: I('answer'),
-      multi: I('multi'), inputType: I('inputType'), placeholder: I('placeholder'), unit: I('unit'),
+      multi: I('multi'), inputType: I('inputType'), placeholder: I('placeholder'), unit: I('unit'), min: I('min'), max: I('max'),
       action: 'chooseOption', valueKey: 'value',
     }),
     foot: el('Box', { pad: 'sm', bg: 'surface-alt' }, { children: ['prog'], visible: [S('/progress')] }),
@@ -134,36 +270,104 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     eyebrow: el('Text', { text: S('/eyebrow'), variant: 'eyebrow' }, { visible: [S('/eyebrow')] }),
     title: el('Text', { text: S('/heading'), variant: 'title' }, { visible: [S('/heading')] }),
     intro: el('Text', { text: S('/intro'), variant: 'body', tone: 'muted' }, { visible: [S('/intro')] }),
-    grid: el('Grid', { minItemWidth: '170px', gap: 'sm' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
-    ...productTile('p', { cta: 'addToCart' }),
+    grid: el('Grid', { columns: 4, gap: 'sm' }, { children: ['p-card'], repeat: { statePath: '/products', key: 'sku' } }),
+    ...productCompact('p'),
   }),
 
   productDetail: spec('root', {
-    root: el('Box', { pad: 'md', direction: 'row', gap: 'lg', wrap: true }, { children: ['gallery', 'info'] }),
-    gallery: el('Box', { flex: '1 1 320px', gap: 'sm' }, { children: ['hero'] }),
+    // One product, read like a counter conversation: what it is and what it costs first, then what a customer checks before
+    // buying (features, specifications, documents), then what goes with it. A section the product has nothing for is hidden
+    // by its `has…` flag, so an unknown fact is never an empty heading.
+    root: el('Box', { pad: 'md', gap: 'lg' }, { children: ['top', 'sections'] }),
+    top: el('Box', { direction: 'row', gap: 'lg', wrap: true }, { children: ['gallery', 'info'] }),
+    gallery: el('Box', { flex: '1 1 180px', maxWidth: '240px', gap: 'sm' }, { children: ['hero'] }),
     hero: el('Image', { src: S('/product/imageUrl'), alt: S('/product/title'), ratio: '1:1', radius: 'md', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
-    info: el('Box', { flex: '1 1 360px', gap: 'md' }, { children: ['brand', 'title', 'price', 'stock', 'desc', 'specs', 'actions'] }),
+    info: el('Box', { flex: '1 1 340px', gap: 'md' }, { children: ['brand', 'title', 'price', 'rating', 'stock', 'stockWarn', 'desc', 'actions', 'asks', 'site'] }),
     brand: el('Text', { text: S('/product/brand'), variant: 'eyebrow' }, { visible: [S('/product/brand')] }),
     title: el('Text', { text: S('/product/title'), variant: 'title' }),
     price: el('Price', { amount: S('/product/price'), currency: S('/product/currency'), compareAt: S('/product/compareAtPrice'), size: 'lg' }),
-    stock: el('StatusDot', { label: S('/product/stockLabel'), tone: 'success' }, { visible: [S('/product/stockLabel')] }),
+    rating: el('Rating', { value: S('/product/rating'), count: S('/product/ratingCount'), size: 'md' }, { visible: [S('/product/hasRating')] }),
+    stock: el('StatusDot', { label: S('/product/stockLabel'), tone: 'success' }, { visible: [S('/product/stockOk')] }),
+    stockWarn: el('StatusDot', { label: S('/product/stockLabel'), tone: 'warning' }, { visible: [S('/product/stockWarn')] }),
     desc: el('Markdown', { text: S('/product/description') }, { visible: [S('/product/description')] }),
-    specs: el('Box', { gap: 'xs' }, { children: ['spec'], repeat: { statePath: '/product/specList', key: 'label' } }),
+    site: el('Link', { label: 'See it on the website', href: S('/product/productUrl'), external: true }, { visible: [S('/product/hasProductUrl')] }),
+    sections: el('Box', { gap: 'lg' }, { children: ['features', 'feedback', 'watch', 'specs', 'docs', 'suggested', 'related'] }),
+    // What buyers often mention, and what is worth checking, from the shop's own words for this kind of product (never from the model).
+    feedback: el('Box', { gap: 'xs' }, { children: ['feedbackHead', 'feedbackList'], visible: [S('/product/hasFeedback')] }),
+    feedbackHead: el('Text', { text: 'What buyers often mention', variant: 'subheading' }),
+    feedbackList: el('Markdown', { text: S('/product/feedbackText') }),
+    watch: el('Box', { gap: 'xs' }, { children: ['watchHead', 'watchList'], visible: [S('/product/hasWatch')] }),
+    watchHead: el('Text', { text: 'Worth checking before you buy', variant: 'subheading' }),
+    watchList: el('Markdown', { text: S('/product/watchText') }),
+    features: el('Box', { gap: 'xs' }, { children: ['featuresHead', 'featuresList'], visible: [S('/product/hasFeatures')] }),
+    featuresHead: el('Text', { text: 'Key features', variant: 'subheading' }),
+    featuresList: el('Markdown', { text: S('/product/featuresText') }),
+    specs: el('Box', { gap: 'xs' }, { children: ['specsHead', 'specRows'], visible: [S('/product/hasSpecs')] }),
+    specsHead: el('Text', { text: 'Specifications', variant: 'subheading' }),
+    specRows: el('Box', { gap: 'xs' }, { children: ['spec'], repeat: { statePath: '/product/specList', key: 'label' } }),
     spec: el('KeyValue', { label: I('label'), value: I('value'), inline: true }),
-    actions: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['add', 'handoff', 'ask'] }),
-    add: el('Button', { label: { $template: 'Add to ${/closing}' }, variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1, title: S('/product/title') } } } }),
+    docs: el('Box', { gap: 'xs' }, { children: ['docsHead', 'docRows'], visible: [S('/product/hasDocuments')] }),
+    docsHead: el('Text', { text: 'Documents', variant: 'subheading' }),
+    docRows: el('Box', { gap: 'xs' }, { children: ['doc'], repeat: { statePath: '/product/documents', key: 'url' } }),
+    // A document opens as a link, and the consultant can read it to the customer in plain words ("ask" is the line sent for that document).
+    doc: el('Box', { direction: 'row', gap: 'sm', align: 'center', wrap: true }, { children: ['docLink', 'docExplain'] }),
+    docLink: el('Link', { label: I('title'), href: I('url'), external: true }),
+    docExplain: el('Button', { label: 'Explain it to me', variant: 'ghost', size: 'sm' }, { visible: [I('ask')], on: { press: { action: 'sendMessage', params: { text: I('ask') } } } }),
+    // What the catalogue itself suggests alongside this product: suggestions only, never a statement that it fits.
+    suggested: el('Box', { gap: 'sm' }, { children: ['suggestedHead', 'suggestedNote', 'suggestedGrid'], visible: [S('/product/hasSuggested')] }),
+    suggestedHead: el('Text', { text: 'Have you considered?', variant: 'subheading' }),
+    suggestedNote: el('Text', { text: 'These are suggestions only. They are not confirmed to be compatible with, or required for, this product.', variant: 'caption', tone: 'muted' }),
+    suggestedGrid: el('Carousel', { itemWidth: '150px', gap: 'sm', label: 'Suggestions' }, { children: ['rel'], repeat: { statePath: '/product/suggested', key: 'sku' } }),
+    related: el('Box', { gap: 'sm' }, { children: ['relatedHead', 'relatedGrid'], visible: [S('/product/hasRelated')] }),
+    relatedHead: el('Text', { text: 'Similar products', variant: 'subheading' }),
+    relatedGrid: el('Carousel', { itemWidth: '150px', gap: 'sm', label: 'Similar products' }, { children: ['rel'], repeat: { statePath: '/product/related', key: 'sku' } }),
+    rel: el('Card', { pad: 'sm', gap: 'sm', interactive: true }, { children: ['relImg', 'relTitle', 'relPrice'], on: { press: { action: 'viewProduct', params: { sku: I('sku') } } } }),
+    relImg: el('Image', { src: I('imageUrl'), alt: I('title'), ratio: '1:1', fit: 'contain', width: '88px', height: '88px', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo'), fallbackLabel: 'Image coming soon' }),
+    relTitle: el('Text', { text: I('title'), variant: 'small', lines: 2 }),
+    relPrice: el('Price', { amount: I('price'), currency: I('currency'), size: 'sm' }),
+    actions: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['add', 'handoff', 'ask', 'compare'] }),
+    // Three questions customers ask most, one tap each; the consultant answers from the shop's own guides and records.
+    asks: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: ['askWhy', 'askWarranty', 'askInstall'] }),
+    askWhy: el('Button', { label: 'Why this one?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Why do you recommend ${/product/title} for me?' } } } } }),
+    askWarranty: el('Button', { label: 'Warranty and guarantee', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'What is the warranty and guarantee on ${/product/title}?' } } } } }),
+    askInstall: el('Button', { label: 'Who installs it?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Do I need a licensed tradesperson to install ${/product/title}, or can I do it myself? How is it installed?' } } } } }),
+    add: el('Button', { label: 'Add', variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1, title: S('/product/title') } } } }),
     // A configured hand-off (e.g. "Design it in The Forge") — a product whose
     // sale closes in the tenant's own tool, not in the bag. Present only when
     // the storefront matched a `handoffs` rule to this product.
     handoff: el('Button', { label: S('/handoff/label'), variant: 'primary', iconRight: 'chevron-right' }, { visible: [S('/handoff')], on: { press: { action: 'openUrl', params: { url: S('/handoff/url') } } } }),
     ask: el('Button', { label: 'Ask about this', variant: 'secondary' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Tell me more about ${/product/title}' } } } } }),
+    compare: el('Button', { label: 'Compare', variant: 'ghost', icon: 'plus' }, { on: { press: { action: 'toggleCompare', params: { sku: S('/product/sku'), title: S('/product/title') } } } }),
+  }),
+
+  review: spec('root', {
+    // The last look before payment, section by section. Each row says what was found and offers at most one thing to do about it.
+    // Everything is bound to the card's state, which the runtime builds from the order itself.
+    root: el('Box', { pad: 'md', gap: 'md' }, { children: ['title', 'intro', 'summary', 'quantity', 'accessories', 'fulfilment', 'warranty', 'foot'] }),
+    title: el('Text', { text: S('/heading'), variant: 'title' }),
+    intro: el('Text', { text: S('/intro'), variant: 'small', tone: 'muted' }, { visible: [S('/intro')] }),
+    summary: el('Text', { text: S('/summary'), variant: 'subheading' }),
+    ...reviewSection('quantity'),
+    ...reviewSection('accessories'),
+    ...reviewSection('fulfilment'),
+    ...reviewSection('warranty'),
+    foot: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['pay'] }),
+    pay: el('Button', { label: S('/payLabel'), variant: 'primary', iconRight: 'chevron-right' }, { on: { press: { action: 'checkout' } } }),
   }),
 
   comparison: spec('root', {
-    root: el('Box', { pad: 'md', gap: 'md' }, { children: ['eyebrow', 'title', 'table', 'verdict'] }),
+    root: el('Box', { pad: 'md', gap: 'md' }, { children: ['eyebrow', 'title', 'intro', 'table', 'foot', 'verdict'] }),
     eyebrow: el('Text', { text: 'Side by side', variant: 'eyebrow' }),
     title: el('Text', { text: 'Comparison', variant: 'title' }),
+    intro: el('Text', { text: S('/intro'), variant: 'small', tone: 'muted' }, { visible: [S('/intro')] }),
     table: el('Table', { columns: S('/columns'), rows: S('/rows') }),
+    // After reading the table, acting on a choice: add either product, or open its full details.
+    foot: el('Box', { gap: 'xs' }, { children: ['c-row'], repeat: { statePath: '/products', key: 'sku' } }),
+    'c-row': el('Box', { direction: 'row', gap: 'sm', align: 'center', justify: 'between', wrap: true }, { children: ['c-name', 'c-btns'] }),
+    'c-name': el('Text', { text: I('title'), variant: 'small', lines: 2, style: { flex: 1, minWidth: 0 } }),
+    'c-btns': el('Box', { direction: 'row', gap: 'sm' }, { children: ['c-add', 'c-view'] }),
+    'c-add': el('Button', { label: I('addLabel'), variant: 'primary', size: 'sm', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: I('sku'), qty: 1, title: I('title') } } } }),
+    'c-view': el('Button', { label: 'Details', variant: 'ghost', size: 'sm' }, { on: { press: { action: 'viewProduct', params: { sku: I('sku') } } } }),
     verdict: el('Alert', { title: 'My take', text: S('/verdict'), tone: 'success', icon: 'spark' }, { visible: [S('/verdict')] }),
   }),
 
@@ -172,7 +376,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     eyebrow: el('Text', { text: 'Everything you need', variant: 'eyebrow' }),
     title: el('Text', { text: S('/heading'), variant: 'title' }),
     why: el('Text', { text: S('/why'), variant: 'body', tone: 'muted' }, { visible: [S('/why')] }),
-    grid: el('Grid', { minItemWidth: '220px', gap: 'md' }, { children: ['b-card'], repeat: { statePath: '/items', key: 'sku' } }),
+    grid: el('Carousel', { itemWidth: '230px', gap: 'md', label: 'Everything you need' }, { children: ['b-card'], repeat: { statePath: '/items', key: 'sku' } }),
     ...productTile('b', { cta: 'addToCart' }),
     foot: el('Box', { direction: 'row', justify: 'between', align: 'center', gap: 'md', wrap: true }, { children: ['tot', 'addall'] }),
     tot: el('Price', { amount: S('/totals/total'), currency: S('/totals/currency'), size: 'lg', note: 'bundle total' }, { visible: [S('/totals/total')] }),
@@ -215,9 +419,11 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
   }),
 
   orderStatus: spec('root', {
-    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '760px' }, { children: ['ok', 'title', 'meta', 'timeline', 'lines'] }),
+    root: el('Box', { pad: 'md', gap: 'lg', maxWidth: '760px' }, { children: ['ok', 'title', 'view', 'meta', 'timeline', 'lines'] }),
     ok: el('Alert', { title: 'Order confirmed', text: S('/statusText'), tone: 'success' }),
-    title: el('Text', { text: { $template: 'Order ${/orderId}' }, variant: 'title' }),
+    title: el('Text', { text: { $template: 'Order #${/orderRef}' }, variant: 'title' }, { visible: [S('/orderRef')] }),
+    // The order itself: items, billing, shipping and the summary, in the side panel.
+    view: el('Button', { label: 'See the order details', variant: 'secondary' }, { visible: [S('/orderId')], on: { press: { action: 'openPanel', params: { panel: 'order', orderId: S('/orderId') } } } }),
     meta: el('Box', { direction: 'row', gap: 'lg', wrap: true }, { children: ['st', 'pl', 'tt'] }),
     st: el('KeyValue', { label: 'Status', value: S('/status') }),
     pl: el('KeyValue', { label: 'Placed', value: S('/placedAt') }, { visible: [S('/placedAt')] }),
@@ -237,7 +443,7 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     st: el('Text', { text: I('title'), variant: 'heading' }),
     sb: el('Markdown', { text: I('body') }),
     ss: el('Steps', { items: I('steps') }, { visible: [{ $item: 'steps' }] }),
-    products: el('Grid', { minItemWidth: '220px', gap: 'md' }, { children: ['g-card'], repeat: { statePath: '/products', key: 'sku' }, visible: [S('/products')] }),
+    products: el('Carousel', { itemWidth: '230px', gap: 'md', label: 'Products for this job' }, { children: ['g-card'], repeat: { statePath: '/products', key: 'sku' }, visible: [S('/products')] }),
     ...productTile('g', { cta: 'addToCart' }),
   }),
 
@@ -258,8 +464,42 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     grp: el('Box', { gap: 'sm' }, { children: ['gl', 'gh', 'gg'] }),
     gl: el('Text', { text: I('label'), variant: 'heading' }),
     gh: el('Text', { text: I('hint'), variant: 'small', tone: 'muted' }, { visible: [{ $item: 'hint' }] }),
-    gg: el('Grid', { minItemWidth: '200px', gap: 'md' }, { children: ['a-card'], repeat: { statePath: { $item: 'items' }, key: 'sku' } }),
-    ...productTile('a', { cta: 'addToCart' }),
+    gg: el('Grid', { columns: 2, gap: 'sm' }, { children: ['a-card'], repeat: { statePath: { $item: 'items' }, key: 'sku' } }),
+    ...accessoryRow('a'),
+  }),
+
+  quantity: spec('root', {
+    root: el('Card', { pad: 'md', gap: 'md', variant: 'outlined', maxWidth: '640px' }, { children: ['head', 'row', 'working', 'note', 'actions'] }),
+    head: el('Text', { text: S('/heading'), variant: 'heading' }, { visible: [S('/heading')] }),
+    row: el('Box', { direction: 'row', gap: 'md', align: 'center' }, { children: ['img', 'info', 'big'] }),
+    img: el('Image', { src: S('/product/imageUrl'), alt: S('/product/title'), width: '72px', height: '72px', ratio: '1:1', fit: 'contain', radius: 'sm', fallbackIcon: 'box', fallbackSrc: S('/brandLogo') }),
+    info: el('Box', { gap: 'xs', flex: 1, minWidth: '0' }, { children: ['title', 'price'] }),
+    title: el('Text', { text: S('/product/title'), variant: 'subheading', lines: 2 }),
+    price: el('Price', { amount: S('/product/price'), currency: S('/product/currency'), size: 'md', emptyText: 'Price on request' }),
+    big: el('Box', { gap: 'xs', align: 'end' }, { children: ['qty', 'unit'] }),
+    qty: el('Text', { text: S('/quantity'), variant: 'display' }),
+    unit: el('Text', { text: S('/unitLabel'), variant: 'small', tone: 'muted' }, { visible: [S('/unitLabel')] }),
+    working: el('Box', { gap: 'xs' }, { children: ['w'], repeat: { statePath: '/working', key: 'label' } }),
+    w: el('Box', { direction: 'row', justify: 'between', gap: 'md' }, { children: ['wl', 'wv'] }),
+    wl: el('Text', { text: I('label'), variant: 'small', tone: 'muted' }),
+    wv: el('Text', { text: I('value'), variant: 'small' }),
+    note: el('Text', { text: S('/note'), variant: 'small', tone: 'muted' }, { visible: [S('/note')] }),
+    actions: el('Box', { direction: 'row', gap: 'sm', align: 'center' }, { children: ['add'] }),
+    add: el('Button', { label: S('/ctaLabel'), variant: 'primary', size: 'md', icon: 'cart' }, {
+      on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: S('/quantity'), title: S('/product/title'), confirmed: true } } },
+    }),
+  }),
+
+  visual: spec('root', {
+    root: el('Card', { pad: 'md', gap: 'md', variant: 'outlined', maxWidth: '560px' }, { children: ['head', 'img', 'caption', 'disclaimer', 'products'] }),
+    head: el('Text', { text: S('/heading'), variant: 'heading' }, { visible: [S('/heading')] }),
+    img: el('Image', { src: S('/imageUrl'), alt: S('/caption'), ratio: '1:1', radius: 'md', fallbackIcon: 'box', fallbackLabel: 'Picture not available' }),
+    caption: el('Text', { text: S('/caption'), variant: 'body' }, { visible: [S('/caption')] }),
+    disclaimer: el('Box', { direction: 'row', gap: 'xs', align: 'start' }, { children: ['dIcon', 'dText'], visible: [S('/disclaimer')] }),
+    dIcon: el('Icon', { name: 'info', size: 'sm', tone: 'muted' }),
+    dText: el('Text', { text: S('/disclaimer'), variant: 'small', tone: 'muted', style: { flex: 1, minWidth: 0 } }),
+    products: el('Box', { gap: 'xs' }, { children: ['p'], repeat: { statePath: '/products', key: 'sku' }, visible: [S('/products')] }),
+    p: el('Button', { label: I('title'), variant: 'ghost', size: 'sm', icon: 'box' }, { on: { press: { action: 'viewProduct', params: { sku: I('sku') } } } }),
   }),
 
   warranty: spec('root', {
@@ -289,6 +529,34 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     title: el('Text', { text: S('/title'), variant: 'heading' }),
     text: el('Markdown', { text: S('/text'), tone: 'muted' }),
     accept: el('Button', { label: S('/acceptLabel'), variant: 'primary' }, { on: { press: { action: 'sendMessage', params: { text: 'I accept' } } } }),
+  }),
+
+  confirm: spec('root', {
+    root: el('Card', { pad: 'lg', gap: 'md', maxWidth: '560px' }, { children: ['title', 'summary', 'details', 'buttons', 'outcome'] }),
+    title: el('Text', { text: S('/heading'), variant: 'heading' }, { visible: [S('/heading')] }),
+    summary: el('Text', { text: S('/summary'), variant: 'body' }),
+    details: el('Box', { gap: 'xs' }, { children: ['d'], repeat: { statePath: '/details', key: 'label' }, visible: [S('/details')] }),
+    d: el('KeyValue', { label: I('label'), value: I('value'), inline: true }),
+    buttons: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['allow', 'deny'], visible: [S('/pending')] }),
+    allow: el('Button', { label: S('/allowLabel'), variant: 'primary' }, { on: { press: { action: 'confirmTool', params: { confirmationId: S('/confirmationId'), decision: 'allow' } } } }),
+    deny: el('Button', { label: S('/denyLabel'), variant: 'secondary' }, { on: { press: { action: 'confirmTool', params: { confirmationId: S('/confirmationId'), decision: 'deny' } } } }),
+    outcome: el('Text', { text: S('/outcome'), variant: 'small', tone: 'muted' }, { visible: [S('/outcome')] }),
+  }),
+
+  records: spec('root', {
+    root: el('Card', { pad: 'lg', gap: 'md', maxWidth: '640px' }, { children: ['heading', 'rows'] }),
+    heading: el('Text', { text: S('/heading'), variant: 'heading' }),
+    rows: el('Box', { gap: 'xs' }, { children: ['r'], repeat: { statePath: '/rows', key: 'title' } }),
+    r: el('KeyValue', { label: I('title'), value: I('amount'), inline: true }),
+  }),
+
+  form: spec('root', {
+    root: el('Card', { pad: 'lg', gap: 'md', maxWidth: '560px' }, { children: ['title', 'intro', 'fields', 'sent'] }),
+    title: el('Text', { text: S('/title'), variant: 'heading' }),
+    intro: el('Text', { text: S('/intro'), variant: 'body' }, { visible: [S('/intro')] }),
+    fields: el('Box', { gap: 'xs' }, { children: ['f'], repeat: { statePath: '/fields', key: 'id' } }),
+    f: el('KeyValue', { label: I('label'), value: I('type'), inline: true }),
+    sent: el('Text', { text: S('/sentText'), variant: 'small', tone: 'muted' }, { visible: [S('/sentText')] }),
   }),
 
   suggestions: spec('root', {

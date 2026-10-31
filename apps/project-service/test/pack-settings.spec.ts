@@ -38,6 +38,16 @@ async function createService(extra: Record<string, unknown> = {}) {
 }
 
 async function main() {
+  await suite.test('a reply may be as long as 16 sentences and lines, no longer, so a range overview with a list is not cut off', () => {
+    const ask = (maxSentences: number) => validatePackSettings({ interpretationPolicy: { replyStyle: { maxSentences } } }).ok;
+    assert.equal(ask(14), true);
+    assert.equal(ask(16), true);
+    assert.equal(ask(17), false);
+    assert.equal(ask(0), false);
+    assert.equal(validatePackSettings({ interpretationPolicy: { replyStyle: { turnStyles: { answer: { maxSentences: 12 } } } } }).ok, true);
+    assert.equal(validatePackSettings({ interpretationPolicy: { replyStyle: { turnStyles: { answer: { maxSentences: 20 } } } } }).ok, false);
+  });
+
   await suite.test('catalogMapping is validated and normalised before storage', () => {
     assert.equal(validatePackSettings({ catalogMapping: { searchPaths: ['$where'] } }).ok, false);
     assert.equal(validatePackSettings({ catalogMapping: { surprise: true } }).ok, false);
@@ -74,12 +84,22 @@ async function main() {
     assert.match(bad([]).message, /must be an object/);
     assert.match(bad({ modelReading: { browseMaxWords: 0 } }).message, /modelReading\.browseMaxWords must be a whole number from 1 to 30/);
     assert.match(bad({ modelReading: { skipForBrowse: 'yes' } }).message, /modelReading\.skipForBrowse must be true or false/);
+    assert.match(bad({ history: { maxTurns: 0 } }).message, /history\.maxTurns must be a whole number from 1 to 20/);
+    assert.match(bad({ history: { maxChars: 100 } }).message, /history\.maxChars must be a whole number from 500 to 20000/);
+    assert.match(bad({ streaming: 'yes' }).message, /streaming must be true or false/);
     assert.equal((validatePackSettings({ dialoguePolicy: { modelReading: { skipForTappedAnswers: false } } }) as any).ok, true, 'a tenant can keep the model in every turn');
-    const policy = { ask: { maxPerConcept: 1 }, wording: 'template', templates: { recommendOne: ['For {needs}, try the {title}.'], why: 'Because {excerpt}' }, reason: { maxChars: 120, maxSentences: 2 } };
+    assert.equal((validatePackSettings({ dialoguePolicy: { history: { maxTurns: 8, maxChars: 5000 }, streaming: true, agentMode: true } }) as any).ok, true, 'valid history, streaming and agentMode settings pass');
+    assert.match(bad({ agentMode: 'yes' }).message, /agentMode must be true or false/);
+    const policy = { ask: { maxPerConcept: 1 }, wording: 'template', templates: { recommendOne: ['For {needs}, try the {title}.'], why: 'Because {excerpt}' }, reason: { maxChars: 120, maxSentences: 2 }, agentMode: true };
     const ok: any = validatePackSettings({ dialoguePolicy: policy });
     assert.equal(ok.ok, true);
     assert.deepEqual(ok.set, { 'extensions.dialoguePolicy': policy });
     assert.deepEqual((validatePackSettings({ dialoguePolicy: null }) as any).set, { 'extensions.dialoguePolicy': null });
+    // Top-level agentMode setting
+    assert.deepEqual((validatePackSettings({ agentMode: true }) as any).set, { 'extensions.agentMode': { enabled: true } });
+    assert.deepEqual((validatePackSettings({ agentMode: { enabled: false } }) as any).set, { 'extensions.agentMode': { enabled: false } });
+    assert.deepEqual((validatePackSettings({ agentMode: null }) as any).set, { 'extensions.agentMode': null });
+    assert.equal((validatePackSettings({ agentMode: 'invalid' } as any) as any).ok, false);
     // Stored through the service, and removed with null.
     const { service, db } = await createService();
     assert.equal((await service.updateProject(TENANT, { dialoguePolicy: policy } as any)).success, true);

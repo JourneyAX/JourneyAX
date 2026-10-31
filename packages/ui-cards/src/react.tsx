@@ -10,6 +10,7 @@ import { createRenderer, useActions } from '@json-render/react';
 import type { Spec } from '@json-render/core';
 import { catalog } from './catalog';
 import type { CardInstance } from './catalog/card-types';
+import { nearbyInRange } from './answers';
 
 type P = Record<string, any>;
 export type PrimitiveRenderProps = {
@@ -42,10 +43,10 @@ function fmtMoney(amount: unknown, currency?: string): string | null {
 /** Fire a catalog action with a value merged into its params (for value-carrying primitives). */
 function useEmitValue(props: P) {
   const { execute } = useActions();
-  return (value: unknown) => {
+  return (value: unknown, extra?: Record<string, unknown>) => {
     if (!props.action) return;
     const key = props.valueKey || 'value';
-    void execute({ action: String(props.action), params: { ...(props.params || {}), [key]: value } } as any);
+    void execute({ action: String(props.action), params: { ...(props.params || {}), ...(extra || {}), [key]: value } } as any);
   };
 }
 
@@ -135,6 +136,11 @@ const components = {
     >
       {children}
     </div>
+  ),
+  Carousel: ({ props, children, rootRef }: RP) => (
+    <CarouselView itemWidth={props.itemWidth} gap={sp(props.gap ?? 'md')} label={props.label} className={props.className} style={props.style} rootRef={rootRef}>
+      {children}
+    </CarouselView>
   ),
   Text: ({ props }: RP) => {
     const v = props.variant || 'body';
@@ -281,17 +287,45 @@ const components = {
     }
 
     const numeric = mode === 'number';
-    const valid = draft.trim() !== '' && (!numeric || Number.isFinite(Number(draft)));
+    const typed = draft.trim();
+    const valid = typed !== '' && (!numeric || Number.isFinite(Number(typed)));
+    const min = typeof props.min === 'number' ? props.min : undefined;
+    const max = typeof props.max === 'number' ? props.max : undefined;
+    const outside = numeric && valid && ((min !== undefined && Number(typed) < min) || (max !== undefined && Number(typed) > max));
+    const suggestion = outside ? nearbyInRange(Number(typed), min, max) : undefined;
+    // A number outside the usual range is questioned once; a second press of the button keeps it. It is never refused.
+    const [questioned, setQuestioned] = useState('');
+    // Once the answer has gone (it is the card's answer now), the question about it is over.
+    const doubt = outside && questioned === typed && String(props.selected ?? '').trim() !== typed;
+    const range = min !== undefined && max !== undefined ? `${min} to ${max}` : min !== undefined ? `${min} or more` : max !== undefined ? `${max} or less` : '';
+    const withUnit = (value: number | string) => (props.unit ? `${value} ${props.unit}` : String(value));
+    const submit = () => {
+      if (!valid) return;
+      if (outside && questioned !== typed) { setQuestioned(typed); return; }
+      setQuestioned('');
+      // A number the card questioned and the customer kept is sent as kept, so the consultant does not ask about it again.
+      fire(typed, outside ? { kept: true } : undefined);
+    };
     return (
-      <form className="jx-question-input" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); if (valid) fire(draft.trim()); }}>
+      <form className="jx-question-input" noValidate onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); submit(); }}>
         <div className="jx-question-entry">
-          <input type={numeric ? 'number' : 'text'} value={draft} maxLength={500}
+          <input type={numeric ? 'number' : 'text'} value={draft} maxLength={500} step={numeric ? 'any' : undefined}
             inputMode={numeric ? 'decimal' : undefined} aria-label={props.label || 'Your answer'}
+            aria-invalid={doubt || undefined}
             placeholder={props.placeholder || (mode === 'measurement' ? 'Enter the measurement and unit' : 'Type your answer')}
             className="jx-question-field" onChange={(event) => setDraft(event.target.value)} />
           {props.unit ? <span className="jx-question-unit">{props.unit}</span> : null}
-          <button type="submit" className="jx-btn jx-btn-primary jx-size-sm" disabled={!valid}>Continue</button>
+          <button type="submit" className="jx-btn jx-btn-primary jx-size-sm" disabled={!valid}>{doubt ? `Use ${withUnit(typed)}` : 'Continue'}</button>
         </div>
+        {doubt ? (
+          <div className="jx-question-doubt" role="status">
+            <span>{`${withUnit(typed)} is outside the usual ${range}.`}{suggestion !== undefined ? ' Did you mean ' : ''}</span>
+            {suggestion !== undefined ? (
+              <button type="button" className="jx-chip" onClick={(event) => { event.stopPropagation(); setQuestioned(''); setDraft(String(suggestion)); fire(String(suggestion)); }}>{withUnit(suggestion)}</button>
+            ) : null}
+            {suggestion !== undefined ? <span>?</span> : null}
+          </div>
+        ) : null}
       </form>
     );
   },
@@ -442,13 +476,57 @@ function adaptForCreateRenderer(map: Record<string, (rp: RP) => React.ReactEleme
   return out;
 }
 
+/**
+ * A scrolling row of cards: one row that snaps to each card, with previous/next buttons that appear only when there is more to
+ * scroll to (so a short list looks like a plain row). Keyboard: focus the row and use the arrow keys. Touch: swipe.
+ */
+function CarouselView({ itemWidth, gap, label, className, style, rootRef, children }: {
+  itemWidth?: string; gap?: string; label?: string; className?: string; style?: React.CSSProperties; rootRef?: React.Ref<HTMLElement>; children?: React.ReactNode;
+}) {
+  const track = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ start: true, end: true });
+  const update = React.useCallback(() => {
+    const el = track.current;
+    if (!el) return;
+    setEdge({ start: el.scrollLeft <= 2, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 });
+  }, []);
+  React.useEffect(() => {
+    update();
+    const el = track.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [update, children]);
+  const by = (direction: -1 | 1) => {
+    const el = track.current;
+    if (el) el.scrollBy({ left: direction * Math.max(220, el.clientWidth * 0.85), behavior: 'smooth' });
+  };
+  return (
+    <div className={cls('jx-carousel', className)} ref={rootRef as React.Ref<HTMLDivElement>} role="region" aria-roledescription="carousel" aria-label={label || 'Products'} style={style}>
+      <div
+        className="jx-carousel__track"
+        ref={track}
+        tabIndex={0}
+        onScroll={update}
+        onKeyDown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); by(1); } else if (event.key === 'ArrowLeft') { event.preventDefault(); by(-1); } }}
+        style={{ gap, ['--carousel-item-w' as any]: itemWidth || '300px' }}
+      >
+        {children}
+      </div>
+      {!edge.start && <button type="button" className="jx-carousel__nav jx-carousel__nav--prev" aria-label="Previous" onClick={() => by(-1)}>‹</button>}
+      {!edge.end && <button type="button" className="jx-carousel__nav jx-carousel__nav--next" aria-label="Next" onClick={() => by(1)}>›</button>}
+    </div>
+  );
+}
+
 /** The renderer bound to the platform catalog. */
 export const CatalogRenderer = createRenderer(catalog as any, adaptForCreateRenderer(components) as any);
 
 const noopEmit = () => undefined;
 
 /** Layout primitives whose root is a flex/grid container — Puck must mark these `inline` and attach `dragRef` here. */
-export const LAYOUT_PRIMITIVE_NAMES = ['Box', 'Card', 'Grid'] as const;
+export const LAYOUT_PRIMITIVE_NAMES = ['Box', 'Card', 'Grid', 'Carousel'] as const;
 export type LayoutPrimitiveName = (typeof LAYOUT_PRIMITIVE_NAMES)[number];
 
 /** Render one catalog primitive. Used by the storefront renderer and the backoffice Puck editor. */

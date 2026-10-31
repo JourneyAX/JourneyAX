@@ -1,0 +1,362 @@
+{
+  "connectorId": "salesforce",
+  "title": "Salesforce Sales and Service Cloud (sample)",
+  "standsInFor": "Salesforce Sales and Service Cloud: accounts, cases and the support review of online orders",
+  "description": "Trade accounts, support cases and order reviews.",
+  "minimums": {
+    "accounts": 25,
+    "cases": 40,
+    "order_reviews": 25
+  },
+  "tools": [
+    {
+      "name": "find_account",
+      "description": "Find trade accounts by name, contact or trade.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words from the account or contact name or the trade."
+          },
+          "tier": {
+            "type": "string",
+            "description": "Optional tier.",
+            "enum": [
+              "bronze",
+              "silver",
+              "gold"
+            ]
+          },
+          "branchCode": {
+            "type": "string",
+            "description": "Optional home branch code."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "query": "$first:accounts.contactName"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "accounts",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "text": {
+          "arg": "query",
+          "fields": [
+            {
+              "field": "name",
+              "weight": 3
+            },
+            {
+              "field": "contactName",
+              "weight": 2
+            },
+            {
+              "field": "accountId",
+              "weight": 3
+            },
+            {
+              "field": "tradeType",
+              "weight": 1
+            }
+          ]
+        },
+        "filters": [
+          {
+            "arg": "tier",
+            "field": "tier"
+          },
+          {
+            "arg": "branchCode",
+            "field": "homeBranchCode"
+          }
+        ],
+        "sort": {
+          "field": "name"
+        }
+      }
+    },
+    {
+      "name": "get_account",
+      "description": "Get one trade account with its cases.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0001."
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "$first:accounts.accountId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "accounts",
+        "key": "accountId",
+        "arg": "accountId",
+        "include": [
+          {
+            "collection": "cases",
+            "foreignKey": "accountId",
+            "as": "cases",
+            "limit": 20
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_cases",
+      "description": "List support cases, newest first, for an account or by status or priority.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "Optional account id."
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional status.",
+            "enum": [
+              "new",
+              "open",
+              "waiting",
+              "closed"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "description": "Optional priority.",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "status": "open"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "cases",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          },
+          {
+            "arg": "priority",
+            "field": "priority"
+          }
+        ],
+        "sort": {
+          "field": "createdAt",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "get_case",
+      "description": "Get one support case.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "description": "The case id, for example CS-10001."
+          }
+        },
+        "required": [
+          "caseId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "caseId": "$first:cases.caseId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "cases",
+        "key": "caseId",
+        "arg": "caseId"
+      }
+    },
+    {
+      "name": "create_case",
+      "description": "Open a new support case for an account. This writes to the service system, so it asks first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account the case is for."
+          },
+          "subject": {
+            "type": "string",
+            "description": "A short subject.",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "description": "What happened.",
+            "maxLength": 600
+          },
+          "priority": {
+            "type": "string",
+            "description": "Priority.",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "subject"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "example": {
+        "accountId": "$first:accounts.accountId",
+        "subject": "Delivery arrived with a damaged pack",
+        "priority": "normal"
+      },
+      "op": {
+        "kind": "create",
+        "collection": "cases",
+        "idField": "caseId",
+        "idPrefix": "CS-",
+        "idWidth": 5,
+        "fields": {
+          "accountId": {
+            "arg": "accountId",
+            "required": true
+          },
+          "subject": {
+            "arg": "subject",
+            "required": true
+          },
+          "description": {
+            "arg": "description"
+          },
+          "priority": {
+            "arg": "priority"
+          }
+        },
+        "defaults": {
+          "status": "new",
+          "origin": "chat",
+          "owner": "Unassigned",
+          "priority": "normal"
+        },
+        "stamp": [
+          "createdAt",
+          "updatedAt"
+        ],
+        "validate": [
+          {
+            "arg": "accountId",
+            "collection": "accounts",
+            "field": "accountId",
+            "message": "No account {value}."
+          }
+        ]
+      }
+    },
+    {
+      "name": "order_review_status",
+      "description": "See whether the support team has reviewed an online order, for one order or for an account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "Optional order id."
+          },
+          "accountId": {
+            "type": "string",
+            "description": "Optional account id."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "orderId": "$first:order_reviews.orderId"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "order_reviews",
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "filters": [
+          {
+            "arg": "orderId",
+            "field": "orderId"
+          },
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          }
+        ],
+        "sort": {
+          "field": "reviewedAt",
+          "order": "desc"
+        }
+      }
+    }
+  ]
+}

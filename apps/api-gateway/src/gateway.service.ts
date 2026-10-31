@@ -4,9 +4,11 @@ import { GoogleAuth } from 'google-auth-library';
 import * as crypto from 'crypto';
 import {
   signGatewayAssertion,
-  VALID_GATEWAY_ROLES,
+  gatewayRoleFor,
   GatewayRole,
 } from '@journeyax/database';
+import { isStaffRole, ADMIN_GROUP, isPlatformTenantId, checkSelfServiceTenant } from '@journeyax/shared-types';
+import { GroupDirectory } from './group-directory';
 
 // ---------------------------------------------------------------------------
 // Google Cloud Run service-to-service ID-token client.
@@ -114,6 +116,19 @@ async function getIdToken(audience: string): Promise<string | undefined> {
 // ---------------------------------------------------------------------------
 // Header helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Who the signed identity says is asking. The login the auth guard verified wins: `x-user-email` is set by the guard on every request, from the
+ * verified token (a person who is not signed in gets `guest@anonymous`), so it is never the browser's word. A person who is not signed in may
+ * still name themselves with `x-user-id` (a session id, say), but never with something shaped like a login: services look a customer's company
+ * up by login, so a guest who sends `x-user-id: someone@company` must not become that person.
+ */
+export function signedSubject(headers: Record<string, any>): string {
+  const verified = String(headers['x-user-email'] || '').trim();
+  if (verified && verified.includes('@') && verified.toLowerCase() !== 'guest@anonymous') return verified;
+  const claimed = String(headers['x-user-id'] || headers['x-principal-id'] || '').trim();
+  return claimed && !claimed.includes('@') ? claimed : 'anonymous';
+}
 
 /**
  * Headers the gateway must pass through to services: the identity claims the
@@ -262,9 +277,23 @@ function ttlForPath(path: string): number {
   return domain ? (CACHE_TTL[domain] ?? DEFAULT_TTL) : DEFAULT_TTL;
 }
 
-function isCacheable(method: string, path: string): boolean {
+/**
+ * Domains whose answers depend on who is asking. The cache key is the tenant and the path only, so one person's answer would be handed to
+ * the next person who asked for the same path (the connector menu showed staff systems to a login that should not see them). The prefix
+ * list above cannot catch these: a tenant-scoped path starts with the tenant (`/api/v1/placemakers/commerce/...`), not with the domain.
+ */
+const NO_CACHE_DOMAINS: ReadonlySet<string> = new Set(['commerce', 'runtime']);
+
+/** Is this the open registration route? Tolerates a query string, repeated or trailing slashes and capital letters, which the web server would route the same way. */
+export function isRegistrationPath(path: string): boolean {
+  return path.split(/[?#]/)[0].replace(/\/{2,}/g, '/').replace(/\/+$/, '').toLowerCase() === '/api/v1/auth/register';
+}
+
+export function isCacheable(method: string, path: string): boolean {
   if (method !== 'GET') return false;
   if (NO_CACHE_PREFIXES.some(p => path.startsWith(p))) return false;
+  const { domain } = parseRoute(path);
+  if (domain && NO_CACHE_DOMAINS.has(domain)) return false;
   return true;
 }
 
@@ -320,11 +349,58 @@ async function cacheInvalidateDomain(tenantId: string, domain: string): Promise<
  */
 @Injectable()
 export class GatewayService {
+  /** Looks up a member of staff's groups (the project member's teams) so they can be signed into the identity assertion. */
+  private readonly groupDirectory = new GroupDirectory({
+    baseUrl: () => SERVICE_REGISTRY['projects'],
+    headers: async (base) => ({
+      ...(process.env.INTERNAL_API_KEY ? { 'x-internal-key': process.env.INTERNAL_API_KEY } : {}),
+      ...authorizationHeader(await getIdToken(base), undefined),
+    }),
+  });
+
+  /**
+   * The signed identity every downstream call carries: the person's role and, for a member of staff, their groups. Nothing here comes
+   * from a header the browser could set: the role is the one the auth guard put there after verifying the token, and the groups are
+   * looked up. Empty when no signing secret is configured.
+   */
+  private async assertionHeaders(tenantId: string, environmentId: string, headers: Record<string, any>): Promise<Record<string, string>> {
+    const secret = process.env.GATEWAY_ASSERTION_SECRET;
+    if (!secret) return {};
+    const role: GatewayRole = gatewayRoleFor(headers['x-user-role'] || headers['x-principal-role']);
+    const fromTeams = isStaffRole(role) ? await this.groupDirectory.groupsFor(tenantId, String(headers['x-user-email'] || '')) : [];
+    // The platform admin is not in any project team (it is not a project member, and its login name is not an email), so access rows that
+    // are written per team would shut it out. It belongs to `administrators` by role. The name is reserved: a team called Administrators
+    // does not put anyone in that group, so nobody can reach admin-level rows by naming a team.
+    const teamGroups = fromTeams.filter((group) => group !== ADMIN_GROUP);
+    const groups = role === 'admin' ? [ADMIN_GROUP, ...teamGroups] : teamGroups;
+    return {
+      'X-Gateway-Assertion': signGatewayAssertion(
+        {
+          tenantId,
+          environmentId,
+          sub: signedSubject(headers),
+          role,
+          groups,
+        },
+        secret
+      ),
+    };
+  }
+
   /**
    * Validate that a tenant is active. Caches the result to avoid spamming the project service.
+   * The platform's own tenants always pass; anything else must be a project the project service knows.
    */
   private async validateTenant(tenantId: string): Promise<boolean> {
-    if (tenantId === 'system' || tenantId === 'global' || tenantId === 'platform') return true;
+    if (isPlatformTenantId(tenantId)) return true;
+    return this.isActiveProject(tenantId);
+  }
+
+  /**
+   * Is there a project with this id? The project service answers for it (cached for a minute). Unlike `validateTenant`, the platform's
+   * own tenants get no free pass here: they are not projects.
+   */
+  private async isActiveProject(tenantId: string): Promise<boolean> {
     const key = `tenant_status:${tenantId}`;
     const cached = await cacheGet(key);
     if (cached !== null) {
@@ -361,6 +437,24 @@ export class GatewayService {
   }
 
   /**
+   * The open sign-up (`POST /api/v1/auth/register`, no token needed) as it leaves the gateway: only email, password, tenantId and
+   * fullName are forwarded (a `role` or any other field is dropped), and the tenant must be a real customer-facing project, not one of
+   * the platform's own or a name nobody has created. The sign-in service enforces the role and tenant rules again on its own; this
+   * adds the one check only the gateway can make, whether the project exists.
+   */
+  private async checkOpenSignUp(body: unknown): Promise<{ status: 'ok'; body: Record<string, unknown> } | { status: 'refused'; message: string }> {
+    const input = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+    const tenant = checkSelfServiceTenant(input.tenantId);
+    if (tenant.status === 'refused') {
+      return { status: 'refused', message: tenant.reason === 'missing' ? 'email, password, tenantId, and fullName are required.' : 'tenantId must name a customer-facing project.' };
+    }
+    if (!(await this.isActiveProject(tenant.tenantId))) {
+      return { status: 'refused', message: 'tenantId must name a customer-facing project.' };
+    }
+    return { status: 'ok', body: { email: input.email, password: input.password, tenantId: tenant.tenantId, fullName: input.fullName } };
+  }
+
+  /**
    * Proxy a request to the resolved backend service.
    */
   async proxyRequest(
@@ -382,6 +476,15 @@ export class GatewayService {
     const queryProjectId = queryMatch ? decodeURIComponent(queryMatch[1]) : null;
     const effectiveProjectId = projectId || queryProjectId;
     const tenantId = effectiveProjectId || String(headers['x-tenant-id'] || '');
+
+    // ── Open sign-up: a plain customer in a real project, nothing else ───
+    if (method.toUpperCase() === 'POST' && isRegistrationPath(path)) {
+      const checked = await this.checkOpenSignUp(body);
+      if (checked.status === 'refused') {
+        return { status: 400, data: { error: 'Bad Request', message: checked.message } };
+      }
+      body = checked.body;
+    }
 
     // ── Edge Validation ──────────────────────────────────────────────────
     if (domain !== 'auth' && domain !== 'projects' && domain !== 'organizations') {
@@ -448,27 +551,7 @@ export class GatewayService {
     const assertionSecret = process.env.GATEWAY_ASSERTION_SECRET;
 
     if (assertionSecret) {
-      const rawRole = String(
-        headers['x-user-role'] || headers['x-principal-role'] || 'customer'
-      ).toLowerCase();
-      const role: GatewayRole = (VALID_GATEWAY_ROLES as readonly string[]).includes(rawRole)
-        ? (rawRole as GatewayRole)
-        : 'customer';
-
-      gatewayHeaders['X-Gateway-Assertion'] = signGatewayAssertion(
-        {
-          tenantId,
-          environmentId: parsed.environmentId || 'production',
-          sub: String(
-            headers['x-user-id'] ||
-              headers['x-principal-id'] ||
-              headers['x-user-email'] ||
-              'anonymous'
-          ),
-          role,
-        },
-        assertionSecret
-      );
+      Object.assign(gatewayHeaders, await this.assertionHeaders(tenantId, parsed.environmentId || 'production', headers));
     } else if (process.env.NODE_ENV === 'production' && parsed.domain === 'runtime') {
       throw new Error('GATEWAY_ASSERTION_SECRET must be configured in production for runtime calls.');
     }
@@ -550,6 +633,8 @@ export class GatewayService {
     }
 
     const googleIdToken = await getIdToken(resolved.baseUrl);
+    // The streaming path signs the same identity as the plain one: without it the runtime would treat every streamed turn as a shopper's.
+    const signedIdentity = tenantId ? await this.assertionHeaders(tenantId, parseRoute(path).environmentId || 'production', headers) : {};
 
     const upstream = await fetch(downstreamUrl, {
       method,
@@ -558,6 +643,7 @@ export class GatewayService {
         'X-Tenant-ID': tenantId,
         ...authorizationHeader(googleIdToken, headers['authorization']),
         ...identityHeaders(headers),
+        ...signedIdentity,
       },
       body: method !== 'GET' && body ? JSON.stringify(body) : undefined,
     });

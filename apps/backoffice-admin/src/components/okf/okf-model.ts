@@ -261,7 +261,7 @@ export function splitRevocations<T extends { status: string }>(items: T[]): { ac
 export const ENVIRONMENTS = ['dev', 'test', 'staging', 'production'] as const;
 export type EnvironmentId = typeof ENVIRONMENTS[number];
 
-export type SettingKey = 'catalogMapping' | 'routingPolicy' | 'interpretationPolicy' | 'workspacePinPolicy' | 'dialoguePolicy';
+export type SettingKey = 'catalogMapping' | 'routingPolicy' | 'interpretationPolicy' | 'workspacePinPolicy' | 'dialoguePolicy' | 'agentMode';
 export interface SettingStatus { state: 'set' | 'defaults' | 'missing'; text: string }
 
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -301,6 +301,12 @@ export function settingStatus(key: SettingKey, project: any): SettingStatus {
       return typeof hours === 'number'
         ? { state: 'set', text: `Set: a conversation idle for ${hours} hour${hours === 1 ? '' : 's'} moves to the live release when it can.` }
         : { state: 'defaults', text: 'Off: every conversation stays on the release it started with.' };
+    }
+    case 'agentMode': {
+      const enabled = value === true || (isObject(value) && value.enabled === true);
+      return enabled
+        ? { state: 'set', text: 'Enabled: assistant uses autonomous tool calling and multi-step reasoning.' }
+        : { state: 'defaults', text: 'Off: conversations follow the standard deterministic journey stages.' };
     }
   }
 }

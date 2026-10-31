@@ -17,8 +17,10 @@ import { PresentationPort } from '../../src/kernel/presentation.port';
 import { TurnInterpreter } from '../../src/turn/interpret-event';
 import { OutcomeValidator } from '../../src/turn/validate-outcome';
 import { OkfKnowledgeControlPlane } from '../../src/kernel/knowledge-control-plane';
+import { KnowledgeGapRepository } from '../../src/kernel/knowledge-gap.repository';
 import { ProjectService } from '../../../project-service/src/project.service';
 import { OkfAuthoringService } from '../../../project-service/src/okf-authoring.service';
+import { createScriptedAgentExecutor } from './scripted-agent-server';
 
 /**
  * The real PlaceMakers inputs, published through the real chain, for tests that run the runtime on them: the committed catalogue
@@ -33,7 +35,19 @@ const authoringSpec = read('scripts/okf/tenants/placemakers.authoring.json');
 const scenarioFile = read('scripts/okf/tenants/placemakers.scenarios.json');
 export const catalogMapping = read('docs/migrations/placemakers-catalog-mapping.json').catalogMapping;
 export const TENANT = 'placemakers';
+/** The exact data files the pack is published from, so the evaluation measures the real instructions and reply style. */
+// An experiment can point a run at copies of the two files (an absolute path in these variables) without touching the committed ones.
+const readVariant = (variable: string, fallback: string) => {
+  const file = process.env[variable];
+  return file ? JSON.parse(readFileSync(path.resolve(file), 'utf8')) : read(fallback);
+};
+const agentDraft = readVariant('PLACEMAKERS_DRAFT_FILE', 'docs/agent-instructions/placemakers-draft.json');
+const agentSettings = readVariant('PLACEMAKERS_SETTINGS_FILE', 'docs/agent-instructions/placemakers-agent-settings.json');
 export const ENVIRONMENT = 'test';
+/** The evaluation pack has no connector registry (its secrets name the production environment), so the plugins it carries name no connector. */
+/** A draft that does not carry an extension (an older pack has no forms or plugins) leaves it out, instead of saving it as an empty value the pack schema refuses. */
+const definedOnly = (values: Record<string, unknown>) => Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
+const withoutConnectors = (plugins: any) => (plugins ? { ...plugins, plugins: plugins.plugins.map((plugin: any) => ({ ...plugin, provides: { ...plugin.provides, connectors: [] } })) } : undefined);
 
 // ── catalogue fixture, shaped like the real products collection (path, category, price in priceUSD.min, currency per product) ──
 const pathOf = (category: string): string[] => {
@@ -76,6 +90,9 @@ export const products: any[] = [
   product('EP-1', 'Exterior wall paint 4L', 'Exterior Paint', 99),
   product('BR-1', 'Paint roller kit', 'Brushes & Rollers', 24),
   product('MK-1', 'Masking tape 36mm', 'Masking', 6),
+  // Discontinued and out of stock test products
+  product('DISC-1', 'Legacy discontinued framing timber', 'Composite Decking', 15, { discontinued: true, status: 'Discontinued', inStock: false }),
+  product('OOS-1', 'Heavy Duty Framing Nailer', 'Masonry  Anchors', 450, { inStock: false }),
   // Filed by category name only (no hierarchy path), as 14 of the real categories are.
   { projectId: TENANT, sku: register('LP-1'), name: 'Laundry tap set', category: 'Laundry Tapware & Plumbing', priceUSD: { min: 55 }, currency: 'NZD', inStock: true },
   // A same-named category in another department must never be pulled in by the bathroom/tools scopes.
@@ -86,25 +103,44 @@ export const products: any[] = [
 /** Stands in for the language model: a fixed function of the message, so the run is repeatable. */
 export class FixedGateway extends ModelGateway {
   /** `calls` receives the task type of every request, so a test can say how many times the model was asked and for what. */
-  constructor(private readonly reply = 'Here are options from the catalogue.', private readonly calls?: string[]) { super(); }
+  constructor(private readonly reply = 'Here are options from the catalogue.', private readonly calls?: string[]) {
+    super();
+    this.mockAgentExecutor = createScriptedAgentExecutor();
+  }
   async execute(_release: any, request: ModelExecutionRequest): Promise<ModelExecutionResponse> {
     this.calls?.push(request.taskType);
     let content = this.reply;
     if (request.taskType === 'fast_intent' && request.prompt.includes('<customer_message>')) {
       const message = request.prompt.match(/<customer_message>\s*([\s\S]*?)\s*<\/customer_message>/i)?.[1]?.trim().toLowerCase() || '';
       const candidateFacts: Record<string, any> = {};
-      if (message.includes('composite')) candidateFacts.deck_material = { value: 'composite', confidence: 1 };
-      if (message.includes('4x3')) candidateFacts.deck_size = { value: '4x3 m', confidence: 1 };
-      if (message.includes('timber screws')) candidateFacts.fastener_substrate = { value: 'timber', confidence: 1 };
-      if (message === 'renovation') candidateFacts.project_scope = { value: 'renovation', confidence: 1 };
-      if (message === 'indoor') candidateFacts.cleaning_task = { value: 'indoor', confidence: 1 };
-      if (message === 'inside walls') candidateFacts.paint_surface = { value: 'interior', confidence: 1 };
+      if (message.includes('composite')) candidateFacts.deck_material = { value: 'composite', evidenceQuote: 'composite', confidence: 1 };
+      if (message.includes('4x3')) candidateFacts.deck_size = { value: '4x3 m', evidenceQuote: '4x3', confidence: 1 };
+      if (message.includes('timber screws')) candidateFacts.fastener_substrate = { value: 'timber', evidenceQuote: 'timber screws', confidence: 1 };
+      if (message === 'renovation') candidateFacts.project_scope = { value: 'renovation', evidenceQuote: 'renovation', confidence: 1 };
+      if (message === 'indoor') candidateFacts.cleaning_task = { value: 'indoor', evidenceQuote: 'indoor', confidence: 1 };
+      if (message === 'inside walls') candidateFacts.paint_surface = { value: 'interior', evidenceQuote: 'inside walls', confidence: 1 };
+      if ((message.includes('screws for that') || message.includes('what screws')) && (request.prompt.includes('decking') || request.prompt.includes('timber') || request.prompt.includes('composite'))) {
+        candidateFacts.fastener_substrate = { value: 'timber', evidenceQuote: 'screws for that', confidence: 1 };
+      }
       content = JSON.stringify({ intent: 'product_search', candidateFacts });
+    }
+    if (request.taskType === 'response_generation' && (request.prompt.includes('screws for that') || request.prompt.includes('what screws'))) {
+      if (request.prompt.includes('composite')) {
+        content = 'For composite decking boards, we recommend 10g x 65mm decking screws with a self-countersinking head.';
+      }
     }
     return {
       content, route: { policyId: request.taskType, provider: 'custom', model: 'fixed-test-model', dataResidency: 'test', timeoutMs: 1000, maxInputTokens: 4096, maxOutputTokens: 1024 },
-      latencyMs: 1, residencyProven: true, residencyEvidence: 'isolated-test-adapter',
+      latencyMs: 1, usage: { promptTokens: 50, completionTokens: 25, totalTokens: 75 }, residencyProven: true, residencyEvidence: 'isolated-test-adapter',
     };
+  }
+  async executeStream(release: any, request: ModelExecutionRequest, onDelta: (delta: string) => void): Promise<ModelExecutionResponse> {
+    const res = await this.execute(release, request);
+    const words = res.content.split(' ');
+    for (let i = 0; i < words.length; i++) {
+      onDelta(words[i] + (i < words.length - 1 ? ' ' : ''));
+    }
+    return res;
   }
 }
 
@@ -112,12 +148,64 @@ export class FixedGateway extends ModelGateway {
  * The project as the back office holds it: a visual journey graph (one trigger per journey, named as the live pack's are),
  * the catalogue mapping, and the AI settings. The pack is produced by the real publisher, never assembled by hand.
  */
-export function projectDoc() {
+export function projectDoc(agentMode = false) {
   const trigger = (id: string, label: string) => ({ id: `t-${id}`, data: { kind: 'trigger.intent', stageId: `${id}_start`, label } });
+  // MODEL_PROVIDER lets a run use another provider's model (for example anthropic with MODEL_NAME=claude-sonnet-5-5) through the same pack route.
+  const ai = process.env.MODEL_PROVIDER
+    ? { provider: process.env.MODEL_PROVIDER, model: process.env.MODEL_NAME || 'claude-sonnet-5-5', ...(agentSettings.modelPolicyOverrides ? { policyOverrides: agentSettings.modelPolicyOverrides } : {}) }
+    : process.env.OPENAI_API_KEY
+    ? { provider: 'openai', model: process.env.MODEL_NAME || 'gpt-4o-mini', ...(agentSettings.modelPolicyOverrides ? { policyOverrides: agentSettings.modelPolicyOverrides } : {}) }
+    : { provider: 'anthropic', model: 'claude-3-5-sonnet' };
   return {
-    projectId: TENANT, name: 'PlaceMakers', companyName: 'PlaceMakers', ai: { provider: 'anthropic', model: 'claude-3-5-sonnet' },
+    projectId: TENANT, name: 'PlaceMakers', companyName: 'PlaceMakers', ai,
     pricing: { currency: 'NZD', symbol: '$', taxRate: 0.15, discountRate: 0 }, profile: { primaryLocale: 'en-NZ' }, catalogMapping,
     routingPolicy: { defaultJourneyId: 'placemakers_shop', fallbackOnCatalogSearch: true },
+    conversationPolicy: agentDraft.conversationPolicy,
+    vocabulary: {
+      version: '1.0.0',
+      terms: [
+        {
+          term: '4x2',
+          canonical: '100x50',
+          synonyms: ['100 x 50', '100x50mm', '100 x 50mm', '4x2', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+        },
+        {
+          term: '100x50',
+          canonical: '100x50',
+          synonyms: ['100 x 50', '100x50mm', '100 x 50mm', '4x2', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+        },
+      ],
+      slotSynonyms: {
+        '100x50': ['100 x 50', '100x50mm', '100 x 50mm', '4x2', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+        '4x2': ['100x50', '100 x 50', '100x50mm', '100 x 50mm', '4 x 2', '4 by 2', '90x45', '90 x 45', '90x45mm', '90 x 45mm'],
+      },
+    },
+    capabilities: ['catalog.search'],
+    agents: agentMode
+      ? agentDraft.agents.map((agent: any) => ({
+          agentId: agent.agentId,
+          name: agent.name,
+          purpose: agent.purpose,
+          systemPromptTemplate: agent.systemPromptTemplate,
+          modelPolicyRef: agent.modelPolicyRef || 'complex_reasoning',
+          allowedTools: agent.allowedTools,
+          maxTurns: agent.maxTurns || 5,
+          handoffConditions: agent.handoffConditions || [],
+          ...(agent.isDefault ? { isDefault: true } : {}),
+          ...(typeof agent.toolFirst === 'boolean' ? { toolFirst: agent.toolFirst } : {}),
+          ...(Array.isArray(agent.skills) ? { skills: agent.skills } : {}),
+          ...(agent.agentId === agentDraft.defaultAgentId ? { journeyPlaybook: agentSettings.journeyPlaybook } : {}),
+        }))
+      : undefined,
+    extensions: {
+      ...(agentMode ? { agentMode: { enabled: true }, dialoguePolicy: { agentMode: true }, interpretationPolicy: agentSettings.interpretationPolicy } : {}),
+      ...(agentMode && Array.isArray(agentDraft.skills) ? { skills: agentDraft.skills } : {}),
+      ...(agentMode ? definedOnly({ quantityHelper: agentDraft.extensions?.quantityHelper, visualiser: agentDraft.extensions?.visualiser, productGuides: agentDraft.extensions?.productGuides, contentPages: agentDraft.extensions?.contentPages, checkoutReview: agentDraft.extensions?.checkoutReview, eventPrefetch: agentDraft.extensions?.eventPrefetch, voice: agentDraft.extensions?.voice, forms: agentDraft.extensions?.forms, plugins: withoutConnectors(agentDraft.extensions?.plugins), agentAccess: agentDraft.extensions?.agentAccess }) : {}),
+      customerEvents: {
+        autoTurnEvents: ['addToQuote', 'quote.added', 'addToCart'],
+        recordOnlyEvents: ['removeFromQuote', 'removeFromCart', 'like'],
+      },
+    },
     persona: {
       systemName: 'PlaceMakers assistant', systemPromptOverrides: 'Help customers find products.',
       journeyGraph: {
@@ -144,11 +232,14 @@ export interface PlaceMakersStack {
   authored: ReturnType<typeof applyAuthoring>;
   /** `servePacks: true` loads the active pack through the real repository and loader (checksum-verified) instead of being handed one. */
   /** `searchError` makes the catalogue search fail the way a broken connection would, with that message. */
-  serviceFor: (options?: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string }) => TurnApplicationService;
+  serviceFor: (options?: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string; modelGateway?: ModelGateway }) => TurnApplicationService;
 }
 
 /** Draft + customer paths → immutable OKF release → project → Business Pack, exactly as the back office does it. */
-export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | 'test' | 'staging' | 'production' } = {}): Promise<PlaceMakersStack> {
+export async function buildPlaceMakersStack(options: {
+  environmentId?: 'dev' | 'test' | 'staging' | 'production';
+  agentMode?: boolean;
+} = {}): Promise<PlaceMakersStack> {
   // Always an isolated in-memory store; `production` only names the environment inside it (the one a customer's request defaults to).
   const ENVIRONMENT = options.environmentId ?? 'test';
   const authored = applyAuthoring(buildTaxonomyDraft(snapshot, ingest), authoringSpec);
@@ -162,7 +253,7 @@ export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | '
   for (const [name, spec] of [['business_pack_releases', { tenantId: 1, environmentId: 1, version: 1 }], ['config_versions', { projectId: 1, version: 1 }]] as const) {
     await db.collection(name).createIndex(spec as any, { unique: true });
   }
-  await db.collection('tenant_configs').insertOne(projectDoc());
+  await db.collection('tenant_configs').insertOne(projectDoc(options.agentMode));
   const projects = new ProjectService();
   Object.assign(projects as any, {
     db, projectsCol: db.collection('tenant_configs'), membersCol: db.collection('project_members'), rulesCol: db.collection('business_rules'),
@@ -178,8 +269,8 @@ export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | '
   assert.equal(pack.knowledgeModel.checksum, okf.release.checksum, 'the pack is bound to the exact checksum of the published release');
   assert.equal(pack.knowledgeModel.required, true);
 
-  const serviceFor = (options: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string } = {}) => {
-    const modelGateway = new FixedGateway(options.reply, options.calls);
+  const serviceFor = (options: { servePacks?: boolean; reply?: string; calls?: string[]; searchError?: string; modelGateway?: ModelGateway } = {}) => {
+    const modelGateway = options.modelGateway || new FixedGateway(options.reply, options.calls);
     const capabilityGateway = new CapabilityGateway();
     capabilityGateway.registerCustomAdapter('catalog.search', options.searchError
       ? ({ execute: async () => ({ items: [], total: 0, error: options.searchError }) } as any)
@@ -188,7 +279,7 @@ export async function buildPlaceMakersStack(options: { environmentId?: 'dev' | '
       options.servePacks ? new PackRepository(db) : new PackRepository(), new WorkspaceRepository(new WorkspaceStore({ forceInMemory: true })), new JourneyResolver(), undefined,
       modelGateway, capabilityGateway, undefined, new ExecutionRepository(), new OutboxRepository({ forceInMemory: true }),
       new PresentationPort(modelGateway), new TurnInterpreter(modelGateway), undefined, new OutcomeValidator(),
-      new OkfKnowledgeControlPlane(async () => db as any),
+      new OkfKnowledgeControlPlane(async () => db as any), undefined, new KnowledgeGapRepository(db),
     );
   };
   return { db, projects, pack, reference: pack.knowledgeModel, content, okf, authored, serviceFor };

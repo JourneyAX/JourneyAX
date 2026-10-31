@@ -1,0 +1,6 @@
+{
+  "_comment": "Platform defaults for the claim guard. A pack overrides any value under conversationPolicy.claimPolicy (validated when saved). Nothing here is specific to a tenant or an industry.",
+  "hedgedKnowHow": {
+    "hedgeWords": ["generally", "usually", "typically", "commonly", "normally", "often", "in most cases", "as a rule", "tends to", "tend to"]
+  }
+}

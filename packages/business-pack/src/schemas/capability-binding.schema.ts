@@ -187,6 +187,8 @@ export const ExecutorSchema = z.object({
   secretRef: SecretRefSchema.optional(),
   openApiOpId: z.string().optional(),
   mcpServerName: z.string().optional(),
+  /** The tool's name on the MCP server, when it differs from the tool id. */
+  mcpToolName: z.string().optional(),
   agentId: z.string().optional(),
 });
 
@@ -209,6 +211,7 @@ export const ToolBindingSchema = z
     inputMapping: z.record(z.string(), z.string()).optional(),
     outputFactMapping: z.record(z.string(), z.string()).optional(),
     policyOverrides: z.record(z.string(), z.any()).optional(),
+    agentTool: z.string().optional(),
     policy: ToolPolicySchema.default({
       requiredRole: 'customer',
       requiresConfirmation: false,

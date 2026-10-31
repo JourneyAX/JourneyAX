@@ -9,3 +9,7 @@ export { pendingReadingMode, readsWithoutModel } from './model-reading';
 export type { ReadingMode } from './model-reading';
 export { catalogOutcome } from './search';
 export type { CatalogOutcome } from './search';
+export { readHistory, appendHistory, formatHistoryBlock, HISTORY_KEY } from './history';
+export type { ConversationTurnRecord } from './history';
+export { buildTurnMessages, threadFromRecords, threadPath, renderThread, shownSkus, assistantMessageId, customerMessageId } from './thread';
+export type { ThreadMessage, ThreadBlock, TurnForThread, RenderedThread } from './thread';

@@ -6,13 +6,15 @@ export type TaskType =
   | 'tool_selection'
   | 'complex_reasoning'
   | 'fast_intent'
-  | 'response_generation';
+  | 'response_generation'
+  | 'agent_turn';
 
 export interface ModelRouteResult {
   policyId: string;
   provider: 'openai' | 'anthropic' | 'google' | 'open-model' | 'custom';
   model: string;
   temperature?: number;
+  reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
   dataResidency: string;
   maxInputTokens: number;
   maxOutputTokens: number;
@@ -53,9 +55,9 @@ export class ModelRouter {
       } else if (taskType === 'planning' || taskType === 'complex_reasoning') {
         const complexPolicy = modelPolicy.policies.find((p) => p.policyId === 'complex_reasoning');
         if (complexPolicy) targetPolicyId = 'complex_reasoning';
-      } else if (taskType === 'tool_selection') {
-        const toolPolicy = modelPolicy.policies.find((p) => p.policyId === 'tool_selection' || p.policyId === 'complex_reasoning');
-        if (toolPolicy) targetPolicyId = toolPolicy.policyId;
+      } else if (taskType === 'tool_selection' || taskType === 'agent_turn') {
+        const agentPolicy = modelPolicy.policies.find((p) => p.policyId === 'agent_turn' || p.policyId === 'complex_reasoning' || p.policyId === 'tool_selection');
+        if (agentPolicy) targetPolicyId = agentPolicy.policyId;
       } else if (taskType === 'response_generation') {
         const respPolicy = modelPolicy.policies.find((p) => p.policyId === 'response_generation');
         if (respPolicy) {
@@ -108,6 +110,7 @@ export class ModelRouter {
         provider: configuredPrimary.provider as ModelRouteResult['provider'],
         model: configuredPrimary.model,
         temperature: configuredPrimary.temperature,
+        ...(configuredPrimary.reasoningEffort ? { reasoningEffort: configuredPrimary.reasoningEffort } : {}),
         dataResidency: policy.dataResidency,
         maxInputTokens: policy.maxInputTokens,
         maxOutputTokens: policy.maxOutputTokens,
@@ -133,6 +136,7 @@ export class ModelRouter {
       provider: selected.provider as ModelRouteResult['provider'],
       model: selected.model,
       temperature: selected.temperature,
+        ...(selected.reasoningEffort ? { reasoningEffort: selected.reasoningEffort } : {}),
       dataResidency: policy.dataResidency,
       maxInputTokens: policy.maxInputTokens,
       maxOutputTokens: policy.maxOutputTokens,
@@ -209,6 +213,7 @@ export class ModelRouter {
         provider: configuredPrimary.provider as ModelRouteResult['provider'],
         model: configuredPrimary.model,
         temperature: configuredPrimary.temperature,
+        ...(configuredPrimary.reasoningEffort ? { reasoningEffort: configuredPrimary.reasoningEffort } : {}),
         dataResidency: policy.dataResidency,
         maxInputTokens: policy.maxInputTokens,
         maxOutputTokens: policy.maxOutputTokens,
@@ -227,6 +232,7 @@ export class ModelRouter {
       provider: candidate.provider as ModelRouteResult['provider'],
       model: candidate.model,
       temperature: candidate.temperature,
+        ...(candidate.reasoningEffort ? { reasoningEffort: candidate.reasoningEffort } : {}),
       dataResidency: policy.dataResidency,
       maxInputTokens: policy.maxInputTokens,
       maxOutputTokens: policy.maxOutputTokens,

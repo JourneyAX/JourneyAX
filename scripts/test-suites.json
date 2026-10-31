@@ -8,11 +8,15 @@
       "canary",
       "public-path",
       "capability-sdk",
+      "connectors-sample",
+      "connectors-real",
       "database",
       "project-service",
       "journey-runtime-service",
       "api-gateway",
-      "backoffice-admin"
+      "auth-service",
+      "backoffice-admin",
+      "web-unit"
     ],
     "typecheck": [
       "tsc:shared-types",
@@ -20,15 +24,19 @@
       "tsc:business-pack",
       "tsc:knowledge",
       "tsc:capability-sdk",
+      "tsc:connectors-sample",
+      "tsc:connectors-real",
       "tsc:database",
       "tsc:project-service",
       "tsc:journey-runtime-service",
       "tsc:api-gateway",
+      "tsc:auth-service",
       "tsc:agent-commerce-service",
       "tsc:journeyax-web",
       "tsc:backoffice-admin",
       "tsc:canary",
-      "tsc:public-path"
+      "tsc:public-path",
+      "tsc:ingestion"
     ],
     "extended": [
       "agent-commerce-service",
@@ -71,6 +79,10 @@
       "cwd": "apps/api-gateway",
       "command": "npm test"
     },
+    "auth-service": {
+      "cwd": "apps/auth-service",
+      "command": "npm test"
+    },
     "agent-commerce-service": {
       "cwd": "apps/agent-commerce-service",
       "command": "npm test"
@@ -99,6 +111,10 @@
       "cwd": "packages/knowledge",
       "command": "npx tsc --noEmit -p ."
     },
+    "tsc:ingestion": {
+      "cwd": "packages/ingestion",
+      "command": "npx tsc --noEmit -p ."
+    },
     "tsc:capability-sdk": {
       "cwd": "packages/capability-sdk",
       "command": "npx tsc --noEmit -p ."
@@ -119,9 +135,13 @@
       "cwd": "apps/api-gateway",
       "command": "npx tsc --noEmit -p ."
     },
+    "tsc:auth-service": {
+      "cwd": "apps/auth-service",
+      "command": "npx tsc --noEmit -p ."
+    },
     "hardcoding-guard": {
       "cwd": ".",
-      "command": "npx tsx scripts/ci-hardcoding-guard.ts"
+      "command": "npx tsx scripts/ci-hardcoding-guard.ts && npx tsx tests/ci-hardcoding-guard.spec.ts"
     },
     "tsc:agent-commerce-service": {
       "cwd": "apps/agent-commerce-service",
@@ -154,6 +174,26 @@
     "tsc:public-path": {
       "cwd": ".",
       "command": "npx tsc --noEmit -p tests/public-path"
+    },
+    "web-unit": {
+      "cwd": ".",
+      "command": "for f in $(find apps/journeyax-web/src -name '*.test.ts' | sort); do npx tsx --tsconfig apps/journeyax-web/tsconfig.json $f || exit 1; done"
+    },
+    "connectors-sample": {
+      "cwd": "packages/connectors-sample",
+      "command": "npm test"
+    },
+    "tsc:connectors-sample": {
+      "cwd": "packages/connectors-sample",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "connectors-real": {
+      "cwd": "packages/connectors-real",
+      "command": "npm test"
+    },
+    "tsc:connectors-real": {
+      "cwd": "packages/connectors-real",
+      "command": "npx tsc --noEmit -p tsconfig.test.json"
     }
   }
 }

@@ -13,6 +13,7 @@
  * localStorage and never actually gated anything.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { setStorageOwner } from '@/lib/conversations';
 
 export interface AuthUser {
   email: string;
@@ -47,8 +48,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = res.ok ? await res.json() : null;
         if (cancelled) return;
         if (data?.authenticated && data.user) {
+          // Whose saved chats the page reads, set before anything is shown that reads them.
+          setStorageOwner(data.user.email);
           setState({ user: data.user, isAuthenticated: true, isLoading: false });
         } else {
+          setStorageOwner(null);
           setState({ user: null, isAuthenticated: false, isLoading: false });
         }
       } catch {
@@ -70,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok || !data.success) {
         return { success: false, message: data.message || 'Invalid email or password.' };
       }
+      setStorageOwner(data.user?.email);
       setState({ user: data.user, isAuthenticated: true, isLoading: false });
       return { success: true };
     } catch {
@@ -81,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
     } catch { /* cookies are cleared server-side; best effort */ }
+    setStorageOwner(null);
     setState({ user: null, isAuthenticated: false, isLoading: false });
   }, []);
 
