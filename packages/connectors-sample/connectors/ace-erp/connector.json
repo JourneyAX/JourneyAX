@@ -96,7 +96,7 @@
     },
     {
       "name": "delivery_status",
-      "description": "Where a delivery is. Give the delivery id or the order id.",
+      "description": "Where a delivery is. Give the delivery id or the ERP's own order number (ORD-nnnnnn).",
       "inputSchema": {
         "type": "object",
         "properties": {

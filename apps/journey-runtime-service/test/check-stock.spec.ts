@@ -80,6 +80,7 @@ describe('check_stock tells the truth about what it read', () => {
     assert.ok(ctx.allowedClaimClasses.has('stock') && ctx.allowedClaimClasses.has('catalog_fact'));
     assert.ok(ctx.usedConnectorIds?.has('stock-system'));
     assert.equal(catalogueCalls.length, 0, 'the catalogue was not read when the system answered');
+    assert.equal(ctx.turnProductSkus.has(SKU), false, 'the SKU is not counted as a catalogue product this turn, so a card or quote for it still needs a product lookup');
     assert.deepEqual(traces, [{ name: 'connector_call', payload: { connector: 'stock-system', tool: 'stock_by_branch', outcome: 'success' } }]);
   });
 

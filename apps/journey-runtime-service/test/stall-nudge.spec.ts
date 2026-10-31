@@ -53,6 +53,45 @@ describe('Recognising a reply that stops on a promise to take another step', () 
     ]) assert.equal(announcesNextStep(text as any), false, String(text));
   });
 
+  test('replies that wait on the person, hand off to someone else, or merely offer more are not stalls', () => {
+    for (const text of [
+      "I'll look up the balance once you tell me which account you mean.",
+      'There are three accounts called Harlow Joinery. Please send me the account number. Once I have it, I\'ll look up the balance.',
+      "I'll check the stock for you. Would you like Hamilton or Porirua?",
+      "How many would you like? I'll add them to your cart as soon as you confirm the quantity.",
+      "Shiplap weatherboard is $16.19 per metre. I will check the other branches too if you like.",
+      "The silver trade price is $16.19 per lineal metre. When I have the figures I can add them to a quote for you.",
+      "I'm checking with the branch about the missing pallet.",
+      "I'll let you know once I get their answer.",
+      "The delivery slot will be confirmed by the branch shortly.",
+      "I searched Salesforce and Zendesk. I'm finding no open cases for that account.",
+      "I'm reading that as a question about the Hamilton branch.",
+      "The account has no overdue invoices. Hold on to the statement reference ST-4411 in case the customer calls back.",
+      "The price is $16.19 per metre excluding GST. I will provide a quote on request.",
+    ]) assert.equal(announcesNextStep(text), false, text);
+  });
+
+  test('typographic apostrophes, polite openers, "take a look", filler after the promise and bare progress lines are still stalls', () => {
+    for (const text of [
+      'I\u2019m checking the stock at Hamilton now.',
+      'I\u2019ll look up the account balance now.',
+      'Let\u2019s check the open cases next.',
+      'Sure, let me check the stock at Hamilton.',
+      "Of course, I'll pull up the order history.",
+      "Thanks, I'll check that for you now.",
+      'Let me take a look at the account.',
+      "I'll start by checking the account.",
+      'I will be checking the ERP now.',
+      'Checking the ERP now.',
+      'Just a sec while I look that up.',
+      'Please hold.',
+      "I'll be right back with the figures.",
+      "I'll get back to you with the stock figures shortly.",
+      "I'm checking the stock at Hamilton now. This may take a few seconds.",
+      "I'm checking the account now. In the meantime, trade accounts are on 30 day terms.",
+    ]) assert.equal(announcesNextStep(text), true, text);
+  });
+
   test('a promise followed by the answer is not a stall; a promise followed by nothing but courtesy is', () => {
     assert.equal(announcesNextStep('I will look at that now. The answer is 42 units in stock.'), false);
     assert.equal(announcesNextStep('The answer is 42 units. Now, I will look at the price.'), true);

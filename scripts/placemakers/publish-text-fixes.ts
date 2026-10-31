@@ -1,8 +1,8 @@
 /**
  * Publishes the wording fixes from the hard-questions test, and nothing else, through the route the back office uses: project settings ->
  * publication gate -> a new pack release. It changes exactly:
- *   - the text of three skills (order-enquiry, case-queue-review, overdue-and-invoice-query), taken from the draft file;
- *   - the customer service agent's prompt and hand-off conditions, taken from the draft file;
+ *   - the text of four skills (order-enquiry, case-queue-review, overdue-and-invoice-query, escalated-account-brief), taken from the draft file;
+ *   - the customer service agent's prompt and hand-off conditions, and the sales agent's prompt, taken from the draft file;
  *   - the branch stock setting (extensions.branchStock), taken from the draft file.
  * It does NOT use apply-agent-pack.ts on purpose: that script writes the draft's whole `extensions` and the draft's model override, which would
  * replace the live connectors, dashboard and forms settings and put a model override back that the live pack no longer has.
@@ -11,6 +11,10 @@
  * differ from the pack that is live today (the model policy included). Nothing is written to the live databases without --apply.
  *
  *   npx tsx --env-file=.env --tsconfig tests/public-path/tsconfig.json scripts/placemakers/publish-text-fixes.ts <tenant> [--environment production] [--apply]
+ *
+ * Run it from a checkout that already has this branch's code merged in (the project service must know the branchStock setting, which comes with
+ * the business-pack package of the same checkout). From a side worktree the shared node_modules resolves @journeyax/business-pack to the main
+ * checkout and the plan stops at 'Unknown pack extension branchStock'.
  *
  * To undo: apply-tenant-release.ts <tenant> --rollback <the config version printed as "live now"> --apply
  */
@@ -48,9 +52,13 @@ const stable = (value: any): string => JSON.stringify(value, (_key, inner) => (i
   ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => a.localeCompare(b))) : inner));
 const policies = (pack: any) => (pack?.modelPolicy?.policies ?? []).map((p: any) => `${p.policyId}: ${(p.candidates ?? []).map((c: any) => `${c.provider}/${c.model}`).join(' then ')}`);
 
-const SKILL_IDS = ['order-enquiry', 'case-queue-review', 'overdue-and-invoice-query'];
-const AGENT_ID = 'placemakers_customer_service';
-const draft = JSON.parse(readFileSync(path.join(root, `docs/agent-instructions/${TENANT}-draft.json`), 'utf8'));
+const SKILL_IDS = ['order-enquiry', 'case-queue-review', 'overdue-and-invoice-query', 'escalated-account-brief'];
+/** The agents whose wording changes, and the only fields of each that may change. */
+const AGENT_FIELDS: Record<string, string[]> = {
+  placemakers_customer_service: ['systemPromptTemplate', 'handoffConditions'],
+  placemakers_sales_quote: ['systemPromptTemplate'],
+};
+const draft =JSON.parse(readFileSync(path.join(root, `docs/agent-instructions/${TENANT}-draft.json`), 'utf8'));
 
 interface Services { projects: ProjectService; runtimeDb: any; projectDb: any; runtimeClient: any }
 function wire(projectDb: any, runtimeDb: any, runtimeClient: any, gate: PublicationGateValidator): Services {
@@ -78,12 +86,19 @@ function settingsFor(project: any) {
     if (!draftSkill(id)) throw new Error(`the draft has no skill '${id}'`);
     if (!skills.some((s) => s.skillId === id)) throw new Error(`the live project has no skill '${id}'`);
   }
-  const draftAgent = (draft.agents ?? []).find((a: any) => a.agentId === AGENT_ID);
-  if (!draftAgent || !agents.some((a) => a.agentId === AGENT_ID)) throw new Error(`agent '${AGENT_ID}' is missing from the draft or the live project`);
+  for (const id of Object.keys(AGENT_FIELDS)) {
+    if (!(draft.agents ?? []).some((a: any) => a.agentId === id) || !agents.some((a) => a.agentId === id)) throw new Error(`agent '${id}' is missing from the draft or the live project`);
+  }
   if (!draft.extensions?.branchStock) throw new Error('the draft has no extensions.branchStock');
+  const fromDraft = (agent: any) => {
+    const fields = AGENT_FIELDS[agent.agentId];
+    if (!fields) return agent;
+    const source = (draft.agents ?? []).find((a: any) => a.agentId === agent.agentId);
+    return { ...agent, ...Object.fromEntries(fields.map((field) => [field, source[field]])) };
+  };
   return {
     skills: skills.map((s) => (SKILL_IDS.includes(s.skillId) ? { ...s, description: draftSkill(s.skillId).description, instructions: draftSkill(s.skillId).instructions } : s)),
-    agents: agents.map((a) => (a.agentId === AGENT_ID ? { ...a, systemPromptTemplate: draftAgent.systemPromptTemplate, handoffConditions: draftAgent.handoffConditions } : a)),
+    agents: agents.map(fromDraft),
     extensions: { branchStock: draft.extensions.branchStock },
   };
 }
@@ -128,7 +143,15 @@ function differences(before: any, after: any): string[] {
   }
   return out;
 }
-const ALLOWED = new Set(['manifest', `agents.${AGENT_ID}.{systemPromptTemplate,handoffConditions}`, 'extensions.branchStock', ...SKILL_IDS.map((id) => `extensions.skills.${id}`)]);
+/** A difference is expected when it is the manifest, the branch stock setting, one of the named skills, or only the named fields of a named agent (any non-empty subset: a field already as in the draft is simply not listed). */
+const ALLOWED_PLAIN = new Set(['manifest', 'extensions.branchStock', ...SKILL_IDS.map((id) => `extensions.skills.${id}`)]);
+const isAllowed = (entry: string): boolean => {
+  if (ALLOWED_PLAIN.has(entry)) return true;
+  const m = /^agents\.([^.]+)\.\{([^}]*)\}$/.exec(entry);
+  if (!m || !AGENT_FIELDS[m[1]]) return false;
+  const fields = m[2].split(',').filter(Boolean);
+  return fields.length > 0 && fields.every((field) => AGENT_FIELDS[m[1]].includes(field));
+};
 
 async function main() {
   log(`publish-text-fixes  tenant=${TENANT}  environment=${ENVIRONMENT}  mode=${APPLY ? 'APPLY (writes)' : 'PLAN (reads only; rehearsal in memory)'}`);
@@ -150,7 +173,7 @@ async function main() {
   section('2. The change');
   const dto = settingsFor(project);
   log(`  skills with new text: ${SKILL_IDS.join(', ')}`);
-  log(`  agent ${AGENT_ID}: prompt and hand-off conditions from the draft`);
+  for (const [id, fields] of Object.entries(AGENT_FIELDS)) log(`  agent ${id}: ${fields.join(' and ')} from the draft`);
   log(`  extensions.branchStock: ${JSON.stringify({ connector: dto.extensions.branchStock.connector, tool: dto.extensions.branchStock.tool })}`);
 
   section('3. Rehearsal on an in-memory copy of the project');
@@ -177,8 +200,8 @@ async function main() {
   section('4. Is anything else different from the live pack?');
   const found = differences(livePack, rehearsedPack);
   log(`  parts that differ:\n    ${found.join('\n    ') || 'none'}`);
-  const unexpected = found.filter((entry) => !ALLOWED.has(entry));
-  const missing = [...ALLOWED].filter((entry) => entry !== 'manifest' && !found.includes(entry));
+  const unexpected = found.filter((entry) => !isAllowed(entry));
+  const missing = [...ALLOWED_PLAIN].filter((entry) => entry !== 'manifest' && !found.includes(entry));
   if (unexpected.length) {
     log(`  ✗ BLOCKER: ${unexpected.join(', ')} would also change. The live project settings have drifted from the live pack; nothing will be written.`);
     process.exitCode = 1; return;

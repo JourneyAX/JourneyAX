@@ -27,7 +27,10 @@ describe('The assistant is told who it is talking to', () => {
     const prompt = buildAgentSystemPrompt({ resolvedAgent, release, person: { audience: principal.audience, groups: principal.groups } });
     assert.match(prompt, /# Who you are talking to/);
     assert.match(prompt, /a colleague on the customer service team, not a customer/);
-    assert.match(prompt, /Hand-off conditions written for customers .* do not apply to the colleague themselves/);
+    assert.match(prompt, /This changes none of the hand-off conditions above/, 'the carve-out is for lookups only');
+    assert.match(prompt, /damaged or missing freight, a safety fault or dangerous product, a refund, return or credit note on a dispatched order/, 'the situations a condition names are still handed off');
+    assert.match(prompt, /A colleague who asks for a person gets one\./);
+    assert.doesNotMatch(prompt, /do not apply to the colleague themselves|never hand a colleague's own question off/, 'the broad wording that could switch off real hand-offs is gone');
     assert.ok(prompt.indexOf('You help people.') < prompt.indexOf('# Who you are talking to'), 'the block follows the agent block, where the hand-off conditions are');
   });
 
@@ -57,15 +60,28 @@ describe('The assistant is told who it is talking to', () => {
     assert.match(context, /Signed-in: Signed In \(cs@example\.test\)/);
     assert.match(context, /Colleague: a member of staff on the customer service team \(role code: cs\)/);
     assert.match(context, /Today: 2026-10-30 \(Pacific\/Auckland\)/);
+    assert.match(context, /Cart Summary: Empty/, 'staff keep the cart and quote lines');
+    assert.match(context, /Quote Summary: None/);
     assert.doesNotMatch(context, /Customer Type/);
     assert.doesNotMatch(context, /customer_context/);
     assert.match(context, /<\/colleague_context>$/);
   });
 
-  test('without a time zone in the pack, today is still written, without a zone', () => {
+  test('without a time zone in the pack, or with one that is not a zone, today is written in UTC and says so', () => {
     const bare = connectorPack(undefined);
-    const context = formatCustomerContextMessage({ command: command(undefined), release: bare, now: NOW });
-    assert.match(context, /Today: \d{4}-\d{2}-\d{2}\n/);
-    assert.doesNotMatch(context, /Today: .*\(/);
+    assert.match(formatCustomerContextMessage({ command: command(undefined), release: bare, now: NOW }), /Today: 2026-10-29 \(UTC\)\n/, '10 am on the 30th in Auckland is still the 29th in UTC');
+    const odd: any = connectorPack(undefined);
+    odd.extensions.dashboard = { timeZone: 'Mars/Olympus' };
+    assert.match(formatCustomerContextMessage({ command: command(undefined), release: odd, now: NOW }), /Today: 2026-10-29 \(UTC\)\n/, 'a name that is not a zone is not claimed');
+  });
+
+  test('the role code is the signed role only, never a customer type written into the facts, and a long list of teams is cut', () => {
+    const withFacts = { ...command('cs', ['customer-service']), inputFacts: { customerType: 'finance' } };
+    const context = formatCustomerContextMessage({ command: withFacts, release, person: { audience: 'staff', groups: ['customer-service'] }, now: NOW });
+    assert.match(context, /\(role code: cs\)/);
+    assert.doesNotMatch(context, /role code: finance/);
+    const many = formatWhoYouAreTalkingTo({ audience: 'staff', groups: Array.from({ length: 20 }, (_, i) => `team-${i}`) });
+    assert.match(many, /team 0, team 1, team 2, team 3, team 4, team 5 team/);
+    assert.doesNotMatch(many, /team 6/);
   });
 });

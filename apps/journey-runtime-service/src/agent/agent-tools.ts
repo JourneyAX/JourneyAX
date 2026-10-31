@@ -2401,7 +2401,7 @@ export async function executeAgentTool(
           ctx.emitTrace?.('connector_call', { connector: route.connector, tool: route.tool, outcome: called.ok ? 'success' : called.status });
           if (called.ok) {
             (ctx.usedConnectorIds ||= new Set()).add(route.connector);
-            ctx.turnProductSkus.add(sku);
+            // The SKU is not added to this turn's verified products: the catalogue was not read, so a card or a quote for it still needs a product lookup.
             ctx.allowedClaimClasses.add('catalog_fact');
             ctx.allowedClaimClasses.add('stock');
             return {

@@ -325,6 +325,12 @@
           "accountId": {
             "type": "string",
             "description": "Optional account id."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (default 10, up to 25).",
+            "minimum": 1,
+            "maximum": 25
           }
         }
       },

@@ -340,7 +340,7 @@ export function formatAgentSkills(release: BusinessPackRelease | undefined, agen
 }
 
 /** A group id written as words for the prompt: "customer-service" is "customer service". */
-const teamWords = (groups: string[]): string => groups.map((group) => group.replace(/[-_.:]+/g, ' ').trim()).filter(Boolean).join(', ');
+const teamWords = (groups: string[]): string => groups.slice(0, 6).map((group) => group.replace(/[-_.:]+/g, ' ').trim()).filter(Boolean).join(', ');
 
 /**
  * Who the assistant is talking to, when that is a member of staff. Without this block the only identity it sees is a role code inside the
@@ -353,7 +353,7 @@ export function formatWhoYouAreTalkingTo(person?: SkillPerson): string {
   return [
     '# Who you are talking to',
     `You are talking to a signed-in member of staff: a colleague${teams ? ` on the ${teams} team` : ''}, not a customer.`,
-    'The rules above that speak of "the customer" are about the people this colleague serves. A colleague asking about a customer\'s account, balance, credit limit, order, delivery, stock or ticket is doing their job, not disputing anything: answer from the systems and skills their team may use, and never hand a colleague\'s own question off because it touches money. Hand-off conditions written for customers ("the customer disputes…", "the customer asks for a person") do not apply to the colleague themselves; hand off only when they ask for a person or a rule names a staff situation.',
+    'The rules above that speak of "the customer" are about the people this colleague serves. A colleague who asks you to look up a customer\'s account, balance, credit limit, overdue amount, order, delivery, stock or ticket is doing their job: answer from the systems and skills their team may use, and do not hand it off just because it touches money or an account. This changes none of the hand-off conditions above. Whoever raises it, the colleague or a customer they are speaking for, a situation a condition names (damaged or missing freight, a safety fault or dangerous product, a refund, return or credit note on a dispatched order, structural, electrical, gas or consent advice) is still handed off: call hand_off_to_human with the customer, the account and what happened in the reason. A colleague who asks for a person gets one.',
     'Say "we" and "our" for the business. When a tool or system is not allowed for their team, say so in one line and carry on with what is.',
   ].join('\n');
 }
@@ -482,7 +482,8 @@ export function formatCustomerContextMessage(params: {
 
   // 7. Today, in the shop's own time zone (the pack's dashboard setting), so "today", "this week" and "overdue" are read against the right day.
   const timeZone: string | undefined = (release as any)?.extensions?.dashboard?.timeZone;
-  const today = `${todayIn(timeZone, params.now)}${timeZone ? ` (${timeZone})` : ''}`;
+  const zoneUsed = (() => { if (!timeZone) return 'UTC'; try { new Intl.DateTimeFormat('en-CA', { timeZone }); return timeZone; } catch { return 'UTC'; } })();
+  const today = `${todayIn(timeZone, params.now)} (${zoneUsed})`;
 
   // A member of staff is a colleague, and is told so: "Customer Type: cs" read as a kind of customer.
   if (params.person?.audience === 'staff') {
@@ -490,11 +491,13 @@ export function formatCustomerContextMessage(params: {
     return [
       '<colleague_context>',
       `Signed-in: ${signedInStr}`,
-      `Colleague: a member of staff${teams ? ` on the ${teams} team` : ''}${rawType ? ` (role code: ${rawType})` : ''}`,
+      `Colleague: a member of staff${teams ? ` on the ${teams} team` : ''}${command.principalRole ? ` (role code: ${command.principalRole})` : ''}`,
       `Today: ${today}`,
       `Branch / Store: ${branch}`,
       `Region: ${region}`,
       `Locale: ${locale}`,
+      `Cart Summary: ${cartSummary}`,
+      `Quote Summary: ${quoteSummary}`,
       '</colleague_context>',
     ].join('\n');
   }
@@ -1074,8 +1077,11 @@ function extractToolResultCount(result: any): number | undefined {
         // A model that ends a round by promising its next step ("Now, I will look for their open cases.", "I am checking their account and
         // will provide a summary as soon as I have the details.") has not finished. Ask it once to take the step, or to answer if it already
         // has what it needs. In round 0 too: a first reply that only promises is the same stall. Its text so far has already reached the person.
-        if (!isLastAllowedRound && !handoffExplained && stallNudges < 1 && availableTools.length > 0 && announcesNextStep(roundContent)) {
+        // The next round must still have tools (the last allowed round is offered none), or the nudge would ask for a step it cannot take.
+        if (round + 1 < maxToolRounds - 1 && !handoffExplained && stallNudges < 1 && availableTools.length > 0 && announcesNextStep(roundContent)) {
           stallNudges++;
+          // Send what was streamed so far (the promise's last sentence is still held back), so the answer that follows does not run into it.
+          shaper.flush();
           messages.push({ role: 'assistant', content: roundContent });
           messages.push({ role: 'user', content: STALL_NUDGE });
           continue;
