@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { haversineKm, runOp, scoreText, type Collections } from '../src/engine';
 import { ToolError, type Op, type Rec } from '../src/types';
 import { validateArguments } from '../src/validate';
@@ -136,6 +138,32 @@ check('argument checks: required, types, enums and ranges are reported together 
   assert.deepEqual(validateArguments(schema, { a: 1 }), ['a must be text']);
   assert.deepEqual(validateArguments(schema, null), ['arguments must be an object']);
   assert.deepEqual(validateArguments(schema, { a: 'x', b: 1.5 }), ['b must be a whole number']);
+  // an input the tool does not have is reported with the real ones, unless the schema allows extra properties
+  assert.deepEqual(validateArguments(schema, { a: 'ok', accountName: 'x' }), ['accountName is not an input of this tool; its inputs are a, b, c, d, e']);
+  assert.deepEqual(validateArguments(schema, { a: 'ok', x: 1, y: 2 }), ['x, y are not inputs of this tool; its inputs are a, b, c, d, e']);
+  assert.deepEqual(validateArguments({ ...schema, additionalProperties: true }, { a: 'ok', z: 1 }), []);
+  // the "not an input" problem comes first, so the model's short view of the refusal always carries the real input names
+  assert.equal(validateArguments(schema, { z: 1 })[0], 'z is not an input of this tool; its inputs are a, b, c, d, e');
+});
+
+check('every input an operation reads is declared by its tool, so the strict check never refuses a working input', () => {
+  const dir = path.join(__dirname, '../connectors');
+  const problems: string[] = [];
+  for (const name of fs.readdirSync(dir)) {
+    const file = path.join(dir, name, 'connector.json');
+    if (!fs.existsSync(file)) continue;
+    const connector = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const tool of connector.tools ?? []) {
+      const declared = new Set(Object.keys(tool.inputSchema?.properties ?? {}));
+      const op = tool.op ?? {};
+      const read = new Set<string>();
+      if (op.limit?.arg) read.add(op.limit.arg);
+      if (op.text?.arg) read.add(op.text.arg);
+      for (const filter of op.filters ?? []) if (filter.arg) read.add(filter.arg);
+      for (const arg of read) if (!declared.has(arg)) problems.push(`${name}.${tool.name} reads ${arg} without declaring it`);
+    }
+  }
+  assert.deepEqual(problems, []);
 });
 
 check('example placeholders point at records and fail loudly when there is none', () => {

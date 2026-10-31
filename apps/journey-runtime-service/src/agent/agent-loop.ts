@@ -5,7 +5,7 @@ import type {
   Decision,
   UIInstruction,
 } from '@journeyax/journey-core';
-import { normalizePlaybookStages, pluginGate, resolveAgentSkills, resolveSkillTiers, toolStateFor, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
+import { normalizePlaybookStages, pluginGate, resolveAgentSkills, resolveSkillTiers, todayIn, toolStateFor, type BusinessPackRelease, type AgentDefinition, type SkillDefinition } from '@journeyax/business-pack';
 import type { OkfReleaseContent, ClaimClass, OkfConcept } from '@journeyax/knowledge';
 import { principalFrom } from '@journeyax/shared-types';
 import {
@@ -302,6 +302,9 @@ function tracePreview(result: unknown): { resultPreview?: string } {
 type SkillPerson = { audience: 'shopper' | 'staff'; groups: string[] };
 const SHOPPER: SkillPerson = { audience: 'shopper', groups: [] };
 
+/** Tools that read nothing from a system: opening a skill, listing connectors, drawing a card, handing off, reading the checklist. */
+const NOT_A_LOOKUP: ReadonlySet<string> = new Set(['use_skill', 'list_connectors', 'get_connector_tools', 'present_card', 'hand_off_to_human', 'get_journey_checklist']);
+
 /**
  * The skills this person has from the agent they are talking to: the agent's skills, narrowed and set to "always" or "on demand" by
  * the pack's skill access table (`extensions.skillAccess`) for who they are. Without a table every skill is carried as its own tier says.
@@ -336,6 +339,25 @@ export function formatAgentSkills(release: BusinessPackRelease | undefined, agen
   return parts.join('\n\n');
 }
 
+/** A group id written as words for the prompt: "customer-service" is "customer service". */
+const teamWords = (groups: string[]): string => groups.slice(0, 6).map((group) => group.replace(/[-_.:]+/g, ' ').trim()).filter(Boolean).join(', ');
+
+/**
+ * Who the assistant is talking to, when that is a member of staff. Without this block the only identity it sees is a role code inside the
+ * customer context, while every rule above speaks of "the customer": a colleague asking for an account's balance then reads as a customer
+ * disputing credit and is handed off. Generic: the team names are the person's own group ids, written as words.
+ */
+export function formatWhoYouAreTalkingTo(person?: SkillPerson): string {
+  if (!person || person.audience !== 'staff') return '';
+  const teams = teamWords(person.groups);
+  return [
+    '# Who you are talking to',
+    `You are talking to a signed-in member of staff: a colleague${teams ? ` on the ${teams} team` : ''}, not a customer.`,
+    'The rules above that speak of "the customer" are about the people this colleague serves. A colleague who asks you to look up a customer\'s account, balance, credit limit, overdue amount, order, delivery, stock or ticket is doing their job: answer from the systems and skills their team may use, and do not hand it off just because it touches money or an account. This changes none of the hand-off conditions above. Whoever raises it, the colleague or a customer they are speaking for, a situation a condition names (damaged or missing freight, a safety fault or dangerous product, a refund, return or credit note on a dispatched order, structural, electrical, gas or consent advice) is still handed off: call hand_off_to_human with the customer, the account and what happened in the reason. A colleague who asks for a person gets one.',
+    'Say "we" and "our" for the business. When a tool or system is not allowed for their team, say so in one line and carry on with what is.',
+  ].join('\n');
+}
+
 export function buildAgentSystemPrompt(params: {
   platformPrompt?: string;
   resolvedAgent: ResolvedAgent;
@@ -350,13 +372,14 @@ export function buildAgentSystemPrompt(params: {
 }): string {
   const platform = (params.platformPrompt || GENERIC_PLATFORM_OPERATING_PROMPT).trim();
   const agentBlock = formatAgentInstructions(params.resolvedAgent);
+  const whoBlock = formatWhoYouAreTalkingTo(params.person);
   const personaBlock = formatPersonaAndVoice(params.release, params.resolvedAgent.agent);
   const profileBlock = formatBusinessProfile(params.release, params.okfContent);
   const skillsBlock = formatAgentSkills(params.release, params.resolvedAgent.agent, params.person);
 
   const connectorsBlock = formatConnectors(params.connectors ?? []);
 
-  const sections = [platform, agentBlock, skillsBlock, connectorsBlock, params.customerAccount || '', personaBlock, profileBlock].filter(Boolean);
+  const sections = [platform, agentBlock, whoBlock, skillsBlock, connectorsBlock, params.customerAccount || '', personaBlock, profileBlock].filter(Boolean);
   return sections.join('\n\n');
 }
 
@@ -368,6 +391,10 @@ export function formatCustomerContextMessage(params: {
   command: TurnCommand;
   workspace?: WorkspaceState | null;
   release?: BusinessPackRelease;
+  /** Who is talking: a member of staff gets a colleague context, not a customer one. Absent: a shopper. */
+  person?: SkillPerson;
+  /** The clock, for "today" (tests pass a fixed one). */
+  now?: Date;
 }): string {
   const { command, workspace, release } = params;
   const ctx = command.customerContext || {};
@@ -453,10 +480,33 @@ export function formatCustomerContextMessage(params: {
     }
   }
 
+  // 7. Today, in the shop's own time zone (the pack's dashboard setting), so "today", "this week" and "overdue" are read against the right day.
+  const timeZone: string | undefined = (release as any)?.extensions?.dashboard?.timeZone;
+  const zoneUsed = (() => { if (!timeZone) return 'UTC'; try { new Intl.DateTimeFormat('en-CA', { timeZone }); return timeZone; } catch { return 'UTC'; } })();
+  const today = `${todayIn(timeZone, params.now)} (${zoneUsed})`;
+
+  // A member of staff is a colleague, and is told so: "Customer Type: cs" read as a kind of customer.
+  if (params.person?.audience === 'staff') {
+    const teams = teamWords(params.person.groups);
+    return [
+      '<colleague_context>',
+      `Signed-in: ${signedInStr}`,
+      `Colleague: a member of staff${teams ? ` on the ${teams} team` : ''}${command.principalRole ? ` (role code: ${command.principalRole})` : ''}`,
+      `Today: ${today}`,
+      `Branch / Store: ${branch}`,
+      `Region: ${region}`,
+      `Locale: ${locale}`,
+      `Cart Summary: ${cartSummary}`,
+      `Quote Summary: ${quoteSummary}`,
+      '</colleague_context>',
+    ].join('\n');
+  }
+
   const lines = [
     '<customer_context>',
     `Signed-in: ${signedInStr}`,
     `Customer Type: ${customerType}`,
+    `Today: ${today}`,
     `Branch / Store: ${branch}`,
     `Region: ${region}`,
     `Locale: ${locale}`,
@@ -686,6 +736,7 @@ export class AgentTurnLoop {
       command,
       workspace,
       release,
+      person,
     });
     messages.push({
       role: 'user',
@@ -693,7 +744,9 @@ export class AgentTurnLoop {
     });
     messages.push({
       role: 'assistant',
-      content: 'I acknowledge the customer context, branch location, and session details.',
+      content: person.audience === 'staff'
+        ? 'I acknowledge who I am talking to: a colleague, their team, and the session details.'
+        : 'I acknowledge the customer context, branch location, and session details.',
     });
 
     // The lookups made for a card tap before the agent is asked (see event-prefetch.ts), kept for the trace.
@@ -1021,10 +1074,14 @@ function extractToolResultCount(result: any): number | undefined {
           }
         }
 
-        // A model that ends a later round by promising its next step ("Now, I will look for their open cases.") has not finished.
-        // Ask it once to take the step, or to answer if it already has what it needs. Its text so far has already reached the person.
-        if (round > 0 && !isLastAllowedRound && !handoffExplained && stallNudges < 1 && announcesNextStep(roundContent)) {
+        // A model that ends a round by promising its next step ("Now, I will look for their open cases.", "I am checking their account and
+        // will provide a summary as soon as I have the details.") has not finished. Ask it once to take the step, or to answer if it already
+        // has what it needs. In round 0 too: a first reply that only promises is the same stall. Its text so far has already reached the person.
+        // The next round must still have tools (the last allowed round is offered none), or the nudge would ask for a step it cannot take.
+        if (round + 1 < maxToolRounds - 1 && !handoffExplained && stallNudges < 1 && availableTools.length > 0 && announcesNextStep(roundContent)) {
           stallNudges++;
+          // Send what was streamed so far (the promise's last sentence is still held back), so the answer that follows does not run into it.
+          shaper.flush();
           messages.push({ role: 'assistant', content: roundContent });
           messages.push({ role: 'user', content: STALL_NUDGE });
           continue;
@@ -1367,11 +1424,13 @@ function extractToolResultCount(result: any): number | undefined {
         createdAt: new Date().toISOString(),
       };
     } else {
+      // "Grounded" means something was read from a system: a reply made of skill text and no lookup is an answer, not a grounded one.
+      const lookedSomethingUp = toolsTrace.some((t) => t.ok !== false && !NOT_A_LOOKUP.has(t.name));
       decision = {
         decisionId: `dec_${Date.now()}`,
         type: 'complete_goal',
         payload: { answer: finalAssistantText },
-        reason: 'Agent provided grounded answer',
+        reason: lookedSomethingUp ? 'Agent provided grounded answer' : 'Agent answered without a lookup',
         createdAt: new Date().toISOString(),
       };
     }

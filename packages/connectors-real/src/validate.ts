@@ -5,6 +5,13 @@ export function validateArguments(schema: Rec, args: unknown): string[] {
   const problems: string[] = [];
   if (!args || typeof args !== 'object' || Array.isArray(args)) return ['arguments must be an object'];
   const input = args as Rec;
+  // An argument the tool does not have is an error, not silence: a model that invents one (accountName on a tool that takes accountId)
+  // would otherwise get an unfiltered answer and read it as the one it asked for.
+  if (schema.additionalProperties !== true) {
+    const known = Object.keys(schema.properties ?? {});
+    const unknown = Object.keys(input).filter((name) => !known.includes(name));
+    if (unknown.length > 0) problems.push(`${unknown.join(', ')} ${unknown.length === 1 ? 'is not an input' : 'are not inputs'} of this tool; its inputs are ${known.length > 0 ? known.join(', ') : 'none'}`);
+  }
   for (const name of schema.required ?? []) {
     if (input[name] === undefined || input[name] === null || input[name] === '') problems.push(`${name} is required`);
   }

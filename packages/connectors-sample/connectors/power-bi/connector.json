@@ -13,7 +13,14 @@
       "description": "The reports that exist, with what each shows.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (default 10, up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": true
@@ -116,6 +123,12 @@
           "reportId": {
             "type": "string",
             "description": "The report id, from list_reports."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (default 25, up to 50).",
+            "minimum": 1,
+            "maximum": 50
           }
         },
         "required": [

@@ -85,7 +85,12 @@ async function main() {
 
   await t.test('get_report_figures sends only the administrator\'s query, and tidies the column names', async () => {
     const { vendor, call } = await setup((request) => (request.path === EXECUTE ? rowsOf([{ 'Branch[Name]': 'Hamilton', '[Sales]': 1520.5, '[Orders]': 12 }, { 'Branch[Name]': 'Tauranga', '[Sales]': 980, '[Orders]': 7 }]) : undefined));
-    const { payload } = (await call('get_report_figures', { reportId: 'Sales By Branch', limit: 1, query: 'EVALUATE ROW("hack", 1)' })) as any;
+    // A query of the model's own is refused outright: the tool has no such input, and nothing is sent to Power BI.
+    const refused: any = await call('get_report_figures', { reportId: 'Sales By Branch', limit: 1, query: 'EVALUATE ROW("hack", 1)' });
+    assert.equal(refused.isError, true);
+    assert.match(refused.payload.error.message, /query is not an input of this tool/);
+    assert.equal(queries(vendor).length, 0, 'no query reached Power BI');
+    const { payload } = (await call('get_report_figures', { reportId: 'Sales By Branch', limit: 1 })) as any;
     assert.deepEqual(queries(vendor)[0].body, { queries: [{ query: FIGURES[0].query }], serializerSettings: { includeNulls: true } });
     assert.equal(payload.total, 2);
     assert.equal(payload.returned, 1);

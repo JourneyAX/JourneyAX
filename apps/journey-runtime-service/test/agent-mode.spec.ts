@@ -2201,7 +2201,10 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         assert.match(shopper, /# Skill: Voice\nSpeak as the team\./);
         assert.match(shopper, /# Skill: Credit rules\nCheck the credit limit\./);
         assert.match(shopper, /- order-help: Order questions/);
-        assert.equal(promptFor(release, { audience: 'staff', groups: ['sales'] }), shopper, 'a member of staff gets the same prompt');
+        // A member of staff gets the same prompt plus one block that says who they are (a colleague, their team); nothing else differs.
+        const staff = promptFor(release, { audience: 'staff', groups: ['sales'] });
+        assert.match(staff, /# Who you are talking to\nYou are talking to a signed-in member of staff: a colleague on the sales team, not a customer\./);
+        assert.equal(staff.replace(/\n\n# Who you are talking to[\s\S]*?(?=\n\n# )/, ''), shopper, 'a member of staff gets the same prompt, apart from the block that says who they are');
       });
 
       test('a shopper gets only the skills the table leaves them; staff skills are not in their prompt at all', () => {

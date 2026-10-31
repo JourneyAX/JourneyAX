@@ -273,8 +273,14 @@ async function main() {
     assert.equal(actions[0].name, 'presentCard');
     assert.equal(actions[0].arguments.card.cardType, 'records');
     assert.match(answer.shownAsCards, /Open deals/);
-    assert.match(answer.shownAsCards, /Do not list those records/);
+    assert.match(answer.shownAsCards, /Do not read the records out again/);
+    assert.match(answer.shownAsCards, /name each in one short line with its number so they can choose/, 'several records: the person may have to pick one, so the note allows naming them');
     assert.deepEqual(answer.result.records.length, fixture.opps.records.length, 'the model still has the full answer');
+    const one = { summaries: () => [], call: async () => ({ ok: true, connector: 'crm', tool: 'list_opportunities', result: { ...fixture.opps, records: fixture.opps.records.slice(0, 1) }, claimClasses: [] }) };
+    const single = ctxFor({ audience: 'staff', groups: ['sales'] });
+    single.ctx.connectorRuntime = one;
+    const oneAnswer = await executeConnectorMetaTool('call_connector_tool', { connector: 'crm', tool: 'list_opportunities', arguments: { stage: 'open' } }, single.ctx, {} as any);
+    assert.doesNotMatch(oneAnswer.shownAsCards, /name each/, 'one record: nothing to choose between');
   });
 
   await check('the same lookup twice makes one card, and a turn shows at most three', async () => {

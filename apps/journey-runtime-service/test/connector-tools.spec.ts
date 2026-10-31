@@ -43,16 +43,18 @@ async function setup(options: { registry?: unknown; tools?: Record<string, any> 
 
 type World = Awaited<ReturnType<typeof setup>>;
 
-async function turn(world: World, steps: Step[], who: { role?: string; groups?: string[]; agentId?: string; message?: string; workspace?: any; customerEvent?: any; disabledConnectors?: string[] } = {}) {
+async function turn(world: World, steps: Step[], who: { role?: string; groups?: string[]; agentId?: string; message?: string; workspace?: any; customerEvent?: any; disabledConnectors?: string[]; stream?: boolean } = {}) {
   const model = new ModelGateway();
   const requests: AgentExecutionRequest[] = [];
   const toolMessages: string[] = [];
   let round = 0;
-  model.mockAgentExecutor = async (req) => {
+  model.mockAgentExecutor = async (req, onDelta) => {
     requests.push(JSON.parse(JSON.stringify(req)));
     for (const message of req.messages) if (message.role === 'tool') toolMessages.push(String(message.content));
     const step = steps[Math.min(round, steps.length - 1)];
     const out = step(req, round++);
+    // The real gateway streams the text in small pieces; a test that streams shows what the person sees, not only the final text.
+    if (who.stream && out.content) for (let i = 0; i < out.content.length; i += 7) onDelta?.(out.content.slice(i, i + 7));
     return { content: out.content ?? '', toolCalls: out.toolCalls ?? [] };
   };
   const emitted: any[] = [];
@@ -370,5 +372,54 @@ describe('Connector tools in the agent loop', () => {
     assert.match(called.error, /Could not reach the MCP server/);
     assert.ok(outcome.toolsCalled.every((t) => t.ok === false));
     assert.equal(world.audit[0].errorType, 'unreachable');
+  });
+
+  test('a first reply that only promises ("I am checking…") is nudged like a later one, and the step is then taken', async () => {
+    const world = await setup();
+    const { requests, toolMessages, outcome } = await turn(world, [
+      () => ({ content: 'I am checking the stock at Hamilton for you now. I will provide the figures as soon as I have the verified details.' }),
+      () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'stock-system', tool: 'stock_by_branch', arguments: { sku: 'S-1' } })] }),
+      () => ({ content: 'Hamilton holds 12 on hand.' }),
+    ], { role: 'operator', groups: ['customer-service'] });
+    assert.equal(requests.length, 3, 'the model was asked again after its first-round promise');
+    assert.match(String(requests[1].messages.at(-1)?.content), /You said you would take another step/);
+    assert.equal(lastTool(toolMessages).ok, true, 'the step was taken');
+    assert.match(outcome.turnResult.assistantMessage ?? '', /12 on hand/);
+    assert.equal((outcome.turnResult as any).decision?.reason ?? (outcome as any).decision?.reason, 'Agent provided grounded answer');
+  });
+
+  test('when the text streams, the promise that was nudged and the answer that follows do not run together', async () => {
+    const world = await setup();
+    const { outcome, emitted } = await turn(world, [
+      () => ({ content: 'I am checking the stock at Hamilton for you now. I will provide the figures as soon as I have the verified details.' }),
+      () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'stock-system', tool: 'stock_by_branch', arguments: { sku: 'S-1' } })] }),
+      () => ({ content: 'Hamilton holds 12 on hand.' }),
+    ], { role: 'operator', groups: ['customer-service'], stream: true });
+    const message = outcome.turnResult.assistantMessage ?? '';
+    assert.match(message, /12 on hand/);
+    assert.doesNotMatch(message, /details\.Hamilton/, 'a space or line separates the earlier text from the answer');
+    const shown = emitted.filter((entry) => entry.event === 'token').map((entry) => String(entry.data?.delta ?? '')).join('');
+    assert.doesNotMatch(shown, /details\.Hamilton/, 'and so does the text the person watched arrive');
+  });
+
+  test('a promise is not nudged when the next round would be the last, which is offered no tools', async () => {
+    const agent = (maxTurns: number) => ({
+      agentId: 'front_desk', name: 'front_desk', purpose: 'Help people with questions about the business.', systemPromptTemplate: 'You help people.',
+      allowedTools: ['search_products', 'present_card', 'hand_off_to_human', 'list_connectors', 'get_connector_tools', 'call_connector_tool'],
+      modelPolicyRef: 'default', maxTurns, handoffConditions: [], isDefault: true,
+    });
+    const promise = () => ({ content: 'Let me check the stock at Hamilton.' });
+    for (const [maxTurns, askedAgain] of [[2, false], [3, true]] as const) {
+      const world = await setup();
+      (world as any).release = connectorPack(REGISTRY, { agents: [agent(maxTurns)] });
+      const { requests } = await turn(world, [promise, () => ({ content: 'Hamilton has stock.' })], { role: 'operator', groups: ['customer-service'] });
+      assert.equal(requests.length > 1, askedAgain, `maxTurns ${maxTurns}`);
+    }
+  });
+
+  test('a reply with no lookup behind it is not called grounded', async () => {
+    const world = await setup();
+    const { outcome } = await turn(world, [() => ({ content: 'Hi there.' })], { role: 'operator', message: 'Hello' });
+    assert.equal((outcome.turnResult as any).decision?.reason ?? (outcome as any).decision?.reason, 'Agent answered without a lookup');
   });
 });

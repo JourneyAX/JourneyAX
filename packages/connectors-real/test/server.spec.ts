@@ -49,11 +49,14 @@ async function main() {
   await t.test('arguments are checked against the tool\'s schema before the tool runs', async () => {
     let ran = 0;
     const local = new RealConnectorServer({ connectors: [fake(async () => { ran++; return {}; })] });
-    for (const args of [{}, { text: 5 }, { text: 'far too long for this' }, { text: 'ok', count: 9 }, { text: 'ok', count: 1.5 }]) {
+    for (const args of [{}, { text: 5 }, { text: 'far too long for this' }, { text: 'ok', count: 9 }, { text: 'ok', count: 1.5 }, { text: 'ok', accountName: 'Hartley' }]) {
       const answer: any = await local.handle('fake', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo', arguments: args } });
       assert.equal(answer.result.isError, true, JSON.stringify(args));
       assert.equal(JSON.parse(answer.result.content[0].text).error.code, 'invalid_arguments');
     }
+    // An invented input is named, with the real ones, so the model can call again properly instead of reading an unfiltered answer as the one it asked for.
+    const invented: any = await local.handle('fake', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo', arguments: { text: 'ok', accountName: 'Hartley' } } });
+    assert.equal(JSON.parse(invented.result.content[0].text).error.message, 'accountName is not an input of this tool; its inputs are text, count');
     assert.equal(ran, 0);
     assert.equal(((await local.handle('fake', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'nope', arguments: {} } })) as any).error.code, -32602);
   });

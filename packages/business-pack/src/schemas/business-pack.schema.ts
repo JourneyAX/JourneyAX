@@ -11,7 +11,7 @@ import { CapabilityBindingsCollectionSchema } from './capability-binding.schema'
 import { ExperienceSchema } from './experience.schema';
 import { EvaluationSuiteSchema } from './evaluation.schema';
 import { SpacePlannerExtensionSchema } from './space-planner.schema';
-import { AccessoryHelperSchema, BuyerFeedbackSchema, SkillDefinitionSchema, QuantityHelperSchema, VisualiserSchema, EventPrefetchSchema, ProductGuidesSchema, CustomerAccountSchema, ContentPagesSchema, CheckoutReviewSchema, PaymentSchema, BrandThemeSchema, VoiceSchema, QuestionCardsSchema, WelcomeSchema, DashboardSchema } from './skill.schema';
+import { AccessoryHelperSchema, BranchStockSchema, BuyerFeedbackSchema, SkillDefinitionSchema, QuantityHelperSchema, VisualiserSchema, EventPrefetchSchema, ProductGuidesSchema, CustomerAccountSchema, ContentPagesSchema, CheckoutReviewSchema, PaymentSchema, BrandThemeSchema, VoiceSchema, QuestionCardsSchema, WelcomeSchema, DashboardSchema } from './skill.schema';
 import { CalculatorDefinitionSchema } from './calculator.schema';
 import { AgentAccessSchema } from './access.schema';
 import { SkillAccessSchema } from './skill-access.schema';
@@ -277,6 +277,7 @@ export const BusinessPackContentSchema = z.object({
       checkoutReview: CheckoutReviewSchema.optional(),
       accessoryHelper: AccessoryHelperSchema.optional(),
       buyerFeedback: BuyerFeedbackSchema.optional(),
+      branchStock: BranchStockSchema.optional(),
       payment: PaymentSchema.optional(),
       brandTheme: BrandThemeSchema.optional(),
       voice: VoiceSchema.optional(),
