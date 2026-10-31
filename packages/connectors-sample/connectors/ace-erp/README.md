@@ -24,7 +24,7 @@ Smallest allowed per collection (a test checks it): branches 25, stock 100, deli
 
 - `stock_by_branch`: Stock on hand for a product, branch by branch. Narrow it to one branch with branchCode.
 - `trade_price`: The retail price and the trade prices by tier (bronze, silver, gold) for a product.
-- `delivery_status`: Where a delivery is. Give the delivery id or the order id.
+- `delivery_status`: Where a delivery is. Give the delivery id or the ERP's own order number (ORD-nnnnnn).
 - `list_deliveries`: The deliveries of one trade account, newest first. Give the account id; optionally only one status (scheduled, out_for_delivery, delivered, failed_attempt).
 - `list_consignments`: The consignments of one order or one trade account, newest first: consignment number, order number, delivery or collection, branch, trip, status and when it was made. Give an order number or an account id; optionally only one status (planned, picked, out_for_delivery, delivered, failed_attempt, returned, collected).
 - `get_consignment`: One consignment with its order number, delivery or collection, branch, trip, status and date. Give the consignment number, for example CON-50001.
