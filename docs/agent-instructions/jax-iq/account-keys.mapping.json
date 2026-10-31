@@ -1,0 +1,185 @@
+{
+  "mappingVersion": "1.0.0",
+  "thing": "Account",
+  "canonical": { "kind": "account_number", "system": "ace-erp" },
+  "notes": "Which platform field feeds which key kind for an Account. use number: the value is the account number itself. use own_id: the system's own id for the record. use reference: the id of the same account's record in another system, kept as evidence for a cross-check. ready false: the field is planned, the connector does not read it yet, or the platform does not hold a value in it yet, so the key report ignores it. A name is never a key and has no entry here.",
+  "keys": [
+    {
+      "kind": "account_number",
+      "system": "ace-erp",
+      "field": "accountId",
+      "use": "number",
+      "evidence": "real_field",
+      "caseRule": "upper",
+      "pattern": "^ACC-\\d{4}$",
+      "ready": true,
+      "note": "The ERP customer id is the account number. It is the canonical id."
+    },
+    {
+      "kind": "ct_unit_key",
+      "system": "ace-erp",
+      "field": "commercetoolsUnitKey",
+      "use": "reference",
+      "evidence": "real_field",
+      "caseRule": "lower",
+      "pattern": "^acc-\\d{4}$",
+      "ready": true,
+      "note": "The commercetools business unit key of the same account, in lower case."
+    },
+    {
+      "kind": "sf_account_id",
+      "system": "ace-erp",
+      "field": "salesforceAccountId",
+      "use": "reference",
+      "evidence": "real_field",
+      "caseRule": "as_is",
+      "pattern": "^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$",
+      "ready": false,
+      "note": "The Salesforce account id of the same account. The field is there but empty; it is ready once the link is filled."
+    },
+    {
+      "kind": "zd_org_id",
+      "system": "ace-erp",
+      "field": "zendeskOrganizationId",
+      "use": "reference",
+      "evidence": "real_field",
+      "caseRule": "as_is",
+      "pattern": "^\\d{1,20}$",
+      "ready": false,
+      "note": "The Zendesk organisation id of the same account. The field is there but empty; it is ready once the organisation exists and the link is filled."
+    },
+    {
+      "kind": "ct_unit_key",
+      "system": "commercetools",
+      "field": "unitKey",
+      "use": "own_id",
+      "evidence": "real_field",
+      "caseRule": "lower",
+      "pattern": "^acc-\\d{4}(?:-[a-z0-9]+)*$",
+      "ready": true,
+      "note": "The business unit key. A division names its parent in parentUnit and rolls up under the parent's account number."
+    },
+    {
+      "kind": "ct_account_number",
+      "system": "commercetools",
+      "field": "accountNumber",
+      "use": "number",
+      "evidence": "real_field",
+      "caseRule": "upper",
+      "pattern": "^ACC-\\d{4}$",
+      "ready": true,
+      "note": "The custom field accountNumber on the business unit. A division may leave it empty."
+    },
+    {
+      "kind": "sf_account_id",
+      "system": "commercetools",
+      "field": "salesforceAccountId",
+      "use": "reference",
+      "evidence": "real_field",
+      "caseRule": "as_is",
+      "pattern": "^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$",
+      "ready": true,
+      "note": "The custom field salesforceAccountId, so the link goes both ways. Check that the field exists on the business unit type."
+    },
+    {
+      "kind": "sf_account_id",
+      "system": "salesforce",
+      "field": "accountId",
+      "use": "own_id",
+      "evidence": "real_field",
+      "caseRule": "as_is",
+      "pattern": "^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$",
+      "ready": true,
+      "note": "The Salesforce account id."
+    },
+    {
+      "kind": "sf_account_note",
+      "system": "salesforce",
+      "field": "Description",
+      "use": "number",
+      "evidence": "text_note",
+      "caseRule": "upper",
+      "pattern": "^ACC-\\d{4}$",
+      "extract": { "pattern": "Account number ([A-Za-z0-9-]+)\\." },
+      "ready": true,
+      "note": "Text inside the description: Account number, then the number and a full stop. The same pattern the connector uses. One edit of the sentence breaks it."
+    },
+    {
+      "kind": "account_number",
+      "system": "salesforce",
+      "field": "Account_Number__c",
+      "use": "number",
+      "evidence": "real_field",
+      "caseRule": "upper",
+      "pattern": "^ACC-\\d{4}$",
+      "ready": false,
+      "note": "Planned: a text field, unique, an external id. Not created and not read by the connector yet."
+    },
+    {
+      "kind": "ct_unit_key",
+      "system": "salesforce",
+      "field": "Commercetools_Unit_Key__c",
+      "use": "reference",
+      "evidence": "real_field",
+      "caseRule": "lower",
+      "pattern": "^acc-\\d{4}$",
+      "ready": false,
+      "note": "Planned: a text field, an external id. Not created and not read by the connector yet."
+    },
+    {
+      "kind": "zd_tag",
+      "system": "zendesk",
+      "field": "tags",
+      "use": "number",
+      "evidence": "tag",
+      "caseRule": "lower",
+      "pattern": "^acc-\\d{4}$",
+      "ready": true,
+      "note": "The ticket tag that names the account, found with the tag filter of the ticket search. A ticket without the tag is invisible."
+    },
+    {
+      "kind": "zd_org_id",
+      "system": "zendesk",
+      "field": "organization.id",
+      "use": "own_id",
+      "evidence": "real_field",
+      "caseRule": "as_is",
+      "pattern": "^\\d{1,20}$",
+      "ready": false,
+      "note": "Planned: one organisation per account. The connector does not use organisations yet."
+    },
+    {
+      "kind": "account_number",
+      "system": "zendesk",
+      "field": "organization.external_id",
+      "use": "number",
+      "evidence": "real_field",
+      "caseRule": "upper",
+      "pattern": "^ACC-\\d{4}$",
+      "ready": false,
+      "note": "Planned: the organisation's built-in external id holds the account number."
+    },
+    {
+      "kind": "ct_unit_key",
+      "system": "zendesk",
+      "field": "organization_fields.commercetools_unit_key",
+      "use": "reference",
+      "evidence": "real_field",
+      "caseRule": "lower",
+      "pattern": "^acc-\\d{4}$",
+      "ready": false,
+      "note": "Planned: an organisation text field."
+    },
+    {
+      "kind": "sf_account_id",
+      "system": "zendesk",
+      "field": "organization_fields.salesforce_account_id",
+      "use": "reference",
+      "evidence": "real_field",
+      "caseRule": "as_is",
+      "pattern": "^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$",
+      "ready": false,
+      "note": "Planned: an organisation text field."
+    }
+  ]
+}

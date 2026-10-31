@@ -8,7 +8,11 @@
     "stock": 100,
     "deliveries": 25,
     "price_list": 25,
-    "account_balances": 25
+    "account_balances": 25,
+    "invoices": 7,
+    "consignments": 40,
+    "consignment_lines": 93,
+    "tracking_events": 93
   },
   "tools": [
     {
@@ -181,6 +185,206 @@
         "sort": {
           "field": "scheduledDate",
           "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "list_consignments",
+      "description": "The consignments of one order or one trade account, newest first: consignment number, order number, delivery or collection, branch, trip, status and when it was made. Give an order number or an account id; optionally only one status (planned, picked, out_for_delivery, delivered, failed_attempt, returned, collected).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "orderNumber": {
+            "type": "string",
+            "description": "The order number, for example ORD-100034."
+          },
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0004."
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional: only consignments with this status (planned, picked, out_for_delivery, delivered, failed_attempt, returned, collected)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "orderNumber": "$first:consignments.orderNumber"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "consignments",
+        "filters": [
+          {
+            "arg": "orderNumber",
+            "field": "orderNumber"
+          },
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "createdAt",
+          "order": "desc"
+        }
+      }
+    },
+    {
+      "name": "get_consignment",
+      "description": "One consignment with its order number, delivery or collection, branch, trip, status and date. Give the consignment number, for example CON-50001.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "consignmentId": {
+            "type": "string",
+            "description": "The consignment number, for example CON-50001."
+          }
+        },
+        "required": [
+          "consignmentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "consignmentId": "$first:consignments.consignmentId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "consignments",
+        "key": "consignmentId",
+        "arg": "consignmentId"
+      }
+    },
+    {
+      "name": "list_consignment_lines",
+      "description": "What is on consignments, line by line: the order line, the product code and the quantity. Give a consignment number or an order number; optionally only one product code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "orderNumber": {
+            "type": "string",
+            "description": "The order number, for example ORD-100042."
+          },
+          "consignmentId": {
+            "type": "string",
+            "description": "The consignment number, for example CON-50002."
+          },
+          "sku": {
+            "type": "string",
+            "description": "Optional: only lines for this product SKU."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "consignmentId": "$first:consignment_lines.consignmentId"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "consignment_lines",
+        "filters": [
+          {
+            "arg": "orderNumber",
+            "field": "orderNumber"
+          },
+          {
+            "arg": "consignmentId",
+            "field": "consignmentId"
+          },
+          {
+            "arg": "sku",
+            "field": "sku"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "consignmentId",
+          "order": "asc"
+        }
+      }
+    },
+    {
+      "name": "list_tracking_events",
+      "description": "The events of a consignment (picked, out_for_delivery, delivered, failed_attempt with the reason, returned, collected) or of a trip (loaded, dispatched), oldest first, with the time and, on a delivery or a collection, who took the goods and the proof reference. Give a consignment number or a trip number, for example DEL-30002.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "consignmentId": {
+            "type": "string",
+            "description": "The consignment number, for example CON-50002."
+          },
+          "shipmentId": {
+            "type": "string",
+            "description": "The trip, which is the delivery number, for example DEL-30002."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "consignmentId": "$firstWith:tracking_events.consignmentId"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "tracking_events",
+        "filters": [
+          {
+            "arg": "consignmentId",
+            "field": "consignmentId"
+          },
+          {
+            "arg": "shipmentId",
+            "field": "shipmentId"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "at",
+          "order": "asc"
         }
       }
     },
@@ -366,6 +570,114 @@
         "sort": {
           "field": "name"
         }
+      }
+    },
+    {
+      "name": "find_invoices",
+      "description": "The invoices of one trade account, newest first: invoice number, order number, issue and due dates, status and totals, without the lines. Give the account id; optionally only one status (open, part_paid, paid, overdue) or one order number.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The account id, for example ACC-0028."
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional: only invoices in this status (open, part_paid, paid, overdue)."
+          },
+          "orderNumber": {
+            "type": "string",
+            "description": "Optional: only the invoice for this order number, for example ORD-100033."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many to return (up to 25).",
+            "minimum": 1,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "accountId": "$first:invoices.accountId"
+      },
+      "op": {
+        "kind": "find",
+        "collection": "invoices",
+        "filters": [
+          {
+            "arg": "accountId",
+            "field": "accountId"
+          },
+          {
+            "arg": "status",
+            "field": "status"
+          },
+          {
+            "arg": "orderNumber",
+            "field": "commercetoolsOrderNumber"
+          }
+        ],
+        "limit": {
+          "arg": "limit",
+          "default": 10,
+          "max": 25
+        },
+        "sort": {
+          "field": "issuedAt",
+          "order": "desc"
+        },
+        "select": [
+          "invoiceId",
+          "accountId",
+          "commercetoolsOrderNumber",
+          "orderId",
+          "deliveryId",
+          "issuedAt",
+          "dueAt",
+          "dueNote",
+          "status",
+          "currency",
+          "subtotal",
+          "gst",
+          "total",
+          "paidAmount",
+          "sample"
+        ]
+      }
+    },
+    {
+      "name": "get_invoice",
+      "description": "One invoice with its lines, GST and total. Give the invoice id, for example INV-40001.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "invoiceId": {
+            "type": "string",
+            "description": "The invoice id, for example INV-40001."
+          }
+        },
+        "required": [
+          "invoiceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "example": {
+        "invoiceId": "$first:invoices.invoiceId"
+      },
+      "op": {
+        "kind": "get",
+        "collection": "invoices",
+        "key": "invoiceId",
+        "arg": "invoiceId"
       }
     }
   ]

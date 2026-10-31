@@ -1,0 +1,23 @@
+{
+  "name": "@journeyax/jax-iq",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JAX IQ: a written dictionary of the things a business cares about, and the engine that answers questions about them from the systems that hold them.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "for f in test/*.spec.ts; do npx tsx --tsconfig test/tsconfig.json \"$f\" || exit 1; done"
+  },
+  "dependencies": {
+    "@journeyax/business-pack": "*",
+    "@journeyax/capability-sdk": "*",
+    "@journeyax/shared-types": "*",
+    "zod": "^3.23.8 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@journeyax/test-support": "*",
+    "@types/node": "^20.17.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@journeyax/business-pack": ["../../../packages/business-pack/src"],
+      "@journeyax/capability-sdk": ["../../../packages/capability-sdk/src"],
+      "@journeyax/shared-types": ["../../../packages/shared-types/src"],
+      "@journeyax/test-support": ["../../../packages/test-support/src"],
+      "@journeyax/knowledge": ["../../../packages/knowledge/src"],
+      "@journeyax/jax-iq": ["../../../packages/jax-iq/src"]
+    }
+  },
+  "include": ["./**/*", "../src/**/*"]
+}

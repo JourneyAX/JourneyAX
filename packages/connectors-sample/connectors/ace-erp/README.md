@@ -11,10 +11,14 @@ Stock by branch, trade prices, deliveries and account balances. This is **sample
 | `branches` | 65 | real and made up | 65/65 | code, name, phone (street addresses are left out: the website text in the data folder has lost characters from them) | lat, lng (approximate town centre, entered by hand) |
 | `stock` | 800 | real and made up | 800/800 | sku, title, branchCode, branchName | onHand, reserved, available, reorderLevel, lastCountedAt |
 | `price_list` | 100 | real and made up | 100/100 | sku, title, unitOfMeasure, retailPrice | bronzePrice, silverPrice, goldPrice, effectiveFrom |
-| `deliveries` | 27 | made up | 27/27 | branchCode (a real code) | every other field |
-| `account_balances` | 30 | made up | 30/30 | - | every field |
+| `deliveries` | 27 | made up | 27/27 | branchCode (a real code) | every other field, carrier (a sample constant: the sample trucks and drivers belong to the branch), commercetoolsOrderNumber (equal to orderId: the ERP's own order number, not one commercetools has issued) |
+| `account_balances` | 30 | made up | 30/30 | - | every field, commercetoolsUnitKey (the account number in lower case), salesforceAccountId (empty until the backfill), zendeskOrganizationId (empty until the backfill) |
+| `invoices` | 7 | real and made up | 7/7 | lines: sku and title | every other field (unit prices are the invented tier prices, GST is added at a sample rate, dates and statuses follow the sample rules as of 2026-09-01), account_balances: broughtForward and invoicesAsOf (added to every account row by the same stage) |
+| `consignments` | 40 | made up | 40/40 | fromBranchCode (a real code) | every other field (the numbers, dates and statuses follow from the order and delivery rows by fixed sample rules) |
+| `consignment_lines` | 93 | real and made up | 93/93 | sku | every other field |
+| `tracking_events` | 93 | made up | 93/93 | - | every field (the times follow fixed sample offsets; the people and the proof references are made up) |
 
-Smallest allowed per collection (a test checks it): branches 25, stock 100, deliveries 25, price_list 25, account_balances 25.
+Smallest allowed per collection (a test checks it): branches 25, stock 100, deliveries 25, price_list 25, account_balances 25, invoices 7, consignments 40, consignment_lines 93, tracking_events 93.
 
 ## Tools
 
@@ -22,7 +26,15 @@ Smallest allowed per collection (a test checks it): branches 25, stock 100, deli
 - `trade_price`: The retail price and the trade prices by tier (bronze, silver, gold) for a product.
 - `delivery_status`: Where a delivery is. Give the delivery id or the order id.
 - `list_deliveries`: The deliveries of one trade account, newest first. Give the account id; optionally only one status (scheduled, out_for_delivery, delivered, failed_attempt).
+- `list_consignments`: The consignments of one order or one trade account, newest first: consignment number, order number, delivery or collection, branch, trip, status and when it was made. Give an order number or an account id; optionally only one status (planned, picked, out_for_delivery, delivered, failed_attempt, returned, collected).
+- `get_consignment`: One consignment with its order number, delivery or collection, branch, trip, status and date. Give the consignment number, for example CON-50001.
+- `list_consignment_lines`: What is on consignments, line by line: the order line, the product code and the quantity. Give a consignment number or an order number; optionally only one product code.
+- `list_tracking_events`: The events of a consignment (picked, out_for_delivery, delivered, failed_attempt with the reason, returned, collected) or of a trip (loaded, dispatched), oldest first, with the time and, on a delivery or a collection, who took the goods and the proof reference. Give a consignment number or a trip number, for example DEL-30002.
+- `find_account`: Find a trade account by part of its name: returns its ERP account number (such as ACC-0028), its name, price tier and payment terms. Use the number with the other tools. No balances.
 - `account_balance`: The balance, credit limit and overdue amount of a trade account.
+- `list_account_balances`: Trade accounts with their balance, credit limit and overdue amount, most overdue first. Give minOverdue to list only the accounts overdue by at least that much.
 - `list_branches`: List branches, or find one by name.
+- `find_invoices`: The invoices of one trade account, newest first: invoice number, order number, issue and due dates, status and totals, without the lines. Give the account id; optionally only one status (open, part_paid, paid, overdue) or one order number.
+- `get_invoice`: One invoice with its lines, GST and total. Give the invoice id, for example INV-40001.
 
 Records that are invented, or that mix real and invented values, carry `sample: true`. The people, trade businesses, customer phone numbers and email addresses are made up (emails end in `.test`); any resemblance to a real person or business is chance. Branch names, codes and phone numbers are the ones the PlaceMakers store locator page lists. No customer data was read.

@@ -10,7 +10,7 @@ It is **sample data**. Every record says so (`sample: true`) unless it was copie
 |---|---|---|---|---|
 | `sap-commerce` | SAP Commerce Cloud | 100 products, 30 carts, 48 orders | products, prices, product pages | carts, orders, quantities |
 | `salesforce` | Salesforce Sales and Service Cloud | 30 trade accounts, 44 cases, 32 order reviews | branch codes | everything else |
-| `ace-erp` | SAP ERP | 65 branches, 800 stock rows (100 products × 8 branches), 100 price rows, 27 deliveries, 30 balances | branch names, codes, phones; products; retail prices | stock counts, tier discounts, deliveries, balances, branch coordinates (approximate) |
+| `ace-erp` | SAP ERP | 65 branches, 800 stock rows (100 products × 8 branches), 100 price rows, 27 deliveries (each with its carrier), 30 balances (each with the keys the other systems know the account by), 7 invoices (one for each delivered order of a trade account), 40 consignments with their 93 lines and 93 tracking events (one consignment for each delivery, one for each click-and-collect order that is picked, ready or collected, and a second one for one split order) | branch names, codes, phones; products; retail prices; the SKUs and titles on invoice lines | stock counts, tier discounts, deliveries, balances, account keys (the commercetools key follows from the account number; the Salesforce and Zendesk ids are empty until the backfill), invoices (tier prices, GST at a sample rate, due dates and statuses as of 1 September 2026, and on each balance how much the invoices do not itemise), consignments, their lines and events (worked out from the order and delivery status at fixed sample offsets; the people and proof references are made up), the carrier, branch coordinates (approximate) |
 | `mulesoft` | MuleSoft | 38 integration runs | none | all |
 | `salsify` | Salsify | 100 products with specifications and documents | everything | none |
 | `bloomreach` | Bloomreach | 100 catalogue entries, 34 popular searches | catalogue, search words, results | how often a search is typed |
@@ -46,6 +46,8 @@ cd packages/connectors-sample && npm test
 - `seeds.spec.ts`: record counts, the sample flag, real data really from the data, records that point at each other, no real email addresses or keys.
 - `engine.spec.ts`: each operation (find, get, create, aggregate, nearest, drive, match) and the argument checks.
 - `contract.spec.ts`: through the runtime's own MCP client: every connector lists its tools, every tool returns a stable shape, tenants are kept apart, a caller without the key is refused, writes create sample records and never touch the seeds, the key never appears in an answer.
+- `erp-invoices.spec.ts`: the sample ERP's invoices: they add up, each points at a real order and delivery, the seven statuses follow the rules with the arithmetic written out, balances never move, a second run changes nothing, and the two invoice tools run.
+- `erp-fulfilment.spec.ts`: the sample ERP's consignments, their lines and tracking events: every line is a line of its order and none is sent more than ordered, a consignment's status is its newest event, event times are ordered and fall after the order, the three failed attempts on orders never dispatched are known and left alone, delivery rows change only by the carrier, a second run changes nothing, and the four consignment tools run.
 
 The agent-loop test with a scripted model is `apps/journey-runtime-service/test/connectors-e2e.spec.ts`.
 
