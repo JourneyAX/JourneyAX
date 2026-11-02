@@ -24,21 +24,30 @@ async function main() {
   const turn = (message: string, session = `pp-${Date.now()}-${n++}`) => ({ message, sessionId: session, workspaceId: session, turnId: `${session}-t1`, correlationId: `${session}-c1` });
 
   try {
-    await suite.test('the canary passes every scenario on the real path: cards, wording, currency, no internals, no purchase', async () => {
+    // The model here is a fixed function that always searches and shows what it finds, so it cannot satisfy the canary's content
+    // expectations (a question card first, a hazard sends no products). Those are the shop's behaviour with a real model and are
+    // checked by running scripts/canary against a deployed shop. What this proves is the path and the canary's own checks: every
+    // scenario message goes through all four hops and the answer never leaks internals, uses the wrong currency or sells.
+    const invariantsOnly = { ...canarySpec, scenarios: canarySpec.scenarios.map((s: any) => ({ ...s, turns: s.turns.map((t: any) => ({ message: t.message })) })) };
+    await suite.test('every canary scenario goes through the real path: currency, no internals, no purchase (content checks run against a deployed shop)', async () => {
       console.log = () => undefined;
-      const report = await runCanary({ url: path_.chatStreamUrl, headers: path_.customerHeaders }, canarySpec);
+      const report = await runCanary({ url: path_.chatStreamUrl, headers: path_.customerHeaders }, invariantsOnly);
       console.log = quiet;
       const failures = report.scenarios.flatMap((s) => s.turns.flatMap((t) => t.violations.filter((v) => v.severity === 'error').map((v) => `${s.id}: ${v.id} ${v.message}`)));
       assert.deepEqual(failures, []);
       assert.equal(report.passed, true);
-      assert.equal(report.totals.scenarios, canarySpec.scenarios.length);
+      assert.equal(report.totals.scenarios, invariantsOnly.scenarios.length);
       assert.ok(report.totals.turns >= 17);
     });
 
     await suite.test('the browser receives the customer view; the runtime itself, asked as a platform workload, speaks the full language', async () => {
       const publicBody = await (await post(path_.chatStreamUrl, turn('vanities'), path_.customerHeaders)).text();
       const publicEvents = parseSse(publicBody).map((frame) => frame.event);
-      assert.deepEqual(publicEvents, ['session', 'capability', 'uiAction', 'uiAction', 'token', 'done']);
+      assert.equal(publicEvents[0], 'session', 'the stream opens with the session');
+      assert.equal(publicEvents.filter((event) => event === 'done').length, 1, 'and ends with exactly one done');
+      assert.equal(publicEvents[publicEvents.length - 1], 'done');
+      assert.ok(publicEvents.includes('token') && publicEvents.includes('uiAction'), 'a reply and a card reach the customer');
+      assert.ok(!publicEvents.includes('trace') && !publicEvents.includes('data'), 'the customer view has no trace or data frames');
       for (const leaked of ['knowledgeGate', 'concept://', 'releaseId', 'modelRoute', 'categoryPaths']) assert.ok(!publicBody.includes(leaked), `${leaked} must not reach a customer`);
 
       const session = `pp-direct-${Date.now()}`;
@@ -46,7 +55,7 @@ async function main() {
       const internalEvents = parseSse(await internal.text());
       assert.ok(internalEvents.some((frame) => frame.event === 'trace' || frame.event === 'data'), 'the platform view carries the trace');
       const done = internalEvents.find((frame) => frame.event === 'done')!.json;
-      assert.equal(done.trace.knowledgeGate.mode, 'direct_results', 'and the knowledge decision');
+      assert.equal(done.trace?.engine, 'agent', 'and which engine answered');
     });
 
     await suite.test('only the platform\'s key unlocks the full stream: a guess through the gateway still gets the customer view', async () => {
@@ -106,12 +115,24 @@ async function main() {
     await suite.test('conversations do not bleed into each other', async () => {
       const a = `pp-a-${Date.now()}`;
       const b = `pp-b-${Date.now()}`;
-      const first = parseSse(await (await post(path_.chatStreamUrl, turn('i want to build a deck', a), path_.customerHeaders)).text());
-      assert.ok(first.some((frame) => frame.event === 'uiAction' && frame.json?.arguments?.card?.cardType === 'clarify'));
-      // A different conversation saying only an answer has no deck context: it must not inherit the first one's question.
-      const second = parseSse(await (await post(path_.chatStreamUrl, turn('composite', b), path_.customerHeaders)).text());
-      const cardTypes = second.filter((frame) => frame.event === 'uiAction').map((frame) => frame.json?.arguments?.card?.cardType);
-      assert.ok(!cardTypes.includes('products'), 'no products from a conversation that never asked');
+      const say = async (message: string, session: string, turnId: string) =>
+        parseSse(await (await post(path_.chatStreamUrl, { ...turn(message, session), turnId }, path_.customerHeaders)).text());
+      const shown = (before: number) => path_.modelRequests.slice(before).join('\n');
+
+      // Control: within one conversation the model is shown what was said earlier, so the check below can see history at all.
+      const start = path_.modelRequests.length;
+      assert.ok((await say('i want to build a deck', a, `${a}-t1`)).some((frame) => frame.event === 'done'));
+      const afterFirst = path_.modelRequests.length;
+      assert.ok((await say('composite', a, `${a}-t2`)).some((frame) => frame.event === 'done'));
+      assert.ok(/build a deck/i.test(shown(afterFirst)), 'the same conversation carries its earlier message to the model');
+
+      // A different conversation saying only an answer must not be shown the first one's words.
+      const beforeOther = path_.modelRequests.length;
+      assert.ok((await say('composite', b, `${b}-t1`)).some((frame) => frame.event === 'done'));
+      const otherShown = shown(beforeOther);
+      assert.ok(otherShown.length > 0, 'the model was asked for the second conversation');
+      assert.ok(!/build a deck/i.test(otherShown), 'nothing from the first conversation reaches the second');
+      assert.ok(start < afterFirst);
     });
 
     await suite.test('activation is checksum-bound: tampering with the published pack makes the shop refuse, safely, and restoring it recovers', async () => {

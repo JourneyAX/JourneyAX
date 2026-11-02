@@ -5,7 +5,7 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ReleaseActivationRepository } from '@journeyax/database';
 import { computePackChecksum } from '@journeyax/business-pack';
-import { buildPlaceMakersStack, TENANT, type PlaceMakersStack } from '../../apps/journey-runtime-service/test/helpers/placemakers-stack';
+import { buildPlaceMakersStack, FixedGateway, TENANT, type PlaceMakersStack } from '../../apps/journey-runtime-service/test/helpers/placemakers-stack';
 
 /**
  * The public path of a shop, hop for hop, on loopback with an isolated store:
@@ -35,6 +35,8 @@ export interface PublicPath {
   invalidatePackCache: () => void;
   /** The release a conversation is bound to (its pins), read from the runtime's workspace store. */
   pinsOf: (workspaceId: string) => Promise<{ packChecksum?: string; packVersionId?: string } | undefined>;
+  /** Everything the (fixed-function) model was shown, one entry per model request, for what-reached-the-model comparisons. */
+  modelRequests: string[];
   /** Records the SSE the runtime and the commerce service sent, before the public view, for what-reached-the-browser comparisons. */
   internalStream: Array<{ hop: string; event: string }>;
   stop: () => Promise<void>;
@@ -52,7 +54,7 @@ async function nest(module: any): Promise<{ port: number; close: () => Promise<v
 export async function startPublicPath(options: { stack?: PlaceMakersStack; storefrontAllowAnonymous?: boolean } = {}): Promise<PublicPath> {
   // The environment a customer's request lands in when it names none. This store is in memory: nothing here is a real environment.
   const ENVIRONMENT = 'production' as const;
-  const stack = options.stack ?? await buildPlaceMakersStack({ environmentId: ENVIRONMENT });
+  const stack = options.stack ?? await buildPlaceMakersStack({ environmentId: ENVIRONMENT, agentMode: true });
   const closers: Array<() => Promise<void>> = [];
 
   // ── Platform stub: token verification and tenant validation, the two lookups the gateway makes ──
@@ -94,7 +96,11 @@ export async function startPublicPath(options: { stack?: PlaceMakersStack; store
   // ── Runtime ──
   const { RuntimeController } = await import('../../apps/journey-runtime-service/src/runtime.controller');
   const { RuntimeService } = await import('../../apps/journey-runtime-service/src/runtime.service');
-  const runtimeService = new RuntimeService(stack.serviceFor({ servePacks: true }));
+  const modelRequests: string[] = [];
+  const modelGateway = new FixedGateway();
+  const scripted = modelGateway.mockAgentExecutor!;
+  modelGateway.mockAgentExecutor = async (request, ...rest) => { modelRequests.push(JSON.stringify(request.messages)); return scripted(request, ...rest); };
+  const runtimeService = new RuntimeService(stack.serviceFor({ servePacks: true, modelGateway }));
   runtimeService.setReleaseActivationRepositoryForTest(activation);
   @Module({ controllers: [RuntimeController], providers: [{ provide: RuntimeService, useValue: runtimeService }] })
   class RuntimeHarnessModule {}
@@ -158,7 +164,7 @@ export async function startPublicPath(options: { stack?: PlaceMakersStack; store
     chatStreamUrl: `http://127.0.0.1:${storefrontPort}/api/chat/stream?project=${TENANT}`,
     urls: { storefront: `http://127.0.0.1:${storefrontPort}`, gateway: `http://127.0.0.1:${gateway.port}`, commerce: `http://127.0.0.1:${commerce.port}`, runtime: `http://127.0.0.1:${runtime.port}` },
     customerHeaders: { Cookie: `jxs_at=${CUSTOMER_TOKEN}` },
-    stack, activation, internalStream: [], invalidatePackCache: () => (runtimeService.appService as any).packRepo.invalidate(),
+    stack, activation, modelRequests, internalStream: [], invalidatePackCache: () => (runtimeService.appService as any).packRepo.invalidate(),
     pinsOf: async (workspaceId: string) => {
       const workspace = await (runtimeService.appService as any).workspaceRepo.load(TENANT, ENVIRONMENT, workspaceId);
       return workspace ? { packChecksum: workspace.pins?.packChecksum, packVersionId: workspace.packVersionId } : undefined;
