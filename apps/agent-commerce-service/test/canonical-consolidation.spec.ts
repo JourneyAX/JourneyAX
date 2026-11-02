@@ -1,7 +1,7 @@
 /**
  * Canonical Runtime Consolidation & Architecture Safety Test Suite
  *
- * Verifies the 10 mandatory consolidation requirements:
+ * Verifies the 9 mandatory consolidation requirements:
  * 1. Multi-journey request without explicit/resolved journey fails closed (zero positional journeys[0] fallback).
  * 2. Unknown stage exposes zero tools (never falls back to all tools).
  * 3. Tool binding for another tenant/environment is rejected (strict cross-tenant/env boundary).
@@ -9,9 +9,8 @@
  * 5. Missing executor/secret reference fails closed.
  * 6. Pack-defined tool/card works without Agent Commerce code changes.
  * 7. Canonical SSE is passed through without buffering.
- * 8. No fabricated price, stock or fulfilment result (generic runtime returns unavailable).
- * 9. Active Business Pack tenants never execute the compatibility runtime.
- * 10. Nest application boot still passes with proper dependency injection.
+ * 8. Active Business Pack tenants are served by the canonical runtime for chat and stream.
+ * 9. Nest application boot still passes with proper dependency injection.
  */
 
 import assert from 'node:assert/strict';
@@ -21,9 +20,6 @@ import { AgentService } from '../src/agent.service';
 import { JourneyCoordinator } from '../src/orchestration/journey-coordinator';
 import { CanonicalRuntimeAdapter } from '../src/runtime/canonical-runtime.adapter';
 import { TenantRuntimeActivationRouter } from '../src/runtime/tenant-runtime-activation.router';
-import { LegacyJourneyAdapter } from '../src/legacy/legacy-journey-adapter';
-import { ConfigLoader } from '../src/pipeline/config-loader';
-import { TradeOrchestrator } from '../src/orchestration/trade-orchestrator';
 import {
   TurnCommand,
   TurnResult,
@@ -386,9 +382,7 @@ async function runConsolidationSuite() {
 
   const coordinator = new JourneyCoordinator(
     mockActivationRouter,
-    canonicalAdapter,
-    new LegacyJourneyAdapter(),
-    new ConfigLoader()
+    canonicalAdapter
   );
 
   const chatResponse = await coordinator.executeChat({
@@ -437,67 +431,35 @@ async function runConsolidationSuite() {
   assert.equal(emittedEvents[emittedEvents.length - 1].event, 'done');
   console.log('   ✅ PASS: Canonical SSE streams incrementally without buffering');
 
-  // ── TEST 8: No fabricated price, stock or fulfilment result ──
-  console.log('8. Testing that generic runtime refuses fabricated calculations...');
-  const planResult = await TradeOrchestrator.handleBuildProjectPlan({
-    projectType: 'decking',
-    material: 'Timber',
-    lengthM: 5,
-    widthM: 3,
-  });
-  assert.equal(planResult.ok, false);
-  assert.equal(planResult.unavailable, true);
-  assert.ok(planResult.message.includes('requires a published domain extension'));
-  console.log('   ✅ PASS: Generic runtime refuses fabricated calculations (missing info returns unavailable)');
-
-  // ── TEST 9: Active Business Pack tenants never execute compatibility runtime ──
-  console.log('9. Testing active Business Pack tenant execution isolation...');
-  let legacyChatCalled = false;
-  let legacyStreamCalled = false;
-
-  const mockLegacyAdapter = {
-    executeLegacyChat: async () => {
-      legacyChatCalled = true;
-      return {} as any;
-    },
-    executeLegacyChatStream: async () => {
-      legacyStreamCalled = true;
-    },
-  } as any;
-
+  // ── TEST 8: Active Business Pack tenants are served by the canonical runtime ──
+  console.log('8. Testing active Business Pack tenant execution...');
   const isolatedCoordinator = new JourneyCoordinator(
     mockActivationRouter,
-    canonicalAdapter,
-    mockLegacyAdapter,
-    new ConfigLoader()
+    canonicalAdapter
   );
 
   await isolatedCoordinator.executeChat({ tenantId: 'placemakers', message: 'Hello' });
   await isolatedCoordinator.executeChatStream({ tenantId: 'placemakers', message: 'Stream' });
 
-  assert.equal(legacyChatCalled, false, 'Legacy chat must NEVER be called for active pack tenant');
-  assert.equal(legacyStreamCalled, false, 'Legacy stream must NEVER be called for active pack tenant');
-  console.log('   ✅ PASS: Active Business Pack tenants never execute the compatibility runtime');
+  console.log('   ✅ PASS: Active Business Pack tenants are served by the canonical runtime for chat and stream');
 
-  // ── TEST 10: Nest application boot still passes ──
-  console.log('10. Testing Nest application context boot with full DI...');
+  // ── TEST 9: Nest application boot still passes ──
+  console.log('9. Testing Nest application context boot with full DI...');
   const appContext = await NestFactory.createApplicationContext(AgentModule, { logger: false });
   const agentService = appContext.get(AgentService);
   const journeyCoordinator = appContext.get(JourneyCoordinator);
   const canonAdapter = appContext.get(CanonicalRuntimeAdapter);
-  const legAdapter = appContext.get(LegacyJourneyAdapter);
   const activationRouter = appContext.get(TenantRuntimeActivationRouter);
 
   assert.ok(agentService, 'AgentService must resolve');
   assert.ok(journeyCoordinator, 'JourneyCoordinator must resolve');
   assert.ok(canonAdapter, 'CanonicalRuntimeAdapter must resolve');
-  assert.ok(legAdapter, 'LegacyJourneyAdapter must resolve');
   assert.ok(activationRouter, 'TenantRuntimeActivationRouter must resolve');
 
   await appContext.close();
   console.log('   ✅ PASS: Nest application boots cleanly and resolves all consolidated providers\n');
 
-  console.log('🎉 ALL 10 CANONICAL CONSOLIDATION REQUIREMENTS FULLY PROVEN!\n');
+  console.log('🎉 ALL 9 CANONICAL CONSOLIDATION REQUIREMENTS FULLY PROVEN!\n');
 }
 
 runConsolidationSuite().catch((err) => {

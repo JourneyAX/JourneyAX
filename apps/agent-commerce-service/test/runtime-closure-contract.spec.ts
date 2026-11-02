@@ -80,11 +80,6 @@ async function runContractAndStreamingSuite() {
   const mockActivationRouter: any = {
     resolveActivation: async () => ({ action: 'CANONICAL', reason: 'Canonical test' }),
   };
-  const mockConfigLoader: any = {
-    loadProjectConfig: async () => ({ model: 'test' }),
-  };
-  const mockLegacyAdapter: any = {};
-
   let receivedTurnCommand: TurnCommand | null = null;
   const mockRuntimeAdapter: any = {
     runTurn: async (cmd: TurnCommand) => {
@@ -109,9 +104,7 @@ async function runContractAndStreamingSuite() {
 
   const coordinator = new JourneyCoordinator(
     mockActivationRouter,
-    mockRuntimeAdapter,
-    mockLegacyAdapter,
-    mockConfigLoader
+    mockRuntimeAdapter
   );
 
   await coordinator.executeChat({
@@ -388,7 +381,7 @@ async function runContractAndStreamingSuite() {
   console.log('   ✅ PASS: ChatPanel renders ordered token deltas, UI cards, working status, and completion accurately');
 
   // ── TEST 6: Activation Failure Returns Explicit 503 ────────────────────────
-  console.log('6. Testing activation failure returns explicit 503 and never falls back to legacy...');
+  console.log('6. Testing activation failure, and an unmigrated tenant, return an explicit 503 and never reach another engine...');
   const failingActivationRouter: any = {
     resolveActivation: async () => ({
       action: 'BLOCKED',
@@ -397,19 +390,9 @@ async function runContractAndStreamingSuite() {
     }),
   };
 
-  let legacyCalled = false;
-  const legacySpy: any = {
-    executeLegacyChat: async () => {
-      legacyCalled = true;
-      return { message: { role: 'assistant', content: 'Legacy fallback' } };
-    },
-  };
-
   const blockedCoordinator = new JourneyCoordinator(
     failingActivationRouter,
-    mockRuntimeAdapter,
-    legacySpy,
-    mockConfigLoader
+    mockRuntimeAdapter
   );
 
   try {
@@ -425,9 +408,29 @@ async function runContractAndStreamingSuite() {
     );
     assert.equal(err.getStatus(), 503, 'Must return HTTP 503');
     assert.ok(err.message.includes('Checksum mismatch'), 'Must convey explicit reason');
-    assert.equal(legacyCalled, false, 'Activation failure MUST NEVER fall back to legacy execution');
   }
-  console.log('   ✅ PASS: Activation lookup failure returns explicit 503 and never falls back to legacy');
+
+  // A tenant with no approved record (the router answers LEGACY) is refused too: there is no other engine to serve it.
+  let runtimeCalledForUnmigrated = false;
+  const unmigratedCoordinator = new JourneyCoordinator(
+    { resolveActivation: async () => ({ action: 'LEGACY', reason: "No release activation record found for tenant 'newshop'" }) } as any,
+    {
+      runTurn: async () => { runtimeCalledForUnmigrated = true; return {} as any; },
+      streamTurn: async () => { runtimeCalledForUnmigrated = true; },
+    } as any
+  );
+  await assert.rejects(
+    () => unmigratedCoordinator.executeChat({ tenantId: 'newshop', message: 'Hello' }),
+    (err: any) => err instanceof ServiceUnavailableException && err.getStatus() === 503 && err.message.includes('No other engine is available'),
+    'An unmigrated tenant must get an explicit 503'
+  );
+  await assert.rejects(
+    () => unmigratedCoordinator.executeChatStream({ tenantId: 'newshop', message: 'Hello' }, () => {}),
+    (err: any) => err instanceof ServiceUnavailableException && err.getStatus() === 503,
+    'An unmigrated tenant must get an explicit 503 on the stream too'
+  );
+  assert.equal(runtimeCalledForUnmigrated, false, 'The canonical runtime must not be called for an unmigrated tenant');
+  console.log('   ✅ PASS: Activation failure and an unmigrated tenant return an explicit 503; no other engine is used');
 
   // ── TEST 7: Negative Tests: Transactional Handlers Fail Closed Without Adapters ─
   console.log('7. Testing transactional handlers cannot manufacture success without authoritative adapters...');

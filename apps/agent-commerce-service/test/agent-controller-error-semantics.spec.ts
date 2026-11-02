@@ -30,7 +30,7 @@ async function runControllerErrorSemanticsSuite() {
 
     await assert.rejects(
       async () => {
-        await controller.chat('', '', { message: 'hello', tenantId: '' });
+        await controller.chat('', '', undefined, { message: 'hello', tenantId: '' });
       },
       (err: any) => {
         assert.ok(err instanceof HttpException, 'Must be an HttpException');
@@ -61,7 +61,7 @@ async function runControllerErrorSemanticsSuite() {
 
     await assert.rejects(
       async () => {
-        await controller.chat('test-tenant', 'test-tenant', { message: 'hello' });
+        await controller.chat('test-tenant', 'test-tenant', undefined, { message: 'hello' });
       },
       (err: any) => {
         assert.ok(err instanceof HttpException, 'Must be an HttpException');
@@ -93,7 +93,7 @@ async function runControllerErrorSemanticsSuite() {
 
     await assert.rejects(
       async () => {
-        await controller.chat('test-tenant', 'test-tenant', { message: 'hello' });
+        await controller.chat('test-tenant', 'test-tenant', undefined, { message: 'hello' });
       },
       (err: any) => {
         assert.ok(err instanceof HttpException, 'Must be an HttpException');
@@ -130,7 +130,7 @@ async function runControllerErrorSemanticsSuite() {
       },
     } as any;
 
-    await controller.chatStream('', '', undefined, { message: 'hello' }, res);
+    await controller.chatStream('', '', undefined, undefined, { message: 'hello' }, res);
     assert.equal(recordedStatus, 400, 'Must return HTTP 400 for missing tenant');
     assert.equal(recordedJson?.error, 'Bad Request');
     console.log('   ✅ PASS: /chat/stream returns 400 on missing tenantId');
@@ -180,7 +180,7 @@ async function runControllerErrorSemanticsSuite() {
       },
     } as any;
 
-    await controller.chatStream('test-tenant', 'test-tenant', undefined, { message: 'hello' }, res);
+    await controller.chatStream('test-tenant', 'test-tenant', undefined, undefined, { message: 'hello' }, res);
     assert.equal(recordedStatus, 503, 'Must return HTTP 503 on activation failure');
     // A server-side failure never shows the customer what failed inside; the status still tells a client it is a server fault.
     assert.ok(!JSON.stringify(recordedJson).includes('Cutover repository failure'), 'the internal reason is not shown');

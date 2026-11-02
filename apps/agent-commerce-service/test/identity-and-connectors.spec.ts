@@ -10,8 +10,6 @@ import { signGatewayAssertion, verifyGatewayAssertion } from '@journeyax/databas
 import { cleanDisabledConnectors, principalIdFor, verifiedIdentity } from '../src/identity';
 import { CanonicalRuntimeAdapter } from '../src/runtime/canonical-runtime.adapter';
 import { JourneyCoordinator } from '../src/orchestration/journey-coordinator';
-import { LegacyJourneyAdapter } from '../src/legacy/legacy-journey-adapter';
-import { ConfigLoader } from '../src/pipeline/config-loader';
 
 const SECRET = 'test-secret-for-identity';
 process.env.GATEWAY_ASSERTION_SECRET = SECRET;
@@ -79,7 +77,7 @@ async function main() {
     assert.equal((seen[1].identity.groups ?? []).length, 0);
 
     // a turn through the coordinator carries the verified role, groups and switched-off connectors to the runtime
-    const coordinator = new JourneyCoordinator({ resolveActivation: async () => ({ action: 'CANONICAL' }) } as any, adapter, new LegacyJourneyAdapter(), new ConfigLoader(), undefined as any);
+    const coordinator = new JourneyCoordinator({ resolveActivation: async () => ({ action: 'CANONICAL' }) } as any, adapter);
     await coordinator.executeChatStream({
       tenantId: 'placemakers', message: 'stock at Hamilton?', turnId: 't1', sessionId: 's1',
       verifiedIdentity: { sub: 'sam@placemakers.example', role: 'consultant', groups: ['customer-service'] }, disabledConnectors: ['ace-erp'],

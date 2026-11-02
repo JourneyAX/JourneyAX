@@ -108,8 +108,6 @@ export async function startPublicPath(options: { stack?: PlaceMakersStack; store
   const { JourneyCoordinator } = await import('../../apps/agent-commerce-service/src/orchestration/journey-coordinator');
   const { TenantRuntimeActivationRouter } = await import('../../apps/agent-commerce-service/src/runtime/tenant-runtime-activation.router');
   const { CanonicalRuntimeAdapter } = await import('../../apps/agent-commerce-service/src/runtime/canonical-runtime.adapter');
-  const { LegacyJourneyAdapter } = await import('../../apps/agent-commerce-service/src/legacy/legacy-journey-adapter');
-  const { ConfigLoader } = await import('../../apps/agent-commerce-service/src/pipeline/config-loader');
   const { QuoteService } = await import('../../apps/agent-commerce-service/src/commerce/quote.service');
   const { OrderService } = await import('../../apps/agent-commerce-service/src/commerce/order.service');
   const { RosterService } = await import('../../apps/agent-commerce-service/src/commerce/roster.service');
@@ -119,7 +117,7 @@ export async function startPublicPath(options: { stack?: PlaceMakersStack; store
   @Module({
     controllers: [JourneyAXController],
     providers: [
-      AgentService, JourneyCoordinator, CanonicalRuntimeAdapter, LegacyJourneyAdapter, ConfigLoader,
+      AgentService, JourneyCoordinator, CanonicalRuntimeAdapter,
       { provide: 'RELEASE_ACTIVATION_REPOSITORY', useValue: activation },
       TenantRuntimeActivationRouter,
       // Not used by the chat stream; the controller only needs them to exist.

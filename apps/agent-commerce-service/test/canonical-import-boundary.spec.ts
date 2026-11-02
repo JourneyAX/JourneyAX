@@ -4,7 +4,6 @@ import * as path from 'node:path';
 import { CanonicalRuntimeAdapter } from '../src/runtime/canonical-runtime.adapter';
 import { TenantRuntimeActivationRouter } from '../src/runtime/tenant-runtime-activation.router';
 import { JourneyCoordinator } from '../src/orchestration/journey-coordinator';
-import { ConfigLoader } from '../src/pipeline/config-loader';
 
 async function runImportBoundarySuite() {
   console.log('🧪 Running Canonical Path Import Boundary & Legacy Isolation Suite...');
@@ -92,7 +91,6 @@ async function runImportBoundarySuite() {
 
   // 3. Runtime isolation proof: Canonical execution NEVER invokes legacy adapter
   console.log('3. Proving runtime invocation boundary in JourneyCoordinator...');
-  let legacyInvoked = false;
   let canonicalInvoked = false;
 
   const mockActivationRouter = new TenantRuntimeActivationRouter();
@@ -124,22 +122,9 @@ async function runImportBoundarySuite() {
     };
   };
 
-  const mockLegacyAdapter = {
-    executeLegacyChat: async () => {
-      legacyInvoked = true;
-      throw new Error('SECURITY VIOLATION: Legacy adapter must NOT be called for canonical tenant');
-    },
-    executeLegacyChatStream: async () => {
-      legacyInvoked = true;
-      throw new Error('SECURITY VIOLATION: Legacy adapter must NOT be called for canonical tenant');
-    },
-  } as any;
-
   const coordinator = new JourneyCoordinator(
     mockActivationRouter,
-    mockCanonicalRuntime,
-    mockLegacyAdapter,
-    new ConfigLoader()
+    mockCanonicalRuntime
   );
 
   const res = await coordinator.executeChat({
@@ -148,9 +133,8 @@ async function runImportBoundarySuite() {
   });
 
   assert.equal(canonicalInvoked, true, 'Canonical runtime must be invoked');
-  assert.equal(legacyInvoked, false, 'Legacy adapter must NEVER be invoked');
   assert.equal(res.message.content, 'Canonical response');
-  console.log('   ✅ PASS: Canonical tenant routes exclusively to canonical runtime without touching legacy path\n');
+  console.log('   ✅ PASS: Canonical tenant routes exclusively to canonical runtime\n');
 
   console.log('🎉 CANONICAL IMPORT BOUNDARY & ISOLATION FULLY VERIFIED!\n');
 }

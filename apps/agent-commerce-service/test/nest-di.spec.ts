@@ -3,16 +3,14 @@ import { NestFactory } from '@nestjs/core';
 import { AgentModule } from '../src/agent.module';
 import { AgentService } from '../src/agent.service';
 import { JourneyCoordinator } from '../src/orchestration/journey-coordinator';
-import { ConfigLoader } from '../src/pipeline/config-loader';
-import { SessionStore } from '../src/pipeline/session-store';
-import { ModelRouter } from '../src/llm/model-router';
-import { PolicyEnforcer } from '../src/pipeline/policy-enforcer';
-import { StorefrontCommerceService } from '../src/commerce/storefront-commerce.service';
-import { ResponseComposer } from '../src/presentation/response-composer';
-import { ToolDispatcher } from '../src/legacy/tool-dispatcher';
 import { TenantRuntimeActivationRouter } from '../src/runtime/tenant-runtime-activation.router';
 import { CanonicalRuntimeAdapter } from '../src/runtime/canonical-runtime.adapter';
-import { LegacyJourneyAdapter } from '../src/legacy/legacy-journey-adapter';
+import { QuoteService } from '../src/commerce/quote.service';
+import { OrderService } from '../src/commerce/order.service';
+import { RosterService } from '../src/commerce/roster.service';
+import { SchoolResearchService } from '../src/commerce/school-research.service';
+import { WhatsAppService } from '../src/commerce/whatsapp.service';
+import { CareService } from '../src/care/care.service';
 
 async function runTests() {
   console.log('🧪 Running Nest Dependency Injection & Application Context Suite...');
@@ -50,16 +48,14 @@ async function runTests() {
 
   // 5. Verify all required runtime providers resolve
   const providers = [
-    ConfigLoader,
-    SessionStore,
-    ModelRouter,
-    PolicyEnforcer,
-    StorefrontCommerceService,
-    ResponseComposer,
-    ToolDispatcher,
     TenantRuntimeActivationRouter,
     CanonicalRuntimeAdapter,
-    LegacyJourneyAdapter,
+    QuoteService,
+    OrderService,
+    RosterService,
+    SchoolResearchService,
+    WhatsAppService,
+    CareService,
   ];
 
   for (const provider of providers) {

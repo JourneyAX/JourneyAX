@@ -7,8 +7,6 @@ import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { CanonicalRuntimeAdapter } from '../src/runtime/canonical-runtime.adapter';
 import { JourneyCoordinator } from '../src/orchestration/journey-coordinator';
-import { LegacyJourneyAdapter } from '../src/legacy/legacy-journey-adapter';
-import { ConfigLoader } from '../src/pipeline/config-loader';
 import { TurnCommandRequestSchema } from '../../journey-runtime-service/src/dto/turn.dto';
 
 async function main() {
@@ -63,7 +61,7 @@ async function main() {
       runTurn: async (cmd: any) => { commands.push(cmd); return { assistantMessage: 'ok', trace: {} }; },
       streamTurn: async (cmd: any, emit: any) => { commands.push(cmd); emit('done', { sessionId: cmd.sessionId }); },
     };
-    const coordinator = new JourneyCoordinator({ resolveActivation: async () => ({ action: 'CANONICAL' }) } as any, canonical, new LegacyJourneyAdapter(), new ConfigLoader(), undefined as any);
+    const coordinator = new JourneyCoordinator({ resolveActivation: async () => ({ action: 'CANONICAL' }) } as any, canonical);
     await coordinator.executeChat({ tenantId: 'placemakers', message: 'hi', parentMessageId: 'root' } as any);
     await coordinator.executeChatStream({ tenantId: 'placemakers', message: 'hi', parentMessageId: 't1:assistant' } as any, () => {});
     assert.deepEqual(commands.map((c) => c.parentMessageId), ['root', 't1:assistant']);

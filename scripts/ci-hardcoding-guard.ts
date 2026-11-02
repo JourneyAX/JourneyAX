@@ -81,9 +81,6 @@ const ALLOWLISTED_FILES = new Set([
   'apps/journey-runtime-service/src/kernel/presentation.port.ts',
   // Dev-only localhost defaults, rejected in production by validateProductionTargets().
   'apps/api-gateway/src/gateway.registry.ts',
-  // Frozen legacy compatibility adapters for unmigrated tenants only - scheduled for decommissioning
-  'apps/agent-commerce-service/src/legacy/legacy-journey-adapter.ts',
-  'apps/agent-commerce-service/src/legacy/project-calculator.service.ts',
 ]);
 
 // Violation check patterns
