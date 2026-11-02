@@ -1,6 +1,5 @@
 import { Controller, Post, Get, Param, Body, Inject, Headers, HttpException, HttpStatus, Query } from '@nestjs/common';
 import { ProductService } from './product.service';
-import { ArtworkService, ArtworkStatus } from './artwork.service';
 import { RenderService } from './render.service';
 import { TryOnService, TryOnInput } from './tryon.service';
 
@@ -19,7 +18,6 @@ const DEMO_QTY_SPREAD = 118;
 export class ProductController {
   constructor(
     @Inject(ProductService) private readonly productService: ProductService,
-    @Inject(ArtworkService) private readonly artwork: ArtworkService,
     @Inject(RenderService) private readonly renderer: RenderService,
     @Inject(TryOnService) private readonly tryOnService: TryOnService,
   ) {}
@@ -128,43 +126,6 @@ export class ProductController {
     // Names with no resolvable value are simply absent — the caller renders a
     // neutral chip rather than a plausible-looking wrong colour.
     return { colours, resolved: Object.keys(colours).length, asked: names.length };
-  }
-
-  @Post('artwork')
-  async registerArtwork(@Param('projectId') projectId: string, @Body() body: any) {
-    return this.artwork.register((projectId || '').toLowerCase(), body || {});
-  }
-
-  /** Artwork on file for a session or entity. */
-  @Post('artwork/list')
-  async listArtwork(@Param('projectId') projectId: string, @Body() body: { sessionId?: string; entityKey?: string }) {
-    return this.artwork.list((projectId || '').toLowerCase(), body || {});
-  }
-
-  /**
-   * Advance the approval state. `approved` requires a HUMAN actor — the agent
-   * cannot approve its own proof, because approval gates irreversible printing.
-   * The actor is derived from an authenticated operator/customer header, never
-   * from the request body, so a caller cannot simply claim to be human.
-   */
-  @Post('artwork/:artworkId/status')
-  async setArtworkStatus(
-    @Param('projectId') projectId: string,
-    @Param('artworkId') artworkId: string,
-    @Headers('x-user-email') userEmail: string,
-    @Headers('x-actor-type') actorType: string,
-    @Body() body: { status: ArtworkStatus; note?: string },
-  ) {
-    const actor: 'human' | 'agent' = userEmail || actorType === 'human' ? 'human' : 'agent';
-    return this.artwork.setStatus((projectId || '').toLowerCase(), artworkId, body?.status, {
-      by: userEmail || undefined, note: body?.note, actor,
-    });
-  }
-
-  /** Production gate: is every artwork item for this session approved? */
-  @Post('artwork/gate')
-  async artworkGate(@Param('projectId') projectId: string, @Body() body: { sessionId: string }) {
-    return this.artwork.approvalGate((projectId || '').toLowerCase(), body?.sessionId || '');
   }
 
   /**
@@ -363,27 +324,6 @@ export class ProductController {
   async skusLookup(@Param('projectId') projectId: string, @Body() body: { skus: string[] }) {
     const products = await this.productService.lookupSkus((projectId || '').toLowerCase(), body?.skus || []);
     return { products };
-  }
-
-  /** Which of these styles can be custom-designed (AUG-25). Three-valued. */
-  @Post('designability')
-  async designability(@Param('projectId') projectId: string, @Body() body: { skus: string[] }) {
-    const designable = await this.productService.getDesignability(
-      (projectId || '').toLowerCase(), body?.skus || [],
-    );
-    return { designable };
-  }
-
-  /** Styles proven designable, for when the chosen one is not (AUG-25). */
-  @Post('designable')
-  async designable(
-    @Param('projectId') projectId: string,
-    @Body() body: { like?: string; likeSku?: string; limit?: number },
-  ) {
-    const items = await this.productService.getDesignable((projectId || '').toLowerCase(), {
-      like: body?.like, likeSku: body?.likeSku, limit: body?.limit,
-    });
-    return { items };
   }
 
   /** Brand orientation brief for this project (AUG-14). */
