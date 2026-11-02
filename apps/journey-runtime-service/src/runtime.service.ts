@@ -43,7 +43,6 @@ import { DashboardViewService } from './dashboard/dashboard-view';
 import { customerAccountSettings } from './agent/customer-account';
 import type { PersonCompany } from './kernel/company-directory';
 import { idleRepinHours, isIdleBeyond, packHostsWorkspace } from './kernel/pin-lifecycle';
-import { isAgentModeEnabled } from './agent/agent-loop';
 import { getAgentToolDefinitions } from './agent/agent-tools';
 
 
@@ -923,7 +922,7 @@ export class RuntimeService {
     status: string;
     tenantId: string;
     environmentId: EnvironmentId;
-    engineMode: 'agent' | 'rule-based';
+    engineMode: 'agent';
     defaultAgentId?: string;
     toolCount: number;
     availableTools: string[];
@@ -941,24 +940,21 @@ export class RuntimeService {
         status: 'not_found',
         tenantId,
         environmentId,
-        engineMode: 'rule-based',
+        engineMode: 'agent',
         toolCount: 0,
         availableTools: [],
       };
     }
 
-    const isAgent = isAgentModeEnabled(pack);
-    const engineMode: 'agent' | 'rule-based' = isAgent ? 'agent' : 'rule-based';
+    const engineMode = 'agent' as const;
     const defaultAgentId =
       (pack.extensions?.agentMode as any)?.defaultAgentId ||
       pack.routingPolicy?.defaultAgentId ||
       (Array.isArray(pack.agents) && pack.agents.length === 1 ? pack.agents.find(Boolean)?.agentId : undefined);
 
-    const tools = isAgent ? getAgentToolDefinitions(pack) : [];
-    const toolCount = isAgent ? tools.length : (pack.capabilities || []).length;
-    const availableTools = isAgent
-      ? tools.map((t) => t.name)
-      : (pack.capabilities || []).map((c: any) => c.capabilityId || c.name || c.id || String(c));
+    const tools = getAgentToolDefinitions(pack);
+    const toolCount = tools.length;
+    const availableTools = tools.map((t) => t.name);
 
     console.log(
       `[EngineStatus] Active engine mode for tenant='${tenantId}' (${environmentId}): mode='${engineMode}' agentId='${defaultAgentId || 'none'}' toolsCount=${toolCount}`

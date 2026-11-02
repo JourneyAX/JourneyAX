@@ -226,15 +226,3 @@ export function validatePackSettings(dto: {
 
   return { ok: true, set };
 }
-
-/**
- * Checks whether agent mode is enabled for a given release or pack.
- * Agent mode is switched on per tenant by pack setting (default off).
- */
-export function isAgentModeEnabled(release?: any): boolean {
-  if (!release) return false;
-  const ext = release.extensions;
-  if (ext?.agentMode?.enabled === true || ext?.agentMode === true) return true;
-  if (ext?.dialoguePolicy?.agentMode === true) return true;
-  return false;
-}

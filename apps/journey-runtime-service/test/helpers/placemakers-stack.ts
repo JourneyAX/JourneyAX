@@ -14,8 +14,6 @@ import { CatalogSearchHandler } from '../../src/capabilities/handlers/catalog-se
 import { ExecutionRepository } from '../../src/kernel/execution.repository';
 import { OutboxRepository } from '../../src/kernel/outbox.repository';
 import { PresentationPort } from '../../src/kernel/presentation.port';
-import { TurnInterpreter } from '../../src/turn/interpret-event';
-import { OutcomeValidator } from '../../src/turn/validate-outcome';
 import { OkfKnowledgeControlPlane } from '../../src/kernel/knowledge-control-plane';
 import { KnowledgeGapRepository } from '../../src/kernel/knowledge-gap.repository';
 import { ProjectService } from '../../../project-service/src/project.service';
@@ -278,8 +276,7 @@ export async function buildPlaceMakersStack(options: {
     return new TurnApplicationService(
       options.servePacks ? new PackRepository(db) : new PackRepository(), new WorkspaceRepository(new WorkspaceStore({ forceInMemory: true })), new JourneyResolver(), undefined,
       modelGateway, capabilityGateway, undefined, new ExecutionRepository(), new OutboxRepository({ forceInMemory: true }),
-      new PresentationPort(modelGateway), new TurnInterpreter(modelGateway), undefined, new OutcomeValidator(),
-      new OkfKnowledgeControlPlane(async () => db as any), undefined, new KnowledgeGapRepository(db),
+      new PresentationPort(modelGateway), new OkfKnowledgeControlPlane(async () => db as any), undefined, new KnowledgeGapRepository(db),
     );
   };
   return { db, projects, pack, reference: pack.knowledgeModel, content, okf, authored, serviceFor };

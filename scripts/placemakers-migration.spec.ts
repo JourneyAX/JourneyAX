@@ -741,10 +741,7 @@ async function runSuite() {
       approvalService,
       executionRepo,
       outboxRepo,
-      presentationPort,
-      new TurnInterpreter(modelGateway),
-      new FactReducer(),
-      outcomeValidator
+      presentationPort
     );
 
     // 5. Start the existing Nest runtime application on an ephemeral localhost port
@@ -1069,8 +1066,7 @@ async function runSuite() {
       const modelGateway = new ModelGateway();
       const appService = new TurnApplicationService(
         packRepo, workspaceRepo, new JourneyResolver(), new AgentRouter(), modelGateway,
-        capabilityGateway, approvalService, executionRepo, outboxRepo, new PresentationPort(),
-        new TurnInterpreter(modelGateway), new FactReducer(), new OutcomeValidator()
+        capabilityGateway, approvalService, executionRepo, outboxRepo, new PresentationPort()
       );
 
       const runtimeApp = await NestFactory.create(RuntimeModule, { logger: false });

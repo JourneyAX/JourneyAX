@@ -106,19 +106,6 @@ export interface AgentTurnOutcome {
 }
 
 /**
- * Determines if agent mode is enabled for a given release or pack.
- * Agent mode is switched on per tenant by a pack setting (default off).
- */
-export function isAgentModeEnabled(release?: any): boolean {
-  if (!release) return false;
-  const ext = release.extensions;
-  if (ext?.agentMode?.enabled === false || ext?.agentMode === false) return false;
-  if (ext?.agentMode?.enabled === true || ext?.agentMode === true) return true;
-  if (ext?.dialoguePolicy?.agentMode === true) return true;
-  return false;
-}
-
-/**
  * Minimal generic platform prompt in code.
  * Contains only platform rules (how to use tools, grounding rules, output rules).
  * Contains no business words, no tenant names, and no customer-facing sentence templates.

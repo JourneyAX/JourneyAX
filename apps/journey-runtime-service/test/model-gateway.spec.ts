@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import {
   ModelGateway,
-  ModelGatewayError,
   ModelMissingCredentialsError,
   ModelTimeoutError,
   ModelProviderHttpError,
@@ -10,9 +9,8 @@ import {
 } from '../src/kernel/model.gateway';
 import { ModelRouter } from '../src/model/model-router';
 import { AgentRouter } from '../src/kernel/agent.router';
-import { TurnApplicationService } from '../src/kernel/turn-application.service';
 import { BusinessPackRelease } from '@journeyax/business-pack';
-import { WorkspaceState, TurnCommand } from '@journeyax/journey-core';
+import { WorkspaceState } from '@journeyax/journey-core';
 
 // Test Business Pack for Model Gateway & Agent Engine
 const mockModelEnginePack: BusinessPackRelease = {
@@ -540,32 +538,6 @@ async function runTests() {
     console.log('✓ executeWithAgent propagates fail-closed errors without fabrication\n');
   }
 
-  // Test 11: TurnApplicationService Tracing
-  {
-    console.log('Test 11: TurnApplicationService traces model route metadata');
-    process.env.NODE_ENV = 'test';
-    process.env.ALLOW_IN_MEMORY_WORKSPACES = 'true';
-
-    const appService = new TurnApplicationService();
-    appService.packRepo.loadActivePack = async () => mockModelEnginePack;
-
-    const command: TurnCommand = {
-      tenantId: 'tenant-enterprise-logistics',
-      environmentId: 'test',
-      workspaceId: 'ws-turn-model-trace-1',
-      sessionId: 'sess-model-1',
-      correlationId: 'corr-model-trace-1',
-      message: 'Plan route from Sydney to Canberra',
-    };
-
-    const result = await appService.executeTurn(command);
-    assert.ok(result.trace);
-    assert.ok(result.trace.modelRoute);
-    assert.equal(result.trace.modelRoute?.policyId, 'fast_intent');
-    assert.equal(result.trace.modelRoute?.dataResidency, 'au');
-    console.log('✓ TurnApplicationService trace accurately records model route and residency\n');
-  }
-
   // Test 12: Multi-candidate fallback when candidate 1 fails/times out
   {
     console.log('Test 12: Multi-candidate fallback when primary candidate times out');
@@ -642,7 +614,7 @@ async function runTests() {
   }
 
   console.log('====================================================');
-  console.log('✓ All 12 Model Gateway Tests PASSED!');
+  console.log('✓ All 11 Model Gateway Tests PASSED!');
   console.log('====================================================\n');
 }
 

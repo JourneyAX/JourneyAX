@@ -339,8 +339,7 @@ async function runClosure(): Promise<void> {
     const sseModelGateway = new ModelGateway();
     const sseAppService = new TurnApplicationService(
       ssePackRepo, sseWorkspaceRepo, new JourneyResolver(), new AgentRouter(), sseModelGateway,
-      sseCapGateway, sseApprovalService, sseExecutionRepo, sseOutboxRepo, new PresentationPort(),
-      new TurnInterpreter(sseModelGateway), new FactReducer(), new OutcomeValidator()
+      sseCapGateway, sseApprovalService, sseExecutionRepo, sseOutboxRepo, new PresentationPort()
     );
 
     let runtimeApp: any;

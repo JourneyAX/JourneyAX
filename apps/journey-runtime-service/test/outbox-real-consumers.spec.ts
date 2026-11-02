@@ -1,16 +1,14 @@
 import assert from 'node:assert/strict';
 import { NestFactory } from '@nestjs/core';
-import { CapabilityDispatcher } from '@journeyax/capability-sdk';
-import { computePackChecksum, publishBusinessPack } from '@journeyax/business-pack';
+import { publishBusinessPack } from '@journeyax/business-pack';
 import { buildCanonicalPackContent, buildStoredRelease } from './fixtures/canonical-release.fixture';
 import { RuntimeModule } from '../src/runtime.module';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
-import { OutboxWorker } from '../src/kernel/outbox.worker';
 import { OutboxWorkerService } from '../src/kernel/outbox-worker.service';
 import { ApprovalService } from '../src/kernel/approval.service';
 import { TurnApplicationService } from '../src/kernel/turn-application.service';
 import { ApprovalStore } from '../src/approval/approval.store';
-import { COLLECTION_TOOL_APPROVALS, setTestDatabase } from '@journeyax/database';
+import { setTestDatabase } from '@journeyax/database';
 
 process.env.ACTIVEPIECES_API_URL = process.env.ACTIVEPIECES_API_URL || 'http://localhost:3010';
 process.env.ALLOW_IN_MEMORY_OUTBOX = 'true';
@@ -304,7 +302,7 @@ function createMockOutboxDb(overrides: {
         }
         return { insertedId: 'mock_id' };
       },
-      findOneAndUpdate: async (filter: any, update: any, options: any) => {
+      findOneAndUpdate: async (filter: any, update: any) => {
         if (name === 'approval_requests' || name === 'tool_approvals') {
           for (const [id, app] of approvals.entries()) {
             let matched = false;
@@ -934,7 +932,7 @@ async function runOutboxRealConsumersSuite() {
     // 10b: When durable approved record exists and ownership is valid, real CapabilityDispatcher calls the provider.
     const originalFetch = globalThis.fetch;
     try {
-      (globalThis as any).fetch = async (url: string, init: any) => {
+      (globalThis as any).fetch = async () => {
         return {
           ok: true,
           status: 200,
@@ -1320,7 +1318,6 @@ async function runOutboxRealConsumersSuite() {
       service.configureHandlers({ db: mockDb });
 
       const event1 = repo.getEvents().find((e) => e.approvalId === pending17.approvalRequestId)!;
-      const event1Id = event1.eventId;
 
       const worker1 = service.startWithRepository(repo, undefined, {
         workerId: 'worker_reuse_1',
@@ -1962,7 +1959,7 @@ async function runOutboxRealConsumersSuite() {
     // Mock Activepieces API response for execution
     const originalFetch = globalThis.fetch;
     let fetchCalled = false;
-    globalThis.fetch = async (url: any, init: any) => {
+    globalThis.fetch = async () => {
       fetchCalled = true;
       return {
         ok: true,
@@ -2507,12 +2504,6 @@ async function runOutboxRealConsumersSuite() {
       }),
       decide: () => ({ type: 'complete' }),
     };
-    const mockInterpreter: any = {
-      interpret: async () => ({}),
-    };
-    const mockFactReducer: any = {
-      apply: (ws: any) => ws,
-    };
 
     // Mock Mongo client with session whose withTransaction throws UnknownTransactionCommitResult
     const mockTxClient: any = {
@@ -2541,9 +2532,7 @@ async function runOutboxRealConsumersSuite() {
         new ApprovalService(undefined, mockOutboxRepo),
         undefined,
         mockOutboxRepo,
-        undefined,
-        mockInterpreter,
-        mockFactReducer
+        undefined
       );
 
       await assert.rejects(

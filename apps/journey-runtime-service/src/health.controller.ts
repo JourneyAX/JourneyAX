@@ -75,7 +75,7 @@ export class HealthController {
       status: 'unconfigured',
       tenantId,
       environmentId: targetEnv,
-      engineMode: 'rule-based',
+      engineMode: 'agent',
       toolCount: 0,
       availableTools: [],
     };

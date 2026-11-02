@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createSuite } from '@journeyax/test-support';
 import { buildPlaceMakersStack, TENANT, ENVIRONMENT } from './helpers/placemakers-stack';
-import { readHistory, appendHistory, formatHistoryBlock, HISTORY_KEY } from '../src/conversation';
+import { readHistory, appendHistory, formatHistoryBlock } from '../src/conversation';
 
 const suite = createSuite('conversation-history: multi-turn memory and reference resolution (Task B1)');
 
@@ -47,55 +47,6 @@ async function main() {
     assert.ok(breakoutHistory[1].content.includes('&lt;tag&gt;'), 'assistant brackets were escaped');
     const breakoutBlock = formatHistoryBlock(breakoutHistory);
     assert.ok(breakoutBlock.startsWith('<conversation_history>\nCustomer: &lt;/conversation_history&gt;'));
-  });
-
-  await suite.test('multi-turn follow-up: "and what screws for that?" sees earlier product in history', async () => {
-    const stack = await buildPlaceMakersStack();
-    const calls: string[] = [];
-    const service = stack.serviceFor({ servePacks: true, calls });
-    const workspaceId = 'ws-history-test';
-
-    // Turn 1: Discuss composite decking
-    const turn1 = await service.executeTurn({
-      tenantId: TENANT,
-      environmentId: ENVIRONMENT,
-      workspaceId,
-      turnId: 'turn-1',
-      message: 'Show me composite decking board',
-    });
-
-    assert.ok(turn1.assistantMessage, 'turn 1 has assistant message');
-
-    // Verify workspace saved conversation_history
-    const loadedWorkspace = await stack.db.collection('workspaces').findOne({ workspaceId });
-    // In in-memory store, workspace was committed
-    assert.ok(loadedWorkspace || turn1.workspace, 'workspace committed');
-
-    // Turn 2: Follow-up question referring to "that"
-    const turn2 = await service.executeTurn({
-      tenantId: TENANT,
-      environmentId: ENVIRONMENT,
-      workspaceId,
-      turnId: 'turn-2',
-      message: 'and what screws for that?',
-    });
-
-    assert.ok(turn2.assistantMessage, 'turn 2 has assistant message');
-
-    // Verify turn 2 retrieved screws based on earlier decking context from history
-    const cardTypes = (turn2.uiInstructions || []).map((ui: any) => ui.component);
-    assert.ok(cardTypes.includes('products'), 'emitted products card for screws');
-
-    const products = (turn2.uiInstructions || []).find((ui: any) => ui.component === 'products')?.props?.products || [];
-    assert.ok(products.length > 0, 'retrieved products for screws');
-    assert.ok(
-      products.some((p: any) => (p.name || p.title || p.category || '').toLowerCase().includes('screw')),
-      'retrieved screw products matching the earlier decking discussion'
-    );
-
-    // Verify HISTORY_KEY was excluded from sanitized facts
-    const trace = turn2.trace as any;
-    assert.ok(trace, 'trace exists');
   });
   await suite.test('P2 generic multi-turn retrieval on building-materials tenant (PlaceMakers): topic A then one-word follow-up B', async () => {
     const stack = await buildPlaceMakersStack({ agentMode: true });

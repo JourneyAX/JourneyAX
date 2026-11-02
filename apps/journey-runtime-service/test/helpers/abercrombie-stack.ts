@@ -10,8 +10,6 @@ import { CatalogSearchHandler } from '../../src/capabilities/handlers/catalog-se
 import { ExecutionRepository } from '../../src/kernel/execution.repository';
 import { OutboxRepository } from '../../src/kernel/outbox.repository';
 import { PresentationPort } from '../../src/kernel/presentation.port';
-import { TurnInterpreter } from '../../src/turn/interpret-event';
-import { OutcomeValidator } from '../../src/turn/validate-outcome';
 import { OkfKnowledgeControlPlane } from '../../src/kernel/knowledge-control-plane';
 import { KnowledgeGapRepository } from '../../src/kernel/knowledge-gap.repository';
 import { publishBusinessPack, type BusinessPackRelease } from '@journeyax/business-pack';
@@ -585,9 +583,6 @@ export async function buildAbercrombieStack() {
       new ExecutionRepository(),
       new OutboxRepository({ forceInMemory: true }),
       new PresentationPort(modelGateway),
-      new TurnInterpreter(modelGateway),
-      undefined,
-      new OutcomeValidator(),
       new OkfKnowledgeControlPlane(async () => db as any),
       undefined,
       new KnowledgeGapRepository(db)

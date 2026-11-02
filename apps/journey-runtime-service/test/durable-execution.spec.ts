@@ -1,160 +1,9 @@
 import assert from 'node:assert/strict';
-import { TurnApplicationService } from '../src/kernel/turn-application.service';
-import { PackRepository } from '../src/kernel/pack.repository';
-import { WorkspaceRepository } from '../src/kernel/workspace.repository';
 import { WorkspaceStore } from '../src/workspace/workspace.store';
 import { OutboxRepository } from '../src/kernel/outbox.repository';
 import { OutboxWorker } from '../src/kernel/outbox.worker';
-import { ExecutionRepository } from '../src/kernel/execution.repository';
-import { CapabilityGateway } from '../src/kernel/capability.gateway';
-import { BusinessPackRelease } from '@journeyax/business-pack';
-import { TurnCommand } from '@journeyax/journey-core';
 
 // Test domain pack for durable execution
-const mockDurablePack: BusinessPackRelease = {
-  manifest: {
-    packId: 'durable-ops',
-    name: 'Durable Ops Test Pack',
-    version: '1.0.0',
-    description: 'Testing durable outbox, leasing, and idempotency',
-    tenantId: 'tenant-durable-1',
-    environmentId: 'test',
-    status: 'active',
-    publishedAt: new Date().toISOString(),
-    publishedBy: 'system',
-    checksum: 'mock-checksum',
-  },
-  profile: {
-    companyName: 'Durable Ops',
-    industry: 'Financial Infrastructure',
-    primaryCurrency: 'USD',
-    supportedCurrencies: ['USD'],
-    primaryLocale: 'en-US',
-    supportedLocales: ['en-US'],
-  },
-  vocabulary: {
-    version: '1.0.0',
-    terms: [],
-    acronyms: {},
-    slotSynonyms: {},
-    slotMappings: {},
-    prohibitedTerms: [],
-  },
-  entities: {
-    version: '1.0.0',
-    entities: [],
-  },
-  conversationPolicy: {
-    fencingRules: [],
-    prohibitedTopics: [],
-    escalationThresholds: {
-      sentimentFloor: -0.6,
-      maxTurnsWithoutProgress: 4,
-    },
-  },
-  journeys: [
-    {
-      journeyId: 'durable_journey',
-      version: '1.0.0',
-      goals: ['Verify durable execution', 'Charge card'],
-      metadata: { triggerIntents: ['charge_card', 'Charge card'] },
-      initialStage: 'stage_exec',
-      stages: {
-        stage_exec: {
-          stageId: 'stage_exec',
-          requiredFacts: [],
-          allowedCapabilities: ['payment.charge'],
-          nextDecisionPolicy: 'dependency-first',
-          exitConditions: [],
-        },
-      },
-    },
-  ],
-  rules: [],
-  capabilities: {
-    version: '1.0.0',
-    toolDefinitions: [
-      {
-        toolId: 'payment.charge',
-        displayName: 'Charge Payment',
-        description: 'Processes credit card charge',
-        version: '1.0.0',
-        inputSchema: {},
-        outputSchema: {},
-        sideEffect: 'read',
-        risk: 'low',
-        timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 },
-        idempotencyPolicy: { required: true, ttlSeconds: 86400 },
-        approvalPolicy: { requiresApproval: false, ttlMinutes: 60 },
-        dataClassification: 'internal',
-      },
-    ],
-    toolBindings: [
-      {
-        toolId: 'payment.charge',
-        tenantId: 'tenant-durable-1',
-        environmentId: 'test',
-        bindingVersion: '1.0.0',
-        executor: {
-          type: 'native_capability',
-          nativeHandler: 'payment.charge',
-        },
-        enabled: true,
-        policy: {
-          requiredRole: 'customer',
-          requiresConfirmation: false,
-          idempotencyRequired: true,
-          timeoutMs: 10000,
-          retryAttempts: 0,
-        },
-      },
-    ],
-    stageBindings: [],
-  },
-  agents: [
-    {
-      agentId: 'billing-agent',
-      name: 'Billing',
-      purpose: 'Billing agent',
-      modelPolicyRef: 'default',
-      allowedTools: ['payment.charge'],
-      maxTurns: 3,
-      handoffConditions: [],
-      inputSchema: {},
-      outputSchema: {},
-    },
-  ],
-  modelPolicy: {
-    version: '1.0.0',
-    defaultPolicy: 'default',
-    policies: [
-      {
-        policyId: 'default',
-        candidates: [{ provider: 'open-model', model: 'mock-model', priority: 1 }],
-        dataResidency: 'us',
-        maxInputTokens: 4000,
-        maxOutputTokens: 1000,
-        fallbackAllowed: true,
-        timeoutMs: 5000,
-      },
-    ],
-  },
-  experience: {
-    version: '1.0.0',
-    theme: {
-      primaryColor: '#0055ff',
-      accentColor: '#3B82F6',
-      fontFamily: 'sans-serif',
-      borderRadius: '8px',
-      customCssVars: {},
-    },
-    cards: {
-      allowedCardTypes: ['bundle'],
-      defaultCardRenderer: '@journeyax/ui-cards',
-    },
-  },
-  evaluations: [],
-};
 
 async function runDurableExecutionTests() {
   console.log('⚡ Running PR 4: Durable Execution Verification Suite...\n');
@@ -176,73 +25,6 @@ async function runDurableExecutionTests() {
 
   process.env.NODE_ENV = 'test';
   process.env.ALLOW_IN_MEMORY_WORKSPACES = 'true';
-
-  await test('1. Pre-dispatch idempotency avoids duplicate execution and returns cached replay', async () => {
-    let callCount = 0;
-    const capabilityGateway = new CapabilityGateway();
-    capabilityGateway.registerCustomAdapter('payment.charge', {
-      execute: async () => {
-        callCount++;
-        return {
-          chargeId: `ch_${Date.now()}`,
-          amountCents: 5000,
-          status: 'succeeded',
-        };
-      },
-    });
-
-    const mockPackRepo = {
-      loadActivePack: async () => mockDurablePack,
-      hasActivePack: async () => true,
-      invalidate: () => {},
-    } as unknown as PackRepository;
-
-    const workspaceStore = new WorkspaceStore();
-    const workspaceRepo = new WorkspaceRepository(workspaceStore);
-    const executionRepo = new ExecutionRepository();
-    const outboxRepo = new OutboxRepository();
-
-    const appService = new TurnApplicationService(
-      mockPackRepo,
-      workspaceRepo,
-      undefined,
-      undefined,
-      undefined,
-      capabilityGateway,
-      undefined,
-      executionRepo,
-      outboxRepo
-    );
-
-    const cmd: TurnCommand = {
-      tenantId: 'tenant-durable-1',
-      environmentId: 'test',
-      workspaceId: 'ws-idem-01',
-      sessionId: 'sess-idem-01',
-      correlationId: 'corr-charge-100',
-      idempotencyKey: 'idem-charge-token-abc',
-      message: 'Charge card',
-    };
-
-    // First call: executes capability
-    const res1 = await appService.executeTurn(cmd);
-    assert.equal(callCount, 1, 'First turn should execute the capability once');
-    assert.equal(res1.executedCapabilities.length, 1);
-    assert.equal(res1.executedCapabilities[0].status, 'success');
-    const firstChargeId = res1.executedCapabilities[0].output?.chargeId;
-    assert.ok(firstChargeId);
-
-    // Second call: duplicate request with identical idempotencyKey
-    const res2 = await appService.executeTurn(cmd);
-    assert.equal(callCount, 1, 'Second turn MUST NOT invoke capability again');
-    assert.equal(res2.executedCapabilities.length, 1);
-    assert.equal(res2.executedCapabilities[0].status, 'success');
-    assert.equal(
-      res2.executedCapabilities[0].output?.chargeId,
-      firstChargeId,
-      'Should return cached output from original charge'
-    );
-  });
 
   await test('2. Atomic lease claim locks events from concurrent workers', async () => {
     const outboxRepo = new OutboxRepository();
@@ -378,14 +160,7 @@ async function runDurableExecutionTests() {
 
   await test('7. OutboxWorker lease renewal and crash recovery reclaim', async () => {
     const outboxRepo = new OutboxRepository();
-    const eventId = await outboxRepo.enqueueEvent(
-      'tenant-durable-1',
-      'test',
-      'order.processing',
-      { orderId: 'ord_long_running' }
-    );
 
-    let dispatchRunning = true;
     const worker1 = new OutboxWorker(outboxRepo, {
       workerId: 'worker_crasher',
       leaseDurationMs: 50, // 50ms lease
