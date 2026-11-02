@@ -13,9 +13,7 @@ export const DOMAIN_REGISTRY: Record<string, string> = {
   projects:      process.env.PROJECT_SERVICE_URL    || 'http://localhost:8082',
   organizations: process.env.ORG_SERVICE_URL        || 'http://localhost:8085',
   analytics:     process.env.ANALYTICS_SERVICE_URL  || 'http://localhost:8086',
-  leads:         process.env.LEAD_SERVICE_URL       || 'http://localhost:8087',
   auth:          process.env.AUTH_SERVICE_URL        || 'http://localhost:8080',
-  data:          process.env.DATA_SERVICE_URL       || 'http://localhost:8084',
 };
 
 // Kept for health-check iteration (base URLs only).
@@ -59,7 +57,7 @@ export function validateProductionRegistry(
 const PLATFORM_DOMAINS = new Set(['auth', 'organizations', 'projects']);
 // Tenant-scoped domains carry the projectId as the first path segment:
 //   /api/v1/:projectId/<domain>/... or /api/v1/:projectId/:environmentId/<domain>/...
-const PROJECT_DOMAINS = new Set(['commerce', 'products', 'analytics', 'leads', 'data', 'runtime']);
+const PROJECT_DOMAINS = new Set(['commerce', 'products', 'analytics', 'runtime']);
 
 export interface ParsedRoute {
   projectId: string | null;

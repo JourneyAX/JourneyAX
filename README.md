@@ -42,14 +42,11 @@ journeyAX/
 │   ├── auth-service/           # JWT auth (bcrypt)        :8080
 │   ├── project-service/        # Tenant/project config    :8082
 │   ├── product-service/        # Vector + RAG search      :8083
-│   ├── data-service/           # Catalog sync             :8084
 │   ├── organization-service/   # Billing container        :8085
-│   ├── analytics-service/      # Commerce metrics         :8086
-│   └── lead-service/           # CRM push                 :8087
+│   └── analytics-service/      # Commerce metrics         :8086
 └── packages/
     ├── shared-types/           # Shared TypeScript types
     ├── database/               # MongoDB connection pool
-    ├── configurator-core/      # BOM/pricing calculations
     └── integration/            # External integrations
 ```
 
@@ -78,10 +75,8 @@ journeyAX/
 | auth-service | http://localhost:8080 | ✅ Live |
 | project-service | http://localhost:8082 | ✅ Live |
 | product-service | http://localhost:8083 | ✅ Live |
-| data-service | http://localhost:8084 | ✅ Live |
 | organization-service | http://localhost:8085 | ✅ Live |
 | analytics-service | http://localhost:8086 | ⚠️ Stub |
-| lead-service | http://localhost:8087 | ⚠️ Stub |
 | agent-commerce-service | http://localhost:3004 | ✅ Live |
 
 ### Next.js Proxy Routes (web → gateway)

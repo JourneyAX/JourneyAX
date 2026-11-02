@@ -32,14 +32,11 @@ apps/product-service/src
 apps/organization-service/src
 apps/agent-commerce-service/src
 apps/analytics-service/src
-apps/lead-service/src
-apps/data-service/src
 
 # Heavy packages not needed for any Vercel frontend
 packages/ingestion
 packages/integration
 packages/design-system
-packages/configurator-core
 
 # Scripts, docs & infra
 scripts
@@ -50,7 +47,6 @@ skills
 
 # Root-level scratch/test files
 check-*.ts
-_finalstats.ts
 test-*.js
 test-*.ts
 Dockerfile.template

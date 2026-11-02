@@ -17,7 +17,6 @@
     "@journeyax/business-pack": "*",
     "@journeyax/capability-sdk": "*",
     "@journeyax/database": "*",
-    "@journeyax/events": "*",
     "@journeyax/ingestion": "*",
     "@journeyax/journey-core": "*",
     "@journeyax/knowledge": "*",

@@ -39,7 +39,6 @@ async function bootstrap() {
   console.log(`║  /api/v1/products  → product-svc:8083       ║`);
   console.log(`║  /api/v1/projects  → project-svc:8082       ║`);
   console.log(`║  /api/v1/auth      → auth-svc:8080          ║`);
-  console.log(`║  /api/v1/leads     → lead-svc:8087          ║`);
   console.log(`║  /api/v1/analytics → analytics-svc:8086     ║`);
   console.log(`╚══════════════════════════════════════════════╝\n`);
 }

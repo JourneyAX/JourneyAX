@@ -54,10 +54,8 @@ const docs = await col.find({ ...ctx.mongoFilter, ...otherFilters }).toArray();
 | `product-service` | **8083** | MongoDB Atlas vector search + RAG token budgeting | ✅ Live |
 | `project-service` | **8082** | Dynamic tenant config from MongoDB | ✅ Live |
 | `auth-service` | **8080** | Real JWT auth: bcrypt + MongoDB users + refresh tokens | ✅ Live |
-| `data-service` | **8084** | ConnectorRegistry — catalog sync (Shopify) | ✅ Live |
 | `organization-service` | **8085** | Org/tenant management | ⚠️ Stub |
 | `analytics-service` | **8086** | Commerce metrics | ⚠️ Stub |
-| `lead-service` | **8087** | CRM lead push — HubSpot/Salesforce | ⚠️ Stub |
 
 ### Confirmed End-to-End Flow (VERIFIED WORKING)
 
@@ -283,13 +281,10 @@ MONGODB_URI=<atlas-connection-string>
 - `product-service/` — MongoDB product knowledge search
 - `project-service/` — Tenant config service
 - `auth-service/` — JWT auth (real bcrypt + MongoDB)
-- `data-service/` — Catalog sync ConnectorRegistry
-- `lead-service/` — CRM push
 - `analytics-service/` — Commerce metrics
 - `organization-service/` — Org/tenant management
 
 **Packages (`packages/`):**
-- `configurator-core/` — business calculation logic
 - `shared-types/` — shared TypeScript interfaces
 - `database/` — MongoDB connection pool (used by auth-service, product-service, project-service)
 
@@ -297,7 +292,6 @@ MONGODB_URI=<atlas-connection-string>
 ```typescript
 import { connectToDatabase } from '@journeyax/database';
 import { Quote, BomItem } from '@journeyax/shared-types';
-import { calculateTotals } from '@journeyax/configurator-core';
 ```
 
 ### NestJS DI Rule for tsx watch — CRITICAL

@@ -13,8 +13,6 @@ export const SERVICES = {
   auth: process.env.NEXT_PUBLIC_AUTH_API || 'http://localhost:8080',
   org: '/api/bff',
   project: '/api/bff',
-  data: process.env.NEXT_PUBLIC_DATA_API || 'http://localhost:8086',
-  agent: process.env.NEXT_PUBLIC_AGENT_API || 'http://localhost:8087',
 };
 
 // ── Types (mirror the service DTOs we consume) ─────────────────────────
