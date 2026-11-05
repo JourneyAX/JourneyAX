@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "sources": [
+    { "connectorId": "salesforce", "createTool": "create_customer_profile", "readTool": "find_customer_profile", "references": { "accountId": "record.accountId", "contactId": "record.contactId" } },
+    { "connectorId": "commercetools", "createTool": "create_customer_profile", "readTool": "find_customer_profile", "orderReadTool": "get_order_customer_link", "orderLinkTool": "link_order_customer", "references": { "customerId": "record.customerId" } }
+  ]
+}

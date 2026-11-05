@@ -3,7 +3,7 @@
  *
  * Models the behaviour the platform relies on: dotted paths, the common query and
  * update operators, projections, cursors, unique indexes (duplicate key errors
- * with code 11000), upserts, and no-op sessions/transactions. It never touches a
+ * with code 11000), upserts, and optional serialized snapshot transactions. It never touches a
  * real database.
  */
 
@@ -152,7 +152,8 @@ export interface FindOptions { projection?: Doc; sort?: Record<string, 1 | -1>; 
 
 export class MemoryCollection<T extends Doc = Doc> {
   docs: T[] = [];
-  private uniqueIndexes: Array<Record<string, number>> = [];
+  private uniqueIndexes: Array<Record<string, number>> = [{ _id: 1 }];
+  private nextId = 0;
   constructor(public readonly name: string) {}
 
   async createIndex(spec: Record<string, number>, options: { unique?: boolean } = {}): Promise<string> {
@@ -187,7 +188,7 @@ export class MemoryCollection<T extends Doc = Doc> {
 
   async insertOne(doc: T, _options?: { session?: unknown }): Promise<{ acknowledged: boolean; insertedId: any }> {
     const copy: Doc = asStored(doc);
-    if (copy._id === undefined) copy._id = `${this.name}_${this.docs.length + 1}`;
+    if (copy._id === undefined) copy._id = `${this.name}_${++this.nextId}`;
     this.assertUnique(copy);
     this.docs.push(copy as T);
     return { acknowledged: true, insertedId: copy._id };
@@ -248,6 +249,19 @@ export class MemoryCollection<T extends Doc = Doc> {
     this.applyUpdate(fresh, update, true);
     await this.insertOne(fresh as T);
     return { matchedCount: 0, modifiedCount: 0, upsertedCount: 1, acknowledged: true };
+  }
+
+  /** Atomic within this fixture's process, matching MongoDB driver's default document return shape. */
+  async findOneAndUpdate(filter: Doc, update: Doc, options: { returnDocument?: 'before' | 'after'; session?: unknown } = {}): Promise<T | null> {
+    const target = this.docs.find(doc => matches(doc, filter));
+    if (!target) return null;
+    const before = structuredClone(target);
+    const after = structuredClone(target);
+    this.applyUpdate(after, update, false);
+    this.assertUnique(after, target);
+    Object.keys(target).forEach(key => delete (target as any)[key]);
+    Object.assign(target, after);
+    return options.returnDocument === 'after' ? structuredClone(after) : before;
   }
 
   async replaceOne(filter: Doc, replacement: Doc) {
@@ -322,14 +336,30 @@ export class MemoryCollection<T extends Doc = Doc> {
 }
 
 export class MemorySession {
-  async withTransaction<T>(fn: () => Promise<T>): Promise<T> { return fn(); }
+  constructor(private readonly db?: MemoryDb) {}
+  async withTransaction<T>(fn: () => Promise<T>, _options?: unknown): Promise<T> { return this.db ? this.db.runTransaction(fn) : fn(); }
   async endSession(): Promise<void> {}
 }
 
 export class MemoryDb {
   private readonly collections = new Map<string, MemoryCollection>();
+  private transactionTail = Promise.resolve();
+  constructor(private readonly options: { transactional?: boolean } = {}) {}
   /** Mimics `db.client.startSession()` so transactional code paths run. */
-  readonly client = { startSession: () => new MemorySession() };
+  readonly client = { startSession: () => new MemorySession(this.options.transactional ? this : undefined) };
+  /** Offline rollback/concurrency fixture; not a model of MongoDB network or failover behaviour. */
+  async runTransaction<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.transactionTail;
+    let release!: () => void;
+    this.transactionTail = new Promise<void>(done => { release = done; });
+    await previous;
+    const before = new Map([...this.collections].map(([name, collection]) => [name, structuredClone(collection.docs)]));
+    try { return await work(); }
+    catch (error) {
+      for (const [name, collection] of this.collections) collection.docs.splice(0, collection.docs.length, ...(before.get(name) ?? []));
+      throw error;
+    } finally { release(); }
+  }
   collection<T extends Doc = Doc>(name: string): MemoryCollection<T> {
     if (!this.collections.has(name)) this.collections.set(name, new MemoryCollection(name));
     return this.collections.get(name) as MemoryCollection<T>;

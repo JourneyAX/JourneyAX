@@ -9,6 +9,7 @@ import { createSuite } from '@journeyax/test-support';
 import * as jaxIq from '@journeyax/jax-iq';
 import { AppModule } from '../src/app.module';
 import { HealthController } from '../src/health.controller';
+import { IqController } from '../src/iq.controller';
 import { startRefusal } from '../src/main';
 
 /** The skeleton of the service: a health route, a start-up that refuses unless switched on, and a dependency graph that builds without listening. */
@@ -31,7 +32,7 @@ async function main() {
   });
 
   await suite.test('the app module builds its dependency graph without listening', async () => {
-    assert.deepEqual(Reflect.getMetadata('controllers', AppModule), [HealthController]);
+    assert.deepEqual(Reflect.getMetadata('controllers', AppModule), [HealthController, IqController]);
     const context = await NestFactory.createApplicationContext(AppModule, { logger: false });
     try {
       assert.ok(context.get(AppModule));

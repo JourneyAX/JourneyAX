@@ -7,12 +7,13 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "tsx test/dispatcher.spec.ts && tsx test/mcp.spec.ts"
+    "test": "tsx test/dispatcher.spec.ts && tsx test/mcp.spec.ts && tsx --test test/service-auth.spec.ts"
   },
   "dependencies": {
     "@journeyax/journey-core": "*",
     "@journeyax/business-pack": "*",
-    "@journeyax/shared-types": "*"
+    "@journeyax/shared-types": "*",
+    "google-auth-library": "^11.0.0"
   },
   "devDependencies": {
     "typescript": "^5"

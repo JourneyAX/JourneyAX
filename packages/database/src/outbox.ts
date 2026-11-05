@@ -53,14 +53,17 @@ export class OutboxRepository {
   async claimLeases(
     workerId: string,
     leaseDurationMs = 30000,
-    batchSize = 10
+    batchSize = 10,
+    scope?: { environmentId: string; tenantId?: string }
   ): Promise<OutboxEventRecord[]> {
+    if (scope && !['dev', 'test', 'staging', 'production'].includes(scope.environmentId)) throw new Error('Unsupported outbox lease environment.');
     const col = this.db.collection<OutboxEventRecord>(COLLECTION_OUTBOX_EVENTS);
     const claimed: OutboxEventRecord[] = [];
 
     for (let i = 0; i < batchSize; i++) {
       const now = new Date();
       const filter = {
+        ...(scope ? { environmentId: scope.environmentId as EnvironmentId, ...(scope.tenantId ? { tenantId: scope.tenantId } : {}) } : {}),
         $or: [
           {
             status: 'pending' as const,
@@ -126,7 +129,8 @@ export class OutboxRepository {
     eventId: string,
     error: string,
     maxAttempts = 5,
-    backoffBaseMs = 1000
+    backoffBaseMs = 1000,
+    maxBackoffMs = 15 * 60 * 1000
   ): Promise<'retry_scheduled' | 'dead_letter'> {
     const col = this.db.collection<OutboxEventRecord>(COLLECTION_OUTBOX_EVENTS);
     const existing = await col.findOne({ eventId });
@@ -153,7 +157,7 @@ export class OutboxRepository {
       return 'dead_letter';
     }
 
-    const backoffDelay = backoffBaseMs * Math.pow(2, nextAttempts - 1);
+    const backoffDelay = Math.min(maxBackoffMs, backoffBaseMs * Math.pow(2, nextAttempts - 1));
     const nextAttemptAt = new Date(Date.now() + backoffDelay);
 
     await col.updateOne(

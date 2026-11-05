@@ -18,6 +18,11 @@
  * With COMMERCETOOLS_ACCOUNT_KIND=businessUnit the account in order_history is a unit key such as acc-0001.
  */
 import { ToolError, type Deps, type Env, type RealConnector, type Rec, type ToolSpec } from '../types';
+import { orderContactCorrection } from './commercetools-order-contact';
+import { commerceAccountContact } from './account-contact';
+import { commerceOrderPayment } from './commercetools-payment';
+import { commerceCustomerProfile } from './customer-profile';
+import { commerceOrderMoney, preparePaidCommerceCart } from './commercetools-money';
 import { TokenCache, VendorClient, boundedInt, clip, compact, errorFor, redact, send, setting, settingsMissing, vendorMessage } from '../http';
 
 const SYSTEM = 'commercetools';
@@ -139,6 +144,12 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     });
   };
 
+  const customLineSku = (line: any): string => {
+    const key = String(line.key ?? line.slug ?? '');
+    const decoded = key.startsWith('jax_') ? Buffer.from(key.slice(4), 'base64url').toString('utf8') : '';
+    return decoded && `jax_${Buffer.from(decoded).toString('base64url')}` === key ? decoded : line.slug;
+  };
+
   /** What a paid shop order looks like once recorded: its number, states, custom lines and money. */
   const placedRecord = (order: any): Rec => {
     const lines: any[] = Array.isArray(order?.customLineItems) ? order.customLineItems : [];
@@ -148,7 +159,9 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
       state: order?.orderState,
       paymentState: order?.paymentState,
       lineCount: lines.length,
-      lines: lines.slice(0, 50).map((line) => compact({ name: localised(line.name, locale()), sku: line.slug, quantity: line.quantity, total: money(line.totalPrice)?.amount })),
+      lines: lines.slice(0, 50).map((line) => {
+        return compact({ name: localised(line.name, locale()), sku: customLineSku(line), quantity: line.quantity, total: money(line.totalPrice)?.amount });
+      }),
       tax: money(order?.taxedPrice?.totalTax)?.amount,
       total: money(order?.taxedPrice?.totalGross ?? order?.totalPrice)?.amount,
       currency: order?.totalPrice?.currencyCode,
@@ -181,11 +194,12 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     // An order made by the shop after payment carries its lines as custom lines (name, code, price), so both kinds are shown.
     const products: any[] = Array.isArray(order?.lineItems) ? order.lineItems : [];
     const customs: any[] = Array.isArray(order?.customLineItems) ? order.customLineItems : [];
-    const lines = [...products.map((line) => ({ line, sku: line.variant?.sku })), ...customs.map((line) => ({ line, sku: line.slug }))];
+    const lines = [...products.map((line) => ({ line, sku: line.variant?.sku })), ...customs.map((line) => ({ line, sku: customLineSku(line) }))];
     const address = order?.shippingAddress;
     const gross = order?.taxedPrice?.totalGross ?? order?.totalPrice;
     return compact({
       orderId: order?.id,
+      version: order?.version,
       orderNumber: order?.orderNumber,
       state: order?.orderState,
       paymentState: order?.paymentState,
@@ -264,6 +278,10 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
   };
 
   const tools: ToolSpec[] = [
+    ...commerceCustomerProfile(api, orderRecord),
+    ...commerceOrderPayment(api),
+    ...commerceAccountContact(api),
+    orderContactCorrection(api),
     {
       name: 'find_product',
       readOnly: true,
@@ -365,16 +383,32 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
       },
     },
     {
+      name: 'get_order_receipt',
+      readOnly: true,
+      description: 'Read a paid order delivery receipt by its stable order number. Returns record null only when the commerce system confirms it does not exist.',
+      inputSchema: { type: 'object', required: ['orderId'], properties: { orderId: { type: 'string', maxLength: 64, pattern: ORDER_NUMBER.source } } },
+      async run(args) {
+        try { return { record: placedRecord(await api('GET', `/orders/order-number=${encodeURIComponent(String(args.orderId))}`)) }; }
+        catch (error) { if (error instanceof ToolError && error.code === 'not_found') return { record: null }; throw error; }
+      },
+    },
+    {
       name: 'place_order',
       readOnly: false,
+      requiresPaymentReceipt: true,
       description: 'Record a paid shop order: one order with its lines (name, product code, quantity, price before tax), tax at the given rate, the delivery address and the order number the customer saw. The shop calls it after payment; asking again with the same order number returns the order already made.',
       inputSchema: {
         type: 'object',
-        required: ['orderNumber', 'currency', 'lines'],
+        required: ['orderNumber', 'currency', 'lines', 'taxCountry', 'taxName'],
         properties: {
           orderNumber: { type: 'string', maxLength: 64, pattern: ORDER_NUMBER.source, description: 'The order number the customer saw.' },
+          customerKey: { type: 'string', maxLength: 120, pattern: '^[A-Za-z0-9_.-]+$', description: 'Server-owned verified customer-profile reference, when registered.' },
           currency: { type: 'string', maxLength: 3, pattern: CURRENCY.source },
           taxRate: { type: 'number', minimum: 0, maximum: 1, description: 'Tax as a fraction of the price, for example 0.15.' },
+          taxCountry: { type: 'string', pattern: COUNTRY.source, maxLength: 2, description: 'The merchant-configured tax jurisdiction, not inferred from currency.' },
+          taxName: { type: 'string', minLength: 1, maxLength: 80 },
+          expectedTotal: { type: 'number', minimum: 0, description: 'The exact paid quote total; the vendor cart must match before an order is created.' },
+          existingOrderId: { type: 'string', maxLength: 64, description: 'Recovery only: acknowledge this exact existing vendor order; never create another.' },
           discount: { type: 'number', minimum: 0, description: 'The whole order discount before tax, spread over the lines.' },
           customerEmail: { type: 'string', maxLength: 320 },
           paid: { type: 'boolean', description: 'Mark the order paid (default true).' },
@@ -385,6 +419,8 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
       async run(args) {
         const orderNumber = String(args.orderNumber);
         const currency = String(args.currency);
+        const digits = new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits;
+        if (digits === undefined || !Number.isInteger(digits) || digits > 3) throw new ToolError('invalid_arguments', 'The currency precision is not supported.');
         const raw = Array.isArray(args.lines) ? args.lines : [];
         if (raw.length < 1 || raw.length > 50) throw new ToolError('invalid_arguments', 'lines must hold between 1 and 50 lines.');
         const lines = raw.map((line: any, index: number) => {
@@ -400,40 +436,40 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
         });
         const taxRate = args.taxRate === undefined ? 0 : Number(args.taxRate);
         const discount = args.discount === undefined ? 0 : Number(args.discount);
-        const gross = lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
-        if (discount > gross) throw new ToolError('invalid_arguments', 'discount is more than the lines come to.');
-        const factor = gross > 0 ? (gross - discount) / gross : 1;
+        commerceOrderMoney(lines, currency, discount, taxRate, args.expectedTotal);
 
         const ship: any = args.shipping && typeof args.shipping === 'object' && !Array.isArray(args.shipping) ? args.shipping : {};
-        const country = COUNTRY.test(String(ship.country ?? '')) ? String(ship.country) : 'NZ';
+        if (!COUNTRY.test(String(args.taxCountry ?? '')) || !String(args.taxName ?? '').trim()) throw new ToolError('invalid_arguments', 'The merchant tax country and label are required.');
+        const country = String(args.taxCountry);
+        if (Object.keys(ship).length && !COUNTRY.test(String(ship.country ?? ''))) throw new ToolError('invalid_arguments', 'A supplied shipping address requires its actual country.');
         const [firstName, ...rest] = String(ship.name ?? '').trim().split(/\s+/).filter(Boolean);
         const address = compact({
-          country, firstName, lastName: rest.join(' ') || undefined, streetName: clip(String(ship.line1 ?? ''), 120) || undefined,
+          country: ship.country, firstName, lastName: rest.join(' ') || undefined, streetName: clip(String(ship.line1 ?? ''), 120) || undefined,
           additionalStreetInfo: clip(String(ship.line2 ?? ''), 120) || undefined, city: clip(String(ship.city ?? ''), 80) || undefined,
           state: clip(String(ship.state ?? ''), 80) || undefined, postalCode: clip(String(ship.postalCode ?? ''), 20) || undefined,
           email: args.customerEmail ? String(args.customerEmail) : undefined,
         });
 
         // Asking again for an order number that exists returns that order: a retried payment never makes a second one.
-        try {
-          return { created: false, record: placedRecord(await api('GET', `/orders/order-number=${encodeURIComponent(orderNumber)}`)) };
-        } catch (error) {
-          if (!(error instanceof ToolError && error.code === 'not_found')) throw error;
+        let existing: any;
+        try { existing = await api('GET', `/orders/order-number=${encodeURIComponent(orderNumber)}`); }
+        catch (error) { if (!(error instanceof ToolError && error.code === 'not_found')) throw error; }
+        if (args.existingOrderId && (!existing || existing.id !== args.existingOrderId)) throw new ToolError('payment_reconciliation', 'The exact recovery order is unavailable; no new order was created.');
+        if (existing) {
+          if (args.paid !== false && existing.paymentState !== 'Paid') {
+            const receipt = placedRecord(existing);
+            const items = (value: any[]) => value.map(line => [line.sku, line.quantity]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+            if (![undefined, 'Pending', 'BalanceDue'].includes(existing.paymentState) || args.expectedTotal === undefined || receipt.total !== args.expectedTotal || receipt.currency !== currency || JSON.stringify(items(receipt.lines)) !== JSON.stringify(items(lines))) throw new ToolError('payment_reconciliation', 'The existing order cannot be acknowledged against this paid quote.');
+            existing = await api('POST', `/orders/${existing.id}`, { body: { version: existing.version, actions: [{ action: 'changePaymentState', paymentState: 'Paid' }] } });
+          }
+          return { created: false, record: placedRecord(existing) };
         }
+        if (!ship.line1 || !COUNTRY.test(String(ship.country ?? ''))) throw new ToolError('invalid_arguments', 'A genuine shipping address is required before creating an order.');
 
-        const cart = await api('POST', '/carts', {
-          body: compact({
-            currency, country, locale: locale(), taxMode: 'External', customerEmail: args.customerEmail ? String(args.customerEmail) : undefined,
-            shippingAddress: ship && Object.keys(address).length > 1 ? address : undefined,
-            customLineItems: lines.map((line) => ({
-              name: { [locale()]: line.name },
-              quantity: line.quantity,
-              slug: line.sku.replace(/[^A-Za-z0-9._~-]/g, '-').slice(0, 200) || 'item',
-              money: { type: 'centPrecision', currencyCode: currency, centAmount: Math.round(line.unitPrice * factor * 100) },
-              externalTaxRate: { name: 'GST', amount: taxRate, country },
-            })),
-          }),
-        });
+        const customer = args.customerKey ? await api('GET', `/customers/key=${encodeURIComponent(String(args.customerKey))}`) : undefined;
+        if (customer && (!customer.id || String(customer.email).toLowerCase() !== String(args.customerEmail).toLowerCase())) throw new ToolError('identity_conflict', 'The registered customer does not match the order owner.');
+        const { cart } = await preparePaidCommerceCart(api, { orderNumber, currency, locale: locale(), lines, discount, taxRate, taxCountry: country, taxName: String(args.taxName), expectedTotal: args.expectedTotal,
+          ...(args.customerEmail ? { customerEmail: String(args.customerEmail) } : {}), ...(customer?.id ? { customerId: customer.id } : {}), ...(ship && Object.keys(address).length > 1 ? { shippingAddress: address } : {}) });
         let order = await api('POST', '/orders', { body: { id: cart.id, version: cart.version, orderNumber } });
         if (args.paid !== false) {
           order = await api('POST', `/orders/${order.id}`, { body: { version: order.version, actions: [{ action: 'changePaymentState', paymentState: 'Paid' }] } });
@@ -538,12 +574,12 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
     {
       name: 'find_account',
       readOnly: true,
-      description: 'Customer accounts on credit terms (business units) by part of the name, the account number or the unit key, optionally only one tier (bronze, silver or gold). Returns the unit key, tier, home branch, account manager, payment terms, credit limit and the Salesforce account id.',
+      description: 'Customer accounts on credit terms (business units) by part of the name, the account number or the unit key, optionally one tier as the merchant stores it. Returns the unit key, tier, home branch, account manager, payment terms, credit limit and the Salesforce account id.',
       inputSchema: {
         type: 'object',
         properties: {
           query: { type: 'string', maxLength: 120, description: 'Part of the account name, the account number (for example ACC-0001) or the unit key.' },
-          tier: { type: 'string', enum: ['bronze', 'silver', 'gold'] },
+          tier: { type: 'string', minLength: 1, maxLength: 60 },
           limit: { type: 'integer', minimum: 1, maximum: 25, description: 'How many to return (default 10).' },
         },
       },
@@ -556,7 +592,7 @@ export function commercetools(env: Env, deps: Deps): RealConnector {
           return !words || [unit.name, unit.key, fields.accountNumber].some((value) => String(value ?? '').toLowerCase().includes(words));
         });
         const limit = boundedInt(args.limit, 10, 1, 25);
-        return { total: matches.length, returned: Math.min(matches.length, limit), ...(total > units.length ? { note: `Only the first ${units.length} of ${total} units were searched.` } : {}), records: matches.slice(0, limit).map(unitRecord) };
+        return { total: matches.length, returned: Math.min(matches.length, limit), more: matches.length > limit || total > units.length, ...(total > units.length ? { note: `Only the first ${units.length} of ${total} units were searched.` } : {}), records: matches.slice(0, limit).map(unitRecord) };
       },
     },
     {

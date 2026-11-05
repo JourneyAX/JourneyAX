@@ -1,0 +1,24 @@
+{
+  "datasetId": "demo-placemakers-v5-1",
+  "tenantId": "placemakers",
+  "environmentId": "test",
+  "source": "journeyax-demo-erp",
+  "records": {
+    "accounts": [
+      { "accountId": "DEMO-ACC-001", "name": "Example Harbour Builders", "balance": 1250, "overdue": 250, "currency": "NZD", "terms": "Demo terms: payment due in 30 days", "updatedAt": "2026-11-01T00:00:00Z" },
+      { "accountId": "DEMO-ACC-002", "name": "Example Harbour Plumbing", "balance": 300, "overdue": 0, "currency": "NZD", "terms": "Demo terms: payment due in 14 days", "updatedAt": "2026-11-01T00:00:00Z" }
+    ],
+    "orders": [
+      { "orderId": "DEMO-ORDER-001", "accountId": "DEMO-ACC-001", "state": "processing", "total": 1250, "currency": "NZD", "lines": [], "updatedAt": "2026-11-01T00:00:00Z" },
+      { "orderId": "DEMO-ORDER-002", "accountId": "DEMO-ACC-002", "state": "shipped", "total": 300, "currency": "NZD", "lines": [], "updatedAt": "2026-11-01T00:00:00Z" }
+    ],
+    "invoices": [
+      { "invoiceId": "DEMO-INVOICE-001", "accountId": "DEMO-ACC-001", "orderId": "DEMO-ORDER-001", "total": 1250, "currency": "NZD", "status": "open", "dueAt": "2026-12-01", "updatedAt": "2026-11-01T00:00:00Z" }
+    ],
+    "deliveries": [
+      { "deliveryId": "DEMO-DELIVERY-001", "accountId": "DEMO-ACC-002", "orderId": "DEMO-ORDER-002", "status": "out_for_delivery", "scheduledDate": "2026-11-02", "window": "Demonstration delivery window", "updatedAt": "2026-11-01T00:00:00Z" }
+    ],
+    "stock": [],
+    "prices": []
+  }
+}

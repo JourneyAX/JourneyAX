@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { BusinessPackRelease, BusinessPackLoader } from '@journeyax/business-pack';
+import { isDeepStrictEqual } from 'node:util';
+import { BusinessPackRelease, BusinessPackLoader, computePackChecksum, getVerifiedBusinessPackMetadata } from '@journeyax/business-pack';
 import { TurnCommand, TurnResult } from '@journeyax/journey-core';
+import { isCatalogueAbsenceStatement } from '@journeyax/shared-types';
 
 export interface EvaluationScenarioAssertion {
   type: string;
@@ -46,6 +48,29 @@ export interface ScenarioTurnLog {
   executedCapabilities: string[];
   facts: Record<string, any>;
   cardTypes: string[];
+  sourceProductSkus: string[];
+  presentedProductSkus: string[];
+  productProvenanceAvailable: boolean;
+}
+
+/** Inspect rendered state, never a browser request, model plan or approval proposal. */
+function renderedProductSkus(result: TurnResult): string[] {
+  const skus = new Set<string>();
+  const visit = (value: any, depth = 0) => {
+    if (!value || typeof value !== 'object' || depth > 12) return;
+    if (typeof value.sku === 'string' && value.sku.trim()) skus.add(value.sku.trim());
+    for (const entry of Array.isArray(value) ? value : Object.values(value)) visit(entry, depth + 1);
+  };
+  for (const instruction of result.uiInstructions || []) visit((instruction as any).envelope?.arguments?.card?.state ?? instruction.props);
+  for (const card of (result as any).cards || (result as any).uiCards || []) visit(card.state ?? card);
+  const missing = new Set<string>((result.trace as any)?.missingProductSkus ?? []);
+  for (const line of (result.assistantMessage || '').split(/\n+/)) {
+    // Only a completed lookup's exact negative statement is not a recommendation.
+    // The same ID on a card, or with a price/claim appended, still needs positive provenance.
+    if (isCatalogueAbsenceStatement(line, missing)) continue;
+    for (const match of line.replace(/[*`]/g, '').matchAll(/\bSKU\s*[:#]?\s*([A-Za-z0-9_-]+)/gi)) skus.add(match[1]);
+  }
+  return [...skus].sort();
 }
 
 export interface ScenarioExecutionResult {
@@ -85,8 +110,11 @@ export interface RunEvaluationOptions {
   packDir?: string;
   release?: BusinessPackRelease;
   suitePath?: string;
+  suiteId?: string;
   verbose?: boolean;
   isolatedDb?: any;
+  /** Explicit composition of every isolated data/tool/model port. Never constructs ambient production dependencies. */
+  inProcessFactory?: (release: BusinessPackRelease, isolatedDb: any) => { executeTurn(command: TurnCommand, release: BusinessPackRelease): Promise<TurnResult> };
   repositories?: {
     workspaceRepo?: any;
     executionRepo?: any;
@@ -135,7 +163,7 @@ export class EvaluationRunner {
     if (options.suitePath && fs.existsSync(options.suitePath)) {
       suite = JSON.parse(fs.readFileSync(options.suitePath, 'utf8'));
     } else if (release?.evaluations && release.evaluations.length > 0) {
-      suite = release.evaluations[0] as EvaluationSuite;
+      suite = (options.suiteId ? release.evaluations.find(entry => entry.suiteId === options.suiteId) : release.evaluations[0]) as EvaluationSuite | undefined;
     }
 
     if (!suite) {
@@ -143,6 +171,9 @@ export class EvaluationRunner {
         `[EvaluationRunner] No evaluation suite found for tenant '${tenantId}'. Provide an explicit options.suitePath or compile evaluations into the Business Pack release.`
       );
     }
+    if (suite.tenantId !== tenantId) throw new Error('[EvaluationRunner] Evaluation suite belongs to another tenant.');
+    if (!Array.isArray(suite.scenarios) || suite.scenarios.length === 0) throw new Error('[EvaluationRunner] An evaluation suite must contain at least one scenario.');
+    const expectedChecksum = getVerifiedBusinessPackMetadata(release)?.checksum ?? computePackChecksum(release);
 
     const isBlocking = suite.blockingOnPublish !== false;
     const isDeterministicOffline = Boolean(
@@ -176,6 +207,7 @@ export class EvaluationRunner {
       const failures: string[] = [];
       const turnsLog: ScenarioTurnLog[] = [];
       const executedCapabilitiesAcrossTurns = new Set<string>();
+      const attemptedCapabilitiesAcrossTurns = new Set<string>();
       const workspaceId = `eval-${tenantId}-${scenario.scenarioId}-${Date.now()}`;
       const sessionId = `sess-${workspaceId}`;
 
@@ -224,6 +256,11 @@ export class EvaluationRunner {
         }
 
         lastTurnResult = res;
+        if (res.workspace?.tenantId !== tenantId || res.workspace?.environmentId !== environmentId || res.workspace?.packVersionId !== release.manifest.version || res.workspace?.pins?.packChecksum !== expectedChecksum) {
+          failures.push(`Turn ${tIdx + 1}: Runtime did not execute the exact scoped candidate release`);
+          break;
+        }
+        if (!res.assistantMessage?.trim() || res.decision?.type === 'fail') failures.push(`Turn ${tIdx + 1}: Runtime returned no successful customer answer`);
 
         // Check trace errors for model credential or residency error in blocking evaluations
         const traceErrors = (res.trace as any)?.errors || [];
@@ -247,12 +284,16 @@ export class EvaluationRunner {
           }
         }
 
-        const turnExecutedCaps: string[] = (res.executedCapabilities || []).map((c: any) => c.toolId);
+        for (const capability of res.executedCapabilities || []) attemptedCapabilitiesAcrossTurns.add(capability.toolId);
+        const turnExecutedCaps: string[] = (res.executedCapabilities || []).filter((c: any) => c.status === 'success').map((c: any) => c.toolId);
         for (const cap of turnExecutedCaps) {
           executedCapabilitiesAcrossTurns.add(cap);
         }
 
-        const cardTypes = ((res as any).cards || (res as any).uiCards || []).map((c: any) => c.type || c.cardType);
+        const cardTypes = [...new Set([
+          ...((res as any).cards || (res as any).uiCards || []).map((c: any) => c.type || c.cardType),
+          ...(res.uiInstructions || []).map((instruction: any) => instruction.envelope?.arguments?.card?.cardType || instruction.component),
+        ].filter(Boolean))] as string[];
 
         turnsLog.push({
           turnIndex: tIdx + 1,
@@ -263,6 +304,9 @@ export class EvaluationRunner {
           executedCapabilities: turnExecutedCaps,
           facts: res.workspace?.facts ? Object.fromEntries(Object.entries(res.workspace.facts).map(([k, v]: any) => [k, v?.value])) : {},
           cardTypes,
+          sourceProductSkus: Array.isArray((res.trace as any)?.toolProductSkus) ? (res.trace as any).toolProductSkus.filter((sku: unknown): sku is string => typeof sku === 'string') : [],
+          presentedProductSkus: renderedProductSkus(res),
+          productProvenanceAvailable: Array.isArray((res.trace as any)?.toolProductSkus),
         });
       }
 
@@ -293,15 +337,40 @@ export class EvaluationRunner {
 
       // Custom assertions
       for (const assertion of scenario.assertions || []) {
+        const texts = turnsLog.map(turn => turn.assistantMessage || '');
+        const value = assertion.field?.split('.').reduce((acc: any, part: string) => acc?.[part], capturedFacts);
+        const expected = assertion.expected;
         if (assertion.type === 'fact_present' && assertion.field) {
-          if (capturedFacts[assertion.field] === undefined) {
+          if (value === undefined || value === null) {
             failures.push(`Assertion failed: ${assertion.description || `Fact '${assertion.field}' must be present`}`);
           }
         } else if (assertion.type === 'budget_ceiling' && assertion.field) {
-          const val = assertion.field.split('.').reduce((acc: any, part: string) => acc?.[part], capturedFacts);
-          if (val === undefined || (assertion.expected !== undefined && val > assertion.expected)) {
+          if (typeof value !== 'number' || !Number.isFinite(value) || typeof expected !== 'number' || !Number.isFinite(expected) || value > expected) {
             failures.push(`Assertion failed: ${assertion.description || `Field '${assertion.field}' must be <= ${assertion.expected}`}`);
           }
+        } else if (assertion.type === 'fact_equals' && assertion.field) {
+          if (value === undefined || !Object.prototype.hasOwnProperty.call(assertion, 'expected') || !isDeepStrictEqual(value, expected)) failures.push(`Fact '${assertion.field}' did not equal its expected value`);
+        } else if (assertion.type === 'capability_executed' && assertion.field) {
+          if (!executedCapabilitiesAcrossTurns.has(assertion.field)) failures.push(`Capability '${assertion.field}' did not complete successfully`);
+        } else if (assertion.type === 'capability_not_executed' && assertion.field) {
+          if (attemptedCapabilitiesAcrossTurns.has(assertion.field)) failures.push(`Forbidden capability '${assertion.field}' was attempted`);
+        } else if (assertion.type === 'stage_reached' && typeof expected === 'string') {
+          if (!turnsLog.some(turn => turn.stage === expected)) failures.push(`Stage '${expected}' was not reached`);
+        } else if (assertion.type === 'response_contains' && typeof expected === 'string' && expected.trim()) {
+          if (!texts.some(text => text.toLowerCase().includes(expected.toLowerCase()))) failures.push(`Required response content was missing: ${expected}`);
+        } else if (assertion.type === 'response_not_contains' && typeof expected === 'string' && expected.trim()) {
+          if (texts.some(text => text.toLowerCase().includes(expected.toLowerCase()))) failures.push(`Forbidden response content was present: ${expected}`);
+        } else if (assertion.type === 'card_present' && typeof expected === 'string') {
+          if (!turnsLog.some(turn => turn.cardTypes.includes(expected))) failures.push(`Required card '${expected}' was not rendered`);
+        } else if (assertion.type === 'no_hallucinated_skus') {
+          for (const turn of turnsLog) {
+            if (turn.presentedProductSkus.length && !turn.productProvenanceAvailable) failures.push(`Turn ${turn.turnIndex}: product source provenance was missing`);
+            const sourced = new Set(turn.sourceProductSkus);
+            const unsupported = turn.presentedProductSkus.filter(sku => !sourced.has(sku));
+            if (unsupported.length) failures.push(`Turn ${turn.turnIndex}: unsourced product SKUs were presented: ${unsupported.join(', ')}`);
+          }
+        } else {
+          failures.push(`Unsupported or incomplete assertion '${assertion.type}'; publication cannot ignore it`);
         }
       }
 
@@ -399,57 +468,11 @@ export class EvaluationRunner {
     release: BusinessPackRelease,
     options?: RunEvaluationOptions
   ): any {
-    // Dynamic import from journey-runtime-service
-    const { TurnApplicationService } = require('../../../apps/journey-runtime-service/src/kernel/turn-application.service');
-    const { WorkspaceRepository } = require('../../../apps/journey-runtime-service/src/kernel/workspace.repository');
-    const { WorkspaceStore } = require('../../../apps/journey-runtime-service/src/workspace/workspace.store');
-    const { ExecutionRepository } = require('../../../apps/journey-runtime-service/src/kernel/execution.repository');
-    const { OutboxRepository } = require('../../../apps/journey-runtime-service/src/kernel/outbox.repository');
-    const { CapabilityGateway } = require('../../../apps/journey-runtime-service/src/kernel/capability.gateway');
-    const { ApprovalService } = require('../../../apps/journey-runtime-service/src/kernel/approval.service');
-    const { ApprovalStore } = require('../../../apps/journey-runtime-service/src/approval/approval.store');
-
-    const packRepo = {
-      loadActivePack: async () => release,
-      hasActivePack: async () => true,
-      invalidate: () => {},
-    };
-
-    let workspaceRepo = options?.repositories?.workspaceRepo;
-    if (!workspaceRepo) {
-      const workspaceStore = options?.isolatedDb
-        ? new WorkspaceStore(options.isolatedDb)
-        : new WorkspaceStore({ forceInMemory: true });
-      workspaceRepo = new WorkspaceRepository(workspaceStore);
+    if (!options?.isolatedDb || !options.inProcessFactory) {
+      throw new Error('[EvaluationRunner] In-process validation requires explicit isolated storage and a runtime factory. Ambient runtime/database/tool defaults are forbidden.');
     }
-
-    const executionRepo = options?.repositories?.executionRepo || new ExecutionRepository();
-
-    let outboxRepo = options?.repositories?.outboxRepo;
-    if (!outboxRepo) {
-      outboxRepo = options?.isolatedDb
-        ? new OutboxRepository(options.isolatedDb)
-        : new OutboxRepository({ forceInMemory: true });
-    }
-
-    const capabilityGateway = options?.repositories?.capabilityGateway || new CapabilityGateway();
-
-    const approvalStore = options?.isolatedDb
-      ? new ApprovalStore(options.isolatedDb)
-      : new ApprovalStore({ forceInMemory: true });
-    const approvalService = new ApprovalService(approvalStore, outboxRepo);
-
-
-    return new TurnApplicationService(
-      packRepo,
-      workspaceRepo,
-      undefined,
-      undefined,
-      undefined,
-      capabilityGateway,
-      approvalService,
-      executionRepo,
-      outboxRepo
-    );
+    const service = options.inProcessFactory(release, options.isolatedDb);
+    if (!service || typeof service.executeTurn !== 'function') throw new Error('[EvaluationRunner] Invalid isolated runtime factory.');
+    return service;
   }
 }

@@ -31,6 +31,13 @@ export const ProductFact = z.object({
   availability: z.enum(['in_stock', 'low_stock', 'out_of_stock', 'preorder', 'unknown']).optional(),
   stockLabel: z.string().optional(),
   specs: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+  /** Source-enriched detail presentation. These are joined by the server, not model-authored facts. */
+  specList: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
+  hasSpecs: z.boolean().optional(),
+  documents: z.array(z.object({ title: z.string(), url: z.string(), kind: z.string().optional() })).optional(),
+  hasDocuments: z.boolean().optional(),
+  productUrl: z.string().optional(),
+  hasProductUrl: z.boolean().optional(),
   badges: z.array(z.string()).optional(),
   rating: z.number().optional(),
   ratingCount: z.number().optional(),
@@ -313,6 +320,8 @@ export const CARD_TYPES = {
     description: 'The assistant is about to do something and waits for the person to allow it once, or not. Built by the server only, never by the model.',
     state: z.object({
       confirmationId: z.string(),
+      reviewPayload: z.string().max(64_000).optional(),
+      reviewSource: z.object({ name: z.string(), environment: z.string(), sample: z.boolean() }).optional(),
       heading: z.string().optional(),
       summary: z.string(),
       details: z.array(z.object({ label: z.string(), value: z.string() })).max(8).optional(),

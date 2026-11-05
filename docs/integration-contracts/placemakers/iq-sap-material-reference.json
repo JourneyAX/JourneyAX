@@ -1,0 +1,222 @@
+{
+  "source": {
+    "connectorId": "sap-s4hana",
+    "displayName": "SAP S/4HANA",
+    "description": "Real ERP technical material references. Other source functions remain blocked until their exact mappings are independently verified.",
+    "owner": "Configured integration owner",
+    "mcpServerName": "sap-s4hana",
+    "connectionRef": "placemakers-business-systems-v5",
+    "secretRef": "tenant-secret://placemakers/dev/real-connectors-key",
+    "connectionScope": "shop",
+    "sample": false,
+    "enabled": true,
+    "tools": [
+      {
+        "name": "get_product",
+        "sideEffect": "read",
+        "summary": "Read exact owned ERP material technical reference; no vendor sale-unit or fit guarantee."
+      }
+    ]
+  },
+  "part": {
+    "partId": "erp-material-reference",
+    "things": [
+      {
+        "thing": "Product",
+        "meaning": "A merchant catalogue product identity with an explicit ERP technical reference mapping. ERP test-reference classification is not vendor sales-unit or physical-fit evidence.",
+        "aliases": [
+          "ERP material reference"
+        ],
+        "group": "Catalogue",
+        "status": "active",
+        "key": {
+          "canonical": "catalog_sku",
+          "pattern": "^[A-Za-z0-9_.-]{1,80}$"
+        },
+        "keyKinds": [
+          {
+            "kind": "catalog_sku",
+            "system": "commercetools",
+            "evidence": "real_field",
+            "caseRule": "as_is",
+            "ready": true
+          },
+          {
+            "kind": "sap_material_id",
+            "system": "sap-s4hana",
+            "evidence": "real_field",
+            "caseRule": "as_is",
+            "pattern": "^[A-Za-z0-9_.-]{1,40}$",
+            "ready": true
+          }
+        ],
+        "labelFact": "Product.erpMaterialId",
+        "searchFacts": [
+          "Product.erpMaterialId"
+        ],
+        "defaultFacts": [
+          "Product.erpMaterialId",
+          "Product.erpProductType",
+          "Product.erpReferenceBaseUnit"
+        ],
+        "expectedIn": [
+          "sap-s4hana"
+        ]
+      }
+    ],
+    "facts": [
+      {
+        "fact": "Product.erpMaterialId",
+        "thing": "Product",
+        "label": "ERP material reference",
+        "meaning": "ERP material reference from the exact registered SAP technical reference; not supplier sale-unit or fit evidence.",
+        "type": "text",
+        "freshnessKind": "reference",
+        "allowStale": false
+      },
+      {
+        "fact": "Product.erpProductType",
+        "thing": "Product",
+        "label": "ERP technical product type",
+        "meaning": "ERP technical product type from the exact registered SAP technical reference; not supplier sale-unit or fit evidence.",
+        "type": "text",
+        "freshnessKind": "reference",
+        "allowStale": false
+      },
+      {
+        "fact": "Product.erpReferenceBaseUnit",
+        "thing": "Product",
+        "label": "ERP reference-record base unit",
+        "meaning": "ERP reference-record base unit from the exact registered SAP technical reference; not supplier sale-unit or fit evidence.",
+        "type": "text",
+        "freshnessKind": "reference",
+        "allowStale": false
+      }
+    ],
+    "bindings": [
+      {
+        "bindingId": "Product.erpMaterialId@sap-s4hana.get_product",
+        "target": {
+          "kind": "fact",
+          "fact": "Product.erpMaterialId"
+        },
+        "system": "sap-s4hana",
+        "tool": "get_product",
+        "args": {
+          "productId": {
+            "from": "key",
+            "kind": "sap_material_id"
+          }
+        },
+        "select": "record.productId",
+        "identity": {
+          "keyKind": "sap_material_id",
+          "select": "record.productId"
+        },
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "ERP technical reference record only; original vendor sales unit and physical fit remain unverified"
+        },
+        "selfTest": {
+          "fixtureId": "owned-erp-technical-reference"
+        }
+      },
+      {
+        "bindingId": "Product.erpProductType@sap-s4hana.get_product",
+        "target": {
+          "kind": "fact",
+          "fact": "Product.erpProductType"
+        },
+        "system": "sap-s4hana",
+        "tool": "get_product",
+        "args": {
+          "productId": {
+            "from": "key",
+            "kind": "sap_material_id"
+          }
+        },
+        "select": "record.productType",
+        "identity": {
+          "keyKind": "sap_material_id",
+          "select": "record.productId"
+        },
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "ERP technical reference record only; original vendor sales unit and physical fit remain unverified"
+        },
+        "selfTest": {
+          "fixtureId": "owned-erp-technical-reference"
+        }
+      },
+      {
+        "bindingId": "Product.erpReferenceBaseUnit@sap-s4hana.get_product",
+        "target": {
+          "kind": "fact",
+          "fact": "Product.erpReferenceBaseUnit"
+        },
+        "system": "sap-s4hana",
+        "tool": "get_product",
+        "args": {
+          "productId": {
+            "from": "key",
+            "kind": "sap_material_id"
+          }
+        },
+        "select": "record.baseUnit",
+        "identity": {
+          "keyKind": "sap_material_id",
+          "select": "record.productId"
+        },
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "ERP technical reference record only; original vendor sales unit and physical fit remain unverified"
+        },
+        "selfTest": {
+          "fixtureId": "owned-erp-technical-reference"
+        }
+      }
+    ],
+    "permissionRules": [
+      {
+        "ruleId": "staff-erp-material-reference",
+        "mode": "see",
+        "target": {
+          "thing": "Product",
+          "facts": [
+            "Product.erpMaterialId",
+            "Product.erpProductType",
+            "Product.erpReferenceBaseUnit"
+          ]
+        },
+        "who": [
+          {
+            "audience": "staff",
+            "groups": [
+              "customer-service",
+              "sales",
+              "administrators"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

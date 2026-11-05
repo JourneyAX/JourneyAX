@@ -55,7 +55,7 @@
 .jx-w-regular { font-weight: 400; } .jx-w-medium { font-weight: 500; } .jx-w-semibold { font-weight: 600; } .jx-w-bold { font-weight: 700; }
 
 /* image */
-.jx-image { position: relative; overflow: hidden; background: var(--jx-color-muted); width: 100%; }
+.jx-image { position: relative; overflow: hidden; background: var(--jx-color-surface); width: 100%; }
 .jx-image img { display: block; width: 100%; height: 100%; }
 .jx-image-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 /* Brand-logo fallback: the tenant's own mark, contained and quiet, with a one-line caption. */

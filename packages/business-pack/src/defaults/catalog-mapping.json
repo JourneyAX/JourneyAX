@@ -100,8 +100,12 @@
   "attributeContainers": [
     "attributes",
     "safety",
-    "specifications"
+    "specifications",
+    "specs"
   ],
+  "warrantyDurationKeys": ["warrantyDuration", "Warranty Duration", "warrantyPeriod", "Warranty Period"],
+  "sourceUrlPaths": ["url", "web.productUrl", "productUrl"],
+  "documentPaths": ["documents"],
   "imagePaths": [
     "imageUrl",
     "images.0",

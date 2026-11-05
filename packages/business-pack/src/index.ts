@@ -19,3 +19,9 @@ export * from './release-verifier';
 export * from './catalog-mapping';
 export * from './catalog-scope';
 export * from './catalog-mapping-check';
+export * from './operational-desks';
+export * from './support-handoff';
+export * from './customer-profiles';
+
+export { compileAgentCommerceCapabilities } from './commerce-capabilities';
+export { compileCommerceSettings } from './commerce-settings';

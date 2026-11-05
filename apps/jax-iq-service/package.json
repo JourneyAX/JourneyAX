@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "node ../../scripts/dev/watch-service.mjs",
-    "start": "node dist/main.js",
+    "start": "node dist/apps/jax-iq-service/src/main.js",
     "test": "for f in test/*.spec.ts; do npx tsx --tsconfig test/tsconfig.json \"$f\" || exit 1; done"
   },
   "dependencies": {
@@ -19,7 +19,8 @@
     "@journeyax/capability-sdk": "*",
     "@journeyax/shared-types": "*",
     "@journeyax/database": "*",
-    "mongodb": "^7.4.0"
+    "mongodb": "^7.4.0",
+    "@journeyax/knowledge": "*"
   },
   "devDependencies": {
     "@journeyax/test-support": "*",

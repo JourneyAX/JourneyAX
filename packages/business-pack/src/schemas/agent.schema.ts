@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export const AgentModeSchema = z.object({ enabled: z.boolean() }).strict();
 
 export const JourneyPlaybookStageSchema = z.object({
   id: z.string().optional(),

@@ -1,0 +1,1941 @@
+{
+  "schemaVersion": "1.0.0",
+  "ontologyId": "placemakers-operations-v5",
+  "enabled": true,
+  "selfConnector": "jax-iq",
+  "things": [
+    {
+      "thing": "Ticket",
+      "meaning": "A support conversation held by the ticketing system.",
+      "aliases": [
+        "ticket",
+        "support request"
+      ],
+      "group": "Support",
+      "status": "active",
+      "key": {
+        "canonical": "ticket_id",
+        "pattern": "^[1-9][0-9]*$"
+      },
+      "keyKinds": [
+        {
+          "kind": "ticket_id",
+          "system": "zendesk",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        }
+      ],
+      "labelFact": "Ticket.subject",
+      "searchFacts": [
+        "Ticket.subject"
+      ],
+      "defaultFacts": [
+        "Ticket.subject",
+        "Ticket.status",
+        "Ticket.updated",
+        "Ticket.conversation",
+        "Ticket.more"
+      ],
+      "expectedIn": [
+        "zendesk"
+      ],
+      "lookups": [
+        {
+          "system": "zendesk",
+          "tool": "find_tickets",
+          "queryArg": "query",
+          "rows": "records",
+          "keyField": "ticketId",
+          "keyKind": "ticket_id",
+          "labelField": "subject"
+        }
+      ],
+      "sourceIdentity": {
+        "system": "zendesk",
+        "keyKind": "ticket_id"
+      }
+    },
+    {
+      "thing": "SupportQueue",
+      "meaning": "The tenant-authorised support inbox identified by its registered connection reference.",
+      "aliases": [],
+      "group": "Operations",
+      "status": "active",
+      "key": {
+        "canonical": "connection_ref",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$"
+      },
+      "keyKinds": [
+        {
+          "kind": "connection_ref",
+          "system": "zendesk",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        }
+      ],
+      "labelFact": "SupportQueue.checkedAt",
+      "searchFacts": [
+        "SupportQueue.checkedAt"
+      ],
+      "defaultFacts": [
+        "SupportQueue.checkedAt"
+      ],
+      "expectedIn": [
+        "zendesk"
+      ]
+    },
+    {
+      "thing": "Account",
+      "meaning": "A verified customer business account across CRM, commerce and the explicitly labelled demonstration ERP.",
+      "aliases": [],
+      "group": "Operations",
+      "status": "active",
+      "key": {
+        "canonical": "account_number",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$"
+      },
+      "keyKinds": [
+        {
+          "kind": "sf_account_id",
+          "system": "salesforce",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        },
+        {
+          "kind": "ct_unit_key",
+          "system": "commercetools",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        },
+        {
+          "kind": "account_number",
+          "system": "erp-demo",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        }
+      ],
+      "labelFact": "Account.name",
+      "searchFacts": [
+        "Account.name"
+      ],
+      "defaultFacts": [
+        "Account.name",
+        "Account.owner",
+        "Account.crmRecordId",
+        "Account.crmPhone",
+        "Account.crmEtag",
+        "Account.commerceContactKey",
+        "Account.commerceContactVersion",
+        "Account.commerceAddresses"
+      ],
+      "expectedIn": [
+        "salesforce",
+        "commercetools"
+      ],
+      "lookups": [
+        {
+          "system": "salesforce",
+          "tool": "find_account",
+          "queryArg": "query",
+          "rows": "records",
+          "keyField": "accountId",
+          "keyKind": "sf_account_id",
+          "labelField": "name"
+        }
+      ]
+    },
+    {
+      "thing": "Order",
+      "meaning": "A confirmed commerce order. Read its current version and state before proposing any approved change.",
+      "aliases": [],
+      "group": "Operations",
+      "status": "active",
+      "key": {
+        "canonical": "order_number",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$"
+      },
+      "keyKinds": [
+        {
+          "kind": "order_number",
+          "system": "commercetools",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        },
+        {
+          "kind": "ct_order_id",
+          "system": "commercetools",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        },
+        {
+          "kind": "zd_order_tag",
+          "system": "zendesk",
+          "evidence": "real_field",
+          "caseRule": "lower",
+          "ready": true
+        }
+      ],
+      "labelFact": "Order.number",
+      "searchFacts": [
+        "Order.number"
+      ],
+      "defaultFacts": [
+        "Order.number",
+        "Order.version",
+        "Order.state",
+        "Order.paymentState",
+        "Order.shipmentState",
+        "Order.total"
+      ],
+      "expectedIn": [
+        "commercetools"
+      ],
+      "sourceIdentity": {
+        "system": "commercetools",
+        "keyKind": "order_number"
+      }
+    },
+    {
+      "thing": "CommerceOverview",
+      "meaning": "The configured tenant commerce order overview, never a shopper-wide account permission.",
+      "aliases": [],
+      "group": "Commerce",
+      "status": "active",
+      "key": {
+        "canonical": "connection_ref",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$"
+      },
+      "keyKinds": [
+        {
+          "kind": "connection_ref",
+          "system": "commercetools",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        }
+      ],
+      "labelFact": "CommerceOverview.orderCount",
+      "searchFacts": [
+        "CommerceOverview.orderCount"
+      ],
+      "defaultFacts": [
+        "CommerceOverview.orderCount"
+      ],
+      "expectedIn": [
+        "commercetools"
+      ]
+    }
+  ],
+  "facts": [
+    {
+      "fact": "Ticket.subject",
+      "thing": "Ticket",
+      "label": "Subject",
+      "meaning": "The ticket subject supplied by the support system.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.status",
+      "thing": "Ticket",
+      "label": "Status",
+      "meaning": "The ticket status supplied by the support system.",
+      "type": "enum",
+      "freshnessKind": "reference",
+      "allowStale": false,
+      "enumValues": [
+        "new",
+        "open",
+        "pending",
+        "hold",
+        "solved",
+        "closed"
+      ]
+    },
+    {
+      "fact": "Ticket.updated",
+      "thing": "Ticket",
+      "label": "Last changed",
+      "meaning": "The ticket last changed supplied by the support system.",
+      "type": "datetime",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.conversation",
+      "thing": "Ticket",
+      "label": "Conversation",
+      "meaning": "The ticket conversation supplied by the support system.",
+      "type": "list",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.more",
+      "thing": "Ticket",
+      "label": "More comments",
+      "meaning": "The ticket more comments supplied by the support system.",
+      "type": "boolean",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.nextCursor",
+      "thing": "Ticket",
+      "label": "Next comment cursor",
+      "meaning": "The ticket next comment cursor supplied by the support system.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.tags",
+      "thing": "Ticket",
+      "label": "Source tags",
+      "meaning": "Source tags as recorded by its configured source.",
+      "type": "list",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.externalId",
+      "thing": "Ticket",
+      "label": "External reference",
+      "meaning": "External reference as recorded by its configured source.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.customFields",
+      "thing": "Ticket",
+      "label": "Structured ticket fields",
+      "meaning": "Structured ticket fields as recorded by its configured source.",
+      "type": "list",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "SupportQueue.checkedAt",
+      "thing": "SupportQueue",
+      "label": "Last inbox read",
+      "meaning": "Last inbox read as recorded by its configured source.",
+      "type": "datetime",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.name",
+      "thing": "Account",
+      "label": "Account name",
+      "meaning": "Account name as recorded by its configured source.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.owner",
+      "thing": "Account",
+      "label": "Account owner",
+      "meaning": "Account owner as recorded by its configured source.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.commerceStatus",
+      "thing": "Account",
+      "label": "Commerce account status",
+      "meaning": "Commerce account status as recorded by its configured source.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.balance",
+      "thing": "Account",
+      "label": "Account balance",
+      "meaning": "Account balance as recorded by its configured source.",
+      "type": "money",
+      "freshnessKind": "credit",
+      "allowStale": false
+    },
+    {
+      "fact": "Order.number",
+      "thing": "Order",
+      "label": "Order number",
+      "meaning": "Order number as recorded by its configured source.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Order.version",
+      "thing": "Order",
+      "label": "Current source version",
+      "meaning": "Current source version as recorded by its configured source.",
+      "type": "number",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Order.state",
+      "thing": "Order",
+      "label": "Order state",
+      "meaning": "Order state as recorded by its configured source.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Order.paymentState",
+      "thing": "Order",
+      "label": "Payment state",
+      "meaning": "Payment state as recorded by its configured source.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Order.shipmentState",
+      "thing": "Order",
+      "label": "Shipment state",
+      "meaning": "Shipment state as recorded by its configured source.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Order.total",
+      "thing": "Order",
+      "label": "Order total",
+      "meaning": "Order total as recorded by its configured source.",
+      "type": "money",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Order.lines",
+      "thing": "Order",
+      "label": "Order lines",
+      "meaning": "Order lines as recorded by its configured source.",
+      "type": "list",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.crmPhone",
+      "thing": "Account",
+      "label": "Salesforce business account phone",
+      "meaning": "Salesforce business account phone from the authoritative scoped source. It does not establish a cross-system identity or authorise a change.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.crmEtag",
+      "thing": "Account",
+      "label": "Salesforce account concurrency token",
+      "meaning": "Salesforce account concurrency token from the authoritative scoped source. It does not establish a cross-system identity or authorise a change.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.crmRecordId",
+      "thing": "Account",
+      "label": "Exact CRM account record",
+      "meaning": "Exact CRM account record from the authoritative scoped source. It does not establish a cross-system identity or authorise a change.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.commerceContactVersion",
+      "thing": "Account",
+      "label": "Commerce account contact version",
+      "meaning": "Commerce account contact version from the authoritative scoped source. It does not establish a cross-system identity or authorise a change.",
+      "type": "number",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.commerceContactKey",
+      "thing": "Account",
+      "label": "Exact commerce business-unit key",
+      "meaning": "Exact commerce business-unit key from the authoritative scoped source. It does not establish a cross-system identity or authorise a change.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Account.commerceAddresses",
+      "thing": "Account",
+      "label": "Commerce addresses and contact fields",
+      "meaning": "Commerce addresses and contact fields from the authoritative scoped source. It does not establish a cross-system identity or authorise a change.",
+      "type": "list",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "SupportQueue.unsolvedCount",
+      "thing": "SupportQueue",
+      "label": "Unsolved support requests",
+      "meaning": "Source search-index count of unsolved tickets at the recorded read time, independent of the returned page.",
+      "type": "number",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "SupportQueue.openCount",
+      "thing": "SupportQueue",
+      "label": "Open support requests",
+      "meaning": "Source search-index count of open tickets at the recorded read time, independent of the returned page.",
+      "type": "number",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "CommerceOverview.orderCount",
+      "thing": "CommerceOverview",
+      "label": "Open support requests",
+      "meaning": "Number of orders reported by the commerce source for this overview.",
+      "type": "number",
+      "freshnessKind": "reference",
+      "allowStale": false
+    }
+  ],
+  "links": [
+    {
+      "link": "SupportQueue.tickets",
+      "from": "SupportQueue",
+      "to": "Ticket",
+      "meaning": "Ticket records from this tenant-authorised support inbox.",
+      "cardinality": "1:n"
+    },
+    {
+      "link": "Account.orders",
+      "from": "Account",
+      "to": "Order",
+      "meaning": "Orders belonging to the verified commerce account.",
+      "cardinality": "1:n"
+    },
+    {
+      "link": "Order.tickets",
+      "from": "Order",
+      "to": "Ticket",
+      "meaning": "Support tickets carrying the verified order-reference tag.",
+      "cardinality": "1:n"
+    },
+    {
+      "link": "Account.orderTickets",
+      "from": "Account",
+      "to": "Ticket",
+      "meaning": "Support tickets related to orders of this account.",
+      "cardinality": "1:n",
+      "via": [
+        "Account.orders",
+        "Order.tickets"
+      ]
+    },
+    {
+      "link": "CommerceOverview.orders",
+      "from": "CommerceOverview",
+      "to": "Order",
+      "meaning": "Recent orders returned by the tenant-authorised commerce system.",
+      "cardinality": "1:n"
+    }
+  ],
+  "bindings": [
+    {
+      "bindingId": "Ticket.subject@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.subject"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.subject",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.status@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.status"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.status",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.updated@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.updated"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.updated",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.conversation@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.conversation"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.conversation",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      },
+      "page": {
+        "morePath": "record.more",
+        "nextCursorPath": "record.nextCursor",
+        "cursorParam": "afterCursor"
+      }
+    },
+    {
+      "bindingId": "Ticket.more@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.more"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.more",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.nextCursor@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.nextCursor"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.nextCursor",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.tags@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.tags"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        }
+      },
+      "select": "record.tags",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Ticket.externalId@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.externalId"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        }
+      },
+      "select": "record.externalId",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Ticket.customFields@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.customFields"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        }
+      },
+      "select": "record.customFields",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "SupportQueue.checkedAt@zendesk.list_recent_tickets",
+      "target": {
+        "kind": "fact",
+        "fact": "SupportQueue.checkedAt"
+      },
+      "system": "zendesk",
+      "tool": "list_recent_tickets",
+      "args": {
+        "limit": {
+          "from": "literal",
+          "value": 25
+        },
+        "order": {
+          "from": "literal",
+          "value": "oldest_first"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        }
+      },
+      "select": "checkedAt",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "SupportQueue.tickets@zendesk.list_recent_tickets",
+      "target": {
+        "kind": "link",
+        "link": "SupportQueue.tickets"
+      },
+      "system": "zendesk",
+      "tool": "list_recent_tickets",
+      "args": {
+        "limit": {
+          "from": "literal",
+          "value": 20
+        },
+        "order": {
+          "from": "literal",
+          "value": "newest_first"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        }
+      },
+      "select": "records",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      },
+      "rows": {
+        "path": "records",
+        "keyField": "ticketId",
+        "keyKind": "ticket_id",
+        "factFields": {
+          "Ticket.subject": "subject",
+          "Ticket.status": "status",
+          "Ticket.updated": "updated"
+        }
+      },
+      "page": {
+        "morePath": "more",
+        "nextCursorPath": "nextCursor",
+        "cursorParam": "afterCursor"
+      }
+    },
+    {
+      "bindingId": "Account.name@salesforce.get_account",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.name"
+      },
+      "system": "salesforce",
+      "tool": "get_account",
+      "args": {
+        "accountId": {
+          "from": "key",
+          "kind": "sf_account_id"
+        }
+      },
+      "select": "record.name",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.owner@salesforce.get_account",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.owner"
+      },
+      "system": "salesforce",
+      "tool": "get_account",
+      "args": {
+        "accountId": {
+          "from": "key",
+          "kind": "sf_account_id"
+        }
+      },
+      "select": "record.owner",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.commerceStatus@commercetools.get_account",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.commerceStatus"
+      },
+      "system": "commercetools",
+      "tool": "get_account",
+      "args": {
+        "accountId": {
+          "from": "key",
+          "kind": "ct_unit_key"
+        }
+      },
+      "select": "record.status",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.balance@erp-demo.account_balance",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.balance"
+      },
+      "system": "erp-demo",
+      "tool": "account_balance",
+      "args": {
+        "accountId": {
+          "from": "key",
+          "kind": "account_number"
+        }
+      },
+      "select": "record.balance",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "credit",
+      "contract": {
+        "unit": "currency amount",
+        "currency": "from_record",
+        "tax": "unknown",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      },
+      "currencyFrom": "record.currency"
+    },
+    {
+      "bindingId": "Order.number@commercetools.get_order",
+      "target": {
+        "kind": "fact",
+        "fact": "Order.number"
+      },
+      "system": "commercetools",
+      "tool": "get_order",
+      "args": {
+        "orderId": {
+          "from": "key",
+          "kind": "order_number"
+        }
+      },
+      "select": "record.orderNumber",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Order.version@commercetools.get_order",
+      "target": {
+        "kind": "fact",
+        "fact": "Order.version"
+      },
+      "system": "commercetools",
+      "tool": "get_order",
+      "args": {
+        "orderId": {
+          "from": "key",
+          "kind": "order_number"
+        }
+      },
+      "select": "record.version",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Order.state@commercetools.get_order",
+      "target": {
+        "kind": "fact",
+        "fact": "Order.state"
+      },
+      "system": "commercetools",
+      "tool": "get_order",
+      "args": {
+        "orderId": {
+          "from": "key",
+          "kind": "order_number"
+        }
+      },
+      "select": "record.state",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Order.paymentState@commercetools.get_order",
+      "target": {
+        "kind": "fact",
+        "fact": "Order.paymentState"
+      },
+      "system": "commercetools",
+      "tool": "get_order",
+      "args": {
+        "orderId": {
+          "from": "key",
+          "kind": "order_number"
+        }
+      },
+      "select": "record.paymentState",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Order.shipmentState@commercetools.get_order",
+      "target": {
+        "kind": "fact",
+        "fact": "Order.shipmentState"
+      },
+      "system": "commercetools",
+      "tool": "get_order",
+      "args": {
+        "orderId": {
+          "from": "key",
+          "kind": "order_number"
+        }
+      },
+      "select": "record.shipmentState",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Order.total@commercetools.get_order",
+      "target": {
+        "kind": "fact",
+        "fact": "Order.total"
+      },
+      "system": "commercetools",
+      "tool": "get_order",
+      "args": {
+        "orderId": {
+          "from": "key",
+          "kind": "order_number"
+        }
+      },
+      "select": "record.total",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "currency amount",
+        "currency": "from_record",
+        "tax": "unknown",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      },
+      "currencyFrom": "record.currency"
+    },
+    {
+      "bindingId": "Order.lines@commercetools.get_order",
+      "target": {
+        "kind": "fact",
+        "fact": "Order.lines"
+      },
+      "system": "commercetools",
+      "tool": "get_order",
+      "args": {
+        "orderId": {
+          "from": "key",
+          "kind": "order_number"
+        }
+      },
+      "select": "record.lines",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.orders@commercetools.order_history",
+      "target": {
+        "kind": "link",
+        "link": "Account.orders"
+      },
+      "system": "commercetools",
+      "tool": "order_history",
+      "args": {
+        "accountId": {
+          "from": "key",
+          "kind": "ct_unit_key"
+        }
+      },
+      "select": "records",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      },
+      "rows": {
+        "path": "records",
+        "keyField": "orderNumber",
+        "keyKind": "order_number"
+      },
+      "page": {
+        "totalPath": "total",
+        "morePath": "more"
+      }
+    },
+    {
+      "bindingId": "Order.tickets@zendesk.find_tickets",
+      "target": {
+        "kind": "link",
+        "link": "Order.tickets"
+      },
+      "system": "zendesk",
+      "tool": "find_tickets",
+      "args": {
+        "tag": {
+          "from": "key",
+          "kind": "zd_order_tag"
+        }
+      },
+      "select": "records",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      },
+      "rows": {
+        "path": "records",
+        "keyField": "ticketId",
+        "keyKind": "ticket_id"
+      },
+      "page": {
+        "totalPath": "total",
+        "morePath": "more"
+      }
+    },
+    {
+      "bindingId": "Account.crmPhone@salesforce.get_account_contact",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.crmPhone"
+      },
+      "system": "salesforce",
+      "tool": "get_account_contact",
+      "args": {
+        "accountId": {
+          "from": "key",
+          "kind": "sf_account_id"
+        }
+      },
+      "select": "record.phone",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.crmEtag@salesforce.get_account_contact",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.crmEtag"
+      },
+      "system": "salesforce",
+      "tool": "get_account_contact",
+      "args": {
+        "accountId": {
+          "from": "key",
+          "kind": "sf_account_id"
+        }
+      },
+      "select": "record.etag",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.crmRecordId@salesforce.get_account_contact",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.crmRecordId"
+      },
+      "system": "salesforce",
+      "tool": "get_account_contact",
+      "args": {
+        "accountId": {
+          "from": "key",
+          "kind": "sf_account_id"
+        }
+      },
+      "select": "record.accountId",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.commerceContactVersion@commercetools.get_account_contact",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.commerceContactVersion"
+      },
+      "system": "commercetools",
+      "tool": "get_account_contact",
+      "args": {
+        "unitKey": {
+          "from": "key",
+          "kind": "ct_unit_key"
+        }
+      },
+      "select": "record.version",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.commerceContactKey@commercetools.get_account_contact",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.commerceContactKey"
+      },
+      "system": "commercetools",
+      "tool": "get_account_contact",
+      "args": {
+        "unitKey": {
+          "from": "key",
+          "kind": "ct_unit_key"
+        }
+      },
+      "select": "record.unitKey",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "Account.commerceAddresses@commercetools.get_account_contact",
+      "target": {
+        "kind": "fact",
+        "fact": "Account.commerceAddresses"
+      },
+      "system": "commercetools",
+      "tool": "get_account_contact",
+      "args": {
+        "unitKey": {
+          "from": "key",
+          "kind": "ct_unit_key"
+        }
+      },
+      "select": "record.addresses",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "SupportQueue.unsolvedCount@zendesk.count_tickets",
+      "target": {
+        "kind": "fact",
+        "fact": "SupportQueue.unsolvedCount"
+      },
+      "system": "zendesk",
+      "tool": "count_tickets",
+      "args": {
+        "status": {
+          "from": "literal",
+          "value": "unsolved"
+        }
+      },
+      "select": "record.count",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "count",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "unsolved tickets reported by the Zendesk search index"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "SupportQueue.openCount@zendesk.count_tickets",
+      "target": {
+        "kind": "fact",
+        "fact": "SupportQueue.openCount"
+      },
+      "system": "zendesk",
+      "tool": "count_tickets",
+      "args": {
+        "status": {
+          "from": "literal",
+          "value": "open"
+        }
+      },
+      "select": "record.count",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "count",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "open tickets reported by the Zendesk search index"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    },
+    {
+      "bindingId": "CommerceOverview.orders@commercetools.list_orders",
+      "target": {
+        "kind": "link",
+        "link": "CommerceOverview.orders"
+      },
+      "system": "commercetools",
+      "tool": "list_orders",
+      "args": {
+        "limit": {
+          "from": "literal",
+          "value": 20
+        }
+      },
+      "select": "records",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      },
+      "rows": {
+        "path": "records",
+        "keyField": "orderNumber",
+        "keyKind": "order_number",
+        "factFields": {
+          "Order.number": "orderNumber",
+          "Order.version": "version",
+          "Order.state": "state",
+          "Order.paymentState": "paymentState",
+          "Order.shipmentState": "shipmentState"
+        }
+      }
+    },
+    {
+      "bindingId": "CommerceOverview.orderCount@commercetools.list_orders",
+      "target": {
+        "kind": "fact",
+        "fact": "CommerceOverview.orderCount"
+      },
+      "system": "commercetools",
+      "tool": "list_orders",
+      "args": {
+        "limit": {
+          "from": "literal",
+          "value": 20
+        }
+      },
+      "select": "total",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "count",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "open tickets reported by the Zendesk search index"
+      },
+      "selfTest": {
+        "fixtureId": "placemakers-operational-source-contract"
+      }
+    }
+  ],
+  "permissionRules": [
+    {
+      "ruleId": "customer-service-read-ticket",
+      "mode": "see",
+      "target": {
+        "thing": "Ticket",
+        "facts": [
+          "Ticket.subject",
+          "Ticket.status",
+          "Ticket.updated",
+          "Ticket.conversation",
+          "Ticket.more",
+          "Ticket.nextCursor",
+          "Ticket.tags",
+          "Ticket.externalId",
+          "Ticket.customFields"
+        ]
+      },
+      "who": [
+        {
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "administrators"
+          ]
+        }
+      ]
+    },
+    {
+      "ruleId": "customer-service-read-supportqueue",
+      "mode": "see",
+      "target": {
+        "thing": "SupportQueue",
+        "facts": [
+          "SupportQueue.checkedAt",
+          "SupportQueue.unsolvedCount",
+          "SupportQueue.openCount"
+        ]
+      },
+      "who": [
+        {
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "administrators"
+          ]
+        }
+      ]
+    },
+    {
+      "ruleId": "customer-service-read-account",
+      "mode": "see",
+      "target": {
+        "thing": "Account",
+        "facts": [
+          "Account.name",
+          "Account.owner",
+          "Account.commerceStatus",
+          "Account.balance",
+          "Account.crmPhone",
+          "Account.crmEtag",
+          "Account.crmRecordId",
+          "Account.commerceContactVersion",
+          "Account.commerceContactKey",
+          "Account.commerceAddresses"
+        ]
+      },
+      "who": [
+        {
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "administrators"
+          ]
+        }
+      ]
+    },
+    {
+      "ruleId": "customer-service-read-order",
+      "mode": "see",
+      "target": {
+        "thing": "Order",
+        "facts": [
+          "Order.number",
+          "Order.version",
+          "Order.state",
+          "Order.paymentState",
+          "Order.shipmentState",
+          "Order.total",
+          "Order.lines"
+        ]
+      },
+      "who": [
+        {
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "administrators"
+          ]
+        }
+      ]
+    },
+    {
+      "ruleId": "staff-read-account",
+      "mode": "see",
+      "target": {
+        "thing": "Account",
+        "facts": [
+          "Account.name",
+          "Account.owner",
+          "Account.commerceStatus"
+        ]
+      },
+      "who": [
+        {
+          "audience": "staff",
+          "groups": [
+            "sales",
+            "sales-managers",
+            "branch",
+            "finance",
+            "leadership"
+          ]
+        }
+      ]
+    },
+    {
+      "ruleId": "staff-read-order",
+      "mode": "see",
+      "target": {
+        "thing": "Order",
+        "facts": [
+          "Order.number",
+          "Order.version",
+          "Order.state",
+          "Order.paymentState",
+          "Order.shipmentState",
+          "Order.total",
+          "Order.lines"
+        ]
+      },
+      "who": [
+        {
+          "audience": "staff",
+          "groups": [
+            "sales",
+            "sales-managers",
+            "branch",
+            "finance",
+            "leadership"
+          ]
+        }
+      ]
+    },
+    {
+      "ruleId": "staff-read-commerce-overview",
+      "mode": "see",
+      "target": {
+        "thing": "CommerceOverview",
+        "facts": [
+          "CommerceOverview.orderCount"
+        ]
+      },
+      "who": [
+        {
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "sales-managers",
+            "branch",
+            "finance",
+            "leadership",
+            "administrators"
+          ]
+        }
+      ]
+    }
+  ],
+  "signalRules": [],
+  "settings": [
+    {
+      "key": "timeout.call",
+      "label": "timeout.call",
+      "kind": "timeout",
+      "unit": "milliseconds",
+      "ownerRole": "operations",
+      "value": 15000
+    },
+    {
+      "key": "timeout.query",
+      "label": "timeout.query",
+      "kind": "timeout",
+      "unit": "milliseconds",
+      "ownerRole": "operations",
+      "value": 30000
+    },
+    {
+      "key": "retry.attempts",
+      "label": "retry.attempts",
+      "kind": "retry",
+      "unit": "count",
+      "ownerRole": "operations",
+      "value": 0
+    },
+    {
+      "key": "retry.delay",
+      "label": "retry.delay",
+      "kind": "retry",
+      "unit": "milliseconds",
+      "ownerRole": "operations",
+      "value": 0
+    },
+    {
+      "key": "cooldown.rateLimited",
+      "label": "cooldown.rateLimited",
+      "kind": "retry",
+      "unit": "seconds",
+      "ownerRole": "operations",
+      "value": 0
+    },
+    {
+      "key": "limit.parallelPerSystem",
+      "label": "limit.parallelPerSystem",
+      "kind": "limit",
+      "unit": "count",
+      "ownerRole": "operations",
+      "value": 4
+    },
+    {
+      "key": "evidence.retention",
+      "label": "evidence.retention",
+      "kind": "limit",
+      "unit": "seconds",
+      "ownerRole": "operations",
+      "value": 3600
+    },
+    {
+      "key": "freshness.reference",
+      "label": "freshness.reference",
+      "kind": "freshness",
+      "unit": "seconds",
+      "ownerRole": "operations",
+      "value": 60
+    },
+    {
+      "key": "freshness.credit",
+      "label": "Credit information freshness",
+      "kind": "freshness",
+      "unit": "seconds",
+      "ownerRole": "operations",
+      "value": 60
+    }
+  ],
+  "severities": [],
+  "stateMaps": [],
+  "contractChanges": [],
+  "notes": "Merchant-authored operational vocabulary and source bindings. This does not prescribe conversation stages. Publish through Studio/Business Pack; this file is an authoring import, never a runtime fallback."
+}

@@ -8,6 +8,10 @@ export const AssertionSchema = z.object({
     'capability_executed',
     'stage_reached',
     'no_hallucinated_skus',
+    'response_contains',
+    'response_not_contains',
+    'card_present',
+    'capability_not_executed',
   ]),
   field: z.string().optional(),
   expected: z.any().optional(),
@@ -39,6 +43,8 @@ export const EvaluationSuiteSchema = z.object({
   blockingOnPublish: z.boolean().default(true),
   deterministicOffline: z.boolean().optional(),
   executionMode: z.string().optional(),
+  /** Public source records copied into isolated evaluation storage; never customer/account data. */
+  sourceFixtures: z.object({ productSkus: z.array(z.string().min(1).max(120)).max(100) }).strict().optional(),
   scenarios: z.array(ScenarioSchema).min(1),
 });
 

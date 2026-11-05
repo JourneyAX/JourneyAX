@@ -36,6 +36,7 @@ export function errorFor(system: string, status: number, detail: string): ToolEr
   if (status === 403) return new ToolError('not_authorised', `${system} does not allow this connection to do that${said}. Its permissions may need widening.`);
   if (status === 404) return new ToolError('not_found', `${system} has no such record${said}.`);
   if (status === 409) return new ToolError('conflict', `${system} says the record changed while we were using it${said}. Try again.`);
+  if (status === 412) return new ToolError('revision_conflict', `${system} says the approved record version changed. Read it again and request new approval.`);
   if (status === 429) return new ToolError('rate_limited', `${system} is limiting how fast we may ask${said}. Try again in a minute.`);
   if (status >= 500) return new ToolError('unavailable', `${system} is not answering properly right now${said}.`);
   return new ToolError('rejected', `${system} rejected the request${said}.`);
@@ -77,7 +78,7 @@ export interface RequestOptions {
   timeoutMs?: number;
 }
 
-export interface Answer { status: number; ok: boolean; json: any; text: string }
+export interface Answer { status: number; ok: boolean; json: any; text: string; headers?: Record<string, string> }
 
 /** One HTTP call, with a timeout, no redirects, and the body read as JSON when it is. Network failures become a plain "not reachable". */
 export async function send(deps: Deps, system: string, method: string, url: string, options: RequestOptions = {}): Promise<Answer> {
@@ -102,7 +103,7 @@ export async function send(deps: Deps, system: string, method: string, url: stri
   const text = await response.text().catch(() => '');
   let json: any;
   try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
-  return { status: response.status, ok: response.ok, json, text };
+  return { status: response.status, ok: response.ok, json, text, headers: Object.fromEntries(response.headers) };
 }
 
 export interface VendorClientOptions {
@@ -126,6 +127,11 @@ export class VendorClient {
   constructor(private readonly options: VendorClientOptions) {}
 
   async json(method: string, url: string, request: Omit<RequestOptions, 'form'> = {}): Promise<any> {
+    return (await this.response(method, url, request)).json ?? {};
+  }
+
+  /** Keeps provider concurrency tokens for conditional commands; never exposes authentication headers. */
+  async response(method: string, url: string, request: Omit<RequestOptions, 'form'> = {}): Promise<Answer> {
     const attempt = async () => send(this.options.deps, this.options.system, method, url, {
       ...request,
       headers: { ...(this.options.headers ?? {}), ...(request.headers ?? {}), authorization: `${this.options.scheme ?? 'Bearer'} ${await this.options.token()}` },
@@ -136,7 +142,7 @@ export class VendorClient {
       answer = await attempt();
     }
     if (!answer.ok) throw this.options.onError?.(answer) ?? errorFor(this.options.system, answer.status, redact(vendorMessage(answer.json, answer.text), this.options.secrets()));
-    return answer.json ?? {};
+    return answer;
   }
 }
 

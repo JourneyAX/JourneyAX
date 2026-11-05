@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import defaults from './defaults/catalog-mapping.json';
+import { inspectCatalogIntegrity, type CatalogIntegrity } from './catalog-integrity';
+export type { CatalogIntegrity, CatalogIntegrityIssue } from './catalog-integrity';
 
 /** Dotted field path: letters, digits, underscore and dots only. Operators ($) can never be injected. */
 const FieldPath = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)*$/, 'invalid field path');
@@ -46,11 +48,7 @@ export const CatalogMappingSchema = z.object({
   searchPaths: Paths.optional(),
   pricing: z.object({
     sources: z.array(PriceSourceSchema).optional(),
-    /**
-     * For a demo or a catalogue that does not publish prices: a product with NO real price gets a made-up one, the same every time for
-     * the same product, between `min` and `max` (mostly toward `min`, as a real range of building products is). A real price always wins,
-     * and a product marked as having no price (an unpriced status) stays unpriced. Never switch this on for a shop that sells for real.
-     */
+    /** @deprecated Read old releases only. Ignored at runtime; new publications must disable it. */
     demoFallback: z.object({
       enabled: z.boolean(),
       currency: z.string().length(3),
@@ -70,6 +68,9 @@ export const CatalogMappingSchema = z.object({
   attributeAliases: z.record(z.string(), z.array(z.string().min(1))).optional(),
   attributeDefinitions: z.record(z.string(), AttributeDefinitionSchema).optional(),
   attributeContainers: Paths.optional(),
+  warrantyDurationKeys: z.array(z.string().min(1).max(100)).optional(),
+  sourceUrlPaths: Paths.optional(),
+  documentPaths: Paths.optional(),
   imagePaths: Paths.optional(),
   certificationPaths: Paths.optional(),
   quantityPaths: Paths.optional(),
@@ -112,6 +113,9 @@ export interface ResolvedCatalogMapping {
   attributeAliases: Record<string, string[]>;
   attributeDefinitions: Record<string, AttributeDefinition>;
   attributeContainers: string[];
+  warrantyDurationKeys: string[];
+  sourceUrlPaths: string[];
+  documentPaths: string[];
   imagePaths: string[];
   certificationPaths: string[];
   quantityPaths: string[];
@@ -141,7 +145,6 @@ export function resolveCatalogMapping(tenant?: unknown): ResolvedCatalogMapping 
     pricing: {
       sources: parsed.pricing?.sources ?? base.pricing.sources,
       requireDeclaredCurrency: parsed.pricing?.requireDeclaredCurrency ?? base.pricing.requireDeclaredCurrency,
-      ...(parsed.pricing?.demoFallback ? { demoFallback: parsed.pricing.demoFallback } : {}),
     },
     stock: { ...base.stock, ...stripUndefined(parsed.stock) },
     availability: { ...base.availability, ...stripUndefined(parsed.availability) },
@@ -181,25 +184,7 @@ export interface NormalizedPrice {
   currency?: string;
   /** True when a numeric price exists but no declared currency could be established. */
   currencyUndeclared: boolean;
-  /** True when the price is a made-up demo price (see `pricing.demoFallback`), not one the catalogue holds. */
-  demo?: boolean;
-}
 
-/** A small stable hash (FNV-1a), so the same product always gets the same demo price. */
-function stableFraction(text: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i += 1) { hash ^= text.charCodeAt(i); hash = Math.imul(hash, 0x01000193) >>> 0; }
-  return hash / 0x100000000;
-}
-
-/** The demo price of one product, in cents: between min and max, skewed toward min, and written like a shelf price (ends in .90, .50 or .00). */
-export function demoPriceCents(key: string, range: { min: number; max: number }): number {
-  const fraction = stableFraction(key);
-  const raw = range.min + (range.max - range.min) * fraction * fraction * fraction;
-  const step = raw < 20 ? 0.1 : raw < 100 ? 0.5 : 1;
-  const stepped = Math.max(range.min, Math.round(raw / step) * step);
-  const shelf = stepped < 100 ? Math.floor(stepped) + (stepped - Math.floor(stepped) >= 0.5 ? 0.9 : 0.5) : Math.round(stepped);
-  return Math.round(Math.min(range.max, Math.max(range.min, shelf)) * 100);
 }
 
 export function extractPrice(doc: unknown, mapping: ResolvedCatalogMapping): NormalizedPrice {
@@ -212,11 +197,6 @@ export function extractPrice(doc: unknown, mapping: ResolvedCatalogMapping): Nor
     if (!declared && mapping.pricing.requireDeclaredCurrency) { undeclared = true; continue; }
     const priceCents = source.unit === 'minor' ? Math.round(raw) : Math.round(raw * 100);
     return { priceCents, currency: declared ? declared.toUpperCase() : undefined, currencyUndeclared: false };
-  }
-  const demo = mapping.pricing.demoFallback;
-  if (demo?.enabled) {
-    const key = String(firstValue(doc, mapping.identifierPaths) ?? (doc as any)?._id ?? '');
-    if (key) return { priceCents: demoPriceCents(key, demo), currency: demo.currency.toUpperCase(), currencyUndeclared: false, demo: true };
   }
   return { priceCents: null, currencyUndeclared: undeclared };
 }
@@ -250,6 +230,7 @@ export function classifyAvailability(doc: unknown, mapping: ResolvedCatalogMappi
 }
 
 export interface NormalizedCatalogProduct {
+  integrity: CatalogIntegrity;
   sku: string;
   title: string;
   description: string;
@@ -266,6 +247,11 @@ export interface NormalizedCatalogProduct {
   imageUrl: string;
   availability: CatalogAvailabilityState;
   attributes: Record<string, unknown>;
+  /** Only mapped specification containers; internal root fields are not specifications. */
+  specs: Record<string, unknown>;
+  sourceUrl?: string;
+  documents: Array<{ title: string; url: string; kind?: string }>;
+  warrantyDuration?: string;
   /** Short feature statements the catalogue lists for this product (at most eight). */
   highlights: string[];
   /** Feature statements that read as warnings (at most two), kept apart from the highlights. */
@@ -355,32 +341,55 @@ export function normalizeCatalogProduct(doc: any, mapping: ResolvedCatalogMappin
     const value = readPath(doc, container);
     if (value && typeof value === 'object' && !Array.isArray(value)) Object.assign(attributes, value);
   }
+  const specs = { ...attributes };
+  const imageValue = firstValue(doc, mapping.imagePaths);
+  const imageUrl = typeof imageValue === 'string' ? imageValue : '';
+  const integrity = inspectCatalogIntegrity(doc, mapping, imageUrl);
+  for (const issue of integrity.issues) if (issue.code === 'conflicting_specification_sources') {
+    const key = issue.field.slice('specs.'.length); delete specs[key]; delete attributes[key];
+  }
+  if (!integrity.identityConsistent) { for (const key of Object.keys(specs)) delete specs[key]; }
+  const rawWarranty = mapping.warrantyDurationKeys.map(key => specs[key]).find(value => typeof value === 'string' || typeof value === 'number');
+  const sourceUrl = firstString(doc, mapping.sourceUrlPaths);
+  const documents: NormalizedCatalogProduct['documents'] = [];
+  for (const path of mapping.documentPaths) {
+    const entries = readPath(doc, path);
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries.slice(0, 64)) {
+      if (!entry || typeof entry.url !== 'string' || !/^https?:\/\//i.test(entry.url)) continue;
+      if (documents.some(existing => existing.url === entry.url)) continue;
+      documents.push({ title: String(entry.title || ''), url: entry.url, ...(entry.type || entry.kind ? { kind: String(entry.type || entry.kind) } : {}) });
+    }
+  }
   for (const [key, value] of Object.entries(doc || {})) {
     if ((typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') && !(key in attributes)) attributes[key] = value;
   }
   const certifications = firstValue(doc, mapping.certificationPaths);
-  const imageValue = firstValue(doc, mapping.imagePaths);
   const quantity = firstValue(doc, mapping.quantityPaths);
   return {
+    integrity,
     sku: String(firstValue(doc, mapping.identifierPaths) ?? doc?._id ?? ''),
     title: firstString(doc, mapping.titlePaths) || labels.title,
-    description: firstString(doc, mapping.descriptionPaths) || '',
+    description: integrity.identityConsistent ? firstString(doc, mapping.descriptionPaths) || '' : '',
     category: firstString(doc, mapping.categoryPaths) || labels.category,
-    priceCents,
-    price: priceCents != null ? priceCents / 100 : undefined,
+    priceCents: integrity.identityConsistent ? priceCents : null,
+    price: integrity.identityConsistent && priceCents != null ? priceCents / 100 : undefined,
     // A priced item carries the currency it was priced in; an unpriced one only a currency the product itself declares.
     currency: priceCents != null ? priced.currency : declaredCurrency(doc, mapping),
     currencyUndeclared: priceCents == null && priced.currencyUndeclared,
-    ...(priceCents != null && priced.demo ? { priceIsDemo: true } : {}),
-    inStock: extractStock(doc, mapping),
-    availableQuantity: typeof quantity === 'number' ? quantity : undefined,
-    certifications: Array.isArray(certifications) ? certifications.filter((c): c is string => typeof c === 'string') : [],
-    imageUrl: typeof imageValue === 'string' ? imageValue : '',
+    inStock: integrity.identityConsistent ? extractStock(doc, mapping) : undefined,
+    availableQuantity: integrity.identityConsistent && typeof quantity === 'number' ? quantity : undefined,
+    certifications: integrity.identityConsistent && Array.isArray(certifications) ? certifications.filter((c): c is string => typeof c === 'string') : [],
+    imageUrl: integrity.identityConsistent ? imageUrl : '',
     availability,
-    attributes,
-    ...highlightsOf(doc, mapping.highlightPaths, mapping.cautionPatterns),
-    rating: firstNumber(doc, mapping.ratingValuePaths),
-    ratingCount: firstNumber(doc, mapping.ratingCountPaths),
+    attributes: integrity.identityConsistent ? attributes : {},
+    specs,
+    sourceUrl: integrity.identityConsistent && sourceUrl && /^https?:\/\//i.test(sourceUrl) ? sourceUrl : undefined,
+    documents: integrity.identityConsistent ? documents : [],
+    warrantyDuration: rawWarranty !== undefined ? String(rawWarranty) : undefined,
+    ...(integrity.identityConsistent ? highlightsOf(doc, mapping.highlightPaths, mapping.cautionPatterns) : { highlights: [], cautions: [] }),
+    rating: integrity.identityConsistent ? firstNumber(doc, mapping.ratingValuePaths) : undefined,
+    ratingCount: integrity.identityConsistent ? firstNumber(doc, mapping.ratingCountPaths) : undefined,
     branchesAvailable: firstNumber(doc, mapping.branchAvailablePaths),
     branchesTotal: firstNumber(doc, mapping.branchTotalPaths),
     pickupOnly: (() => { const value = firstValue(doc, mapping.pickupOnlyPaths); return typeof value === 'boolean' ? value : undefined; })(),

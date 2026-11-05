@@ -1,0 +1,338 @@
+{
+  "partId": "registered-retail-customer",
+  "things": [
+    {
+      "thing": "Customer",
+      "meaning": "One registered retail customer profile joined through source-confirmed canonical references, distinct from a trade business Account.",
+      "aliases": [
+        "registered customer",
+        "shopper profile"
+      ],
+      "group": "Customer",
+      "status": "active",
+      "key": {
+        "canonical": "customer_ref",
+        "pattern": "^jax_[a-f0-9]{64}$"
+      },
+      "keyKinds": [
+        {
+          "kind": "customer_ref",
+          "system": "salesforce",
+          "evidence": "text_note",
+          "caseRule": "as_is",
+          "ready": true
+        },
+        {
+          "kind": "sf_contact_id",
+          "system": "salesforce",
+          "evidence": "real_field",
+          "pattern": "^[A-Za-z0-9]{15,18}$",
+          "caseRule": "as_is",
+          "ready": true
+        },
+        {
+          "kind": "customer_ref",
+          "system": "commercetools",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        },
+        {
+          "kind": "ct_customer_id",
+          "system": "commercetools",
+          "evidence": "real_field",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "caseRule": "as_is",
+          "ready": true
+        }
+      ],
+      "labelFact": "Customer.reference",
+      "searchFacts": [
+        "Customer.reference"
+      ],
+      "defaultFacts": [
+        "Customer.reference",
+        "Customer.crmAccountId",
+        "Customer.crmContactId",
+        "Customer.commerceCustomerId",
+        "Customer.commerceVersion"
+      ],
+      "expectedIn": [
+        "salesforce",
+        "commercetools"
+      ]
+    }
+  ],
+  "facts": [
+    {
+      "fact": "Customer.reference",
+      "thing": "Customer",
+      "label": "Canonical reference",
+      "meaning": "Canonical reference returned by the exact registered source profile.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Customer.crmAccountId",
+      "thing": "Customer",
+      "label": "CRM Account reference",
+      "meaning": "CRM Account reference returned by the exact registered source profile.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Customer.crmContactId",
+      "thing": "Customer",
+      "label": "CRM Contact reference",
+      "meaning": "CRM Contact reference returned by the exact registered source profile.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Customer.commerceCustomerId",
+      "thing": "Customer",
+      "label": "Commerce Customer reference",
+      "meaning": "Commerce Customer reference returned by the exact registered source profile.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Customer.commerceVersion",
+      "thing": "Customer",
+      "label": "Commerce profile revision",
+      "meaning": "Commerce profile revision returned by the exact registered source profile.",
+      "type": "number",
+      "freshnessKind": "reference",
+      "allowStale": false
+    }
+  ],
+  "bindings": [
+    {
+      "bindingId": "Customer.reference@salesforce.get_customer_profile",
+      "target": {
+        "kind": "fact",
+        "fact": "Customer.reference"
+      },
+      "system": "salesforce",
+      "tool": "get_customer_profile",
+      "args": {
+        "contactId": {
+          "from": "key",
+          "kind": "sf_contact_id"
+        }
+      },
+      "select": "record.externalCustomerKey",
+      "identity": {
+        "keyKind": "customer_ref",
+        "select": "record.externalCustomerKey"
+      },
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "registered-customer-source-identity"
+      }
+    },
+    {
+      "bindingId": "Customer.crmAccountId@salesforce.get_customer_profile",
+      "target": {
+        "kind": "fact",
+        "fact": "Customer.crmAccountId"
+      },
+      "system": "salesforce",
+      "tool": "get_customer_profile",
+      "args": {
+        "contactId": {
+          "from": "key",
+          "kind": "sf_contact_id"
+        }
+      },
+      "select": "record.accountId",
+      "identity": {
+        "keyKind": "customer_ref",
+        "select": "record.externalCustomerKey"
+      },
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "registered-customer-source-identity"
+      }
+    },
+    {
+      "bindingId": "Customer.crmContactId@salesforce.get_customer_profile",
+      "target": {
+        "kind": "fact",
+        "fact": "Customer.crmContactId"
+      },
+      "system": "salesforce",
+      "tool": "get_customer_profile",
+      "args": {
+        "contactId": {
+          "from": "key",
+          "kind": "sf_contact_id"
+        }
+      },
+      "select": "record.contactId",
+      "identity": {
+        "keyKind": "customer_ref",
+        "select": "record.externalCustomerKey"
+      },
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "registered-customer-source-identity"
+      }
+    },
+    {
+      "bindingId": "Customer.reference@commercetools.get_customer_profile",
+      "target": {
+        "kind": "fact",
+        "fact": "Customer.reference"
+      },
+      "system": "commercetools",
+      "tool": "get_customer_profile",
+      "args": {
+        "customerId": {
+          "from": "key",
+          "kind": "ct_customer_id"
+        }
+      },
+      "select": "record.externalCustomerKey",
+      "identity": {
+        "keyKind": "customer_ref",
+        "select": "record.externalCustomerKey"
+      },
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "registered-customer-source-identity"
+      }
+    },
+    {
+      "bindingId": "Customer.commerceCustomerId@commercetools.get_customer_profile",
+      "target": {
+        "kind": "fact",
+        "fact": "Customer.commerceCustomerId"
+      },
+      "system": "commercetools",
+      "tool": "get_customer_profile",
+      "args": {
+        "customerId": {
+          "from": "key",
+          "kind": "ct_customer_id"
+        }
+      },
+      "select": "record.customerId",
+      "identity": {
+        "keyKind": "customer_ref",
+        "select": "record.externalCustomerKey"
+      },
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "registered-customer-source-identity"
+      }
+    },
+    {
+      "bindingId": "Customer.commerceVersion@commercetools.get_customer_profile",
+      "target": {
+        "kind": "fact",
+        "fact": "Customer.commerceVersion"
+      },
+      "system": "commercetools",
+      "tool": "get_customer_profile",
+      "args": {
+        "customerId": {
+          "from": "key",
+          "kind": "ct_customer_id"
+        }
+      },
+      "select": "record.version",
+      "identity": {
+        "keyKind": "customer_ref",
+        "select": "record.externalCustomerKey"
+      },
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "registered-customer-source-identity"
+      }
+    }
+  ],
+  "permissionRules": [
+    {
+      "ruleId": "customer-service-read-retail-identity",
+      "mode": "see",
+      "target": {
+        "thing": "Customer",
+        "facts": [
+          "Customer.reference",
+          "Customer.crmAccountId",
+          "Customer.crmContactId",
+          "Customer.commerceCustomerId",
+          "Customer.commerceVersion"
+        ]
+      },
+      "who": [
+        {
+          "audience": "staff",
+          "groups": [
+            "customer-service",
+            "administrators"
+          ]
+        }
+      ]
+    }
+  ]
+}

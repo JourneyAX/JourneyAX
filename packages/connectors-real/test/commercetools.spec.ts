@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { commercetools } from '../src/connectors/commercetools';
+import { RealConnectorServer } from '../src/server';
+import { signScope, hashScopeArguments } from '@journeyax/jax-iq';
 import { callTool, listTools, leaks, mockVendor, realDeps, serverFor, suite } from './helpers';
 
 const SECRET = 'ct-client-secret-very-private-123';
@@ -19,6 +21,27 @@ const cart = (version = 3, state = 'Active') => ({
   totalPrice: { currencyCode: 'NZD', centAmount: 121802, fractionDigits: 2 },
 });
 
+/** Vendor protocol fixture: calculate prices from the submitted unit money,
+ * independently of the production allocation helper. */
+function preparedCart(draft: any) {
+  const lines = draft.customLineItems.map((row: any) => ({ ...row, id: row.key, totalPrice: { currencyCode: draft.currency, centAmount: row.money.type === 'highPrecision' ? Math.round(row.money.preciseAmount * row.quantity / 10 ** (row.money.fractionDigits - 2)) : row.money.centAmount * row.quantity } }));
+  return { ...draft, id: CART, version: 1, cartState: 'Active', customLineItems: lines, totalPrice: { currencyCode: draft.currency, centAmount: lines.reduce((sum: number, row: any) => sum + row.totalPrice.centAmount, 0) } };
+}
+function taxedCart(source: any, body: any) {
+  assert.equal(body.version, source.version);
+  const result = structuredClone(source); result.version++;
+  for (const action of body.actions) {
+    if (action.action === 'setCustomLineItemTaxAmount') {
+      const line = result.customLineItems.find((row: any) => row.key === action.customLineItemKey);
+      line.taxedPrice = { totalNet: line.totalPrice, totalGross: action.externalTaxAmount.totalGross };
+    } else {
+      assert.equal(action.action, 'setCartTotalTax');
+      result.taxedPrice = { totalNet: result.totalPrice, totalGross: action.externalTotalGross, totalTax: action.externalTaxPortions[0].amount };
+    }
+  }
+  return result;
+}
+
 async function setup(answer: Parameters<typeof mockVendor>[0], extraEnv: Record<string, string> = {}) {
   const vendor = await mockVendor((request, count) => {
     if (request.path === '/oauth/token') return { json: { access_token: 'tok-1', expires_in: 172800, token_type: 'Bearer' } };
@@ -28,8 +51,17 @@ async function setup(answer: Parameters<typeof mockVendor>[0], extraEnv: Record<
     COMMERCETOOLS_PROJECT_KEY: PROJECT, COMMERCETOOLS_CLIENT_ID: 'client-id-1', COMMERCETOOLS_CLIENT_SECRET: SECRET, COMMERCETOOLS_REGION: 'australia-southeast1.gcp',
     COMMERCETOOLS_API_URL: vendor.url, COMMERCETOOLS_AUTH_URL: vendor.url, ...extraEnv,
   };
-  const server = serverFor(commercetools(env, realDeps()));
-  return { vendor, server, env, call: (name: string, args: any = {}) => callTool(server, 'commercetools', name, args) };
+  const secret = 'offline-commerce-command-authority'.repeat(2);
+  const server = new RealConnectorServer({ connectors: [commercetools(env, realDeps())], environmentId: 'test', connectionRef: 'fixture-commerce', commandScopeSecret: secret, warn: () => {} });
+  const call = (name: string, args: any = {}) => {
+    if (!['place_order', 'add_to_cart'].includes(name)) return callTool(server, 'commercetools', name, args);
+    if (name === 'place_order') args = { taxCountry: 'NZ', taxName: 'GST', shipping: { line1: '1 Fixture Street', city: 'Fixture city', country: 'NZ' }, ...args }; // Explicit merchant fixture configuration and address.
+    const iat = Math.floor(Date.now() / 1000);
+    // Adapter contract tests enter handle with an already-verified scope. HTTP signature rejection is covered separately.
+    const scope = signScope({ v: 2, operation: 'command', actionId: 'offline-action', tenantId: 'fixture', environmentId: 'test', queryId: 'query-a', correlationId: 'contract-test', principal: { id: 'customer-a', audience: 'shopper', groups: [] }, connectorId: 'commercetools', connectionRef: 'fixture-commerce', tool: name, toolState: 'allow', toolStateVia: 'tool', capRuleIds: name === 'place_order' ? ['paid-order-delivery'] : [], argsHash: hashScopeArguments(args), fields: [], release: { version: '1.0.0', checksum: 'fixture' }, iat, exp: iat + 60, jti: 'offline-jti' }, secret).scope;
+    return callTool(server, 'commercetools', name, args, scope);
+  };
+  return { vendor, server, env, call };
 }
 
 const t = suite('connectors-real: commercetools');
@@ -44,12 +76,28 @@ async function main() {
     assert.deepEqual(server.health().connectors[0].missing, ['COMMERCETOOLS_PROJECT_KEY', 'COMMERCETOOLS_CLIENT_ID', 'COMMERCETOOLS_CLIENT_SECRET', 'COMMERCETOOLS_REGION']);
   });
 
-  await t.test('it offers the shop tools, three more for stock and trade accounts and place_order for the shop, and only add_to_cart and place_order change anything', async () => {
+  await t.test('it declares shop, account and delivery tools and identifies each supported change', async () => {
     const { server, vendor } = await setup(() => undefined);
     const tools = await listTools(server, 'commercetools');
-    assert.deepEqual(tools.map((tool) => tool.name), ['find_product', 'get_product', 'get_cart', 'add_to_cart', 'place_order', 'get_order', 'order_history', 'list_orders', 'stock_by_branch', 'find_account', 'get_account']);
-    assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['add_to_cart', 'place_order']);
+    assert.deepEqual(tools.map((tool) => tool.name), ['get_my_customer_profile', 'get_my_orders', 'get_my_order', 'get_customer_profile', 'find_customer_profile', 'create_customer_profile', 'get_order_customer_link', 'link_order_customer', 'get_order_payment_receipt', 'record_order_payment', 'get_account_contact', 'correct_account_address_contact', 'correct_order_contact', 'find_product', 'get_product', 'get_cart', 'add_to_cart', 'get_order_receipt', 'place_order', 'get_order', 'order_history', 'list_orders', 'stock_by_branch', 'find_account', 'get_account']);
+    assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['create_customer_profile', 'link_order_customer', 'record_order_payment', 'correct_account_address_contact', 'correct_order_contact', 'add_to_cart', 'place_order']);
     await vendor.close();
+  });
+
+  await t.test('paid delivery receipt is scoped by full order number and distinguishes confirmed absence from a source outage', async () => {
+    const { vendor, call } = await setup(request => {
+      if (request.path.endsWith('/orders/order-number=ord_known')) return { json: { id: ORDER, orderNumber: 'ord_known', paymentState: 'Paid', customLineItems: [{ name: { en: 'Item' }, slug: 'SKU-A', quantity: 2, totalPrice: { currencyCode: 'NZD', centAmount: 4000 } }], totalPrice: { currencyCode: 'NZD', centAmount: 4200 } } };
+      if (request.path.endsWith('/orders/order-number=ord_missing')) return { status: 404, json: { message: 'Not found' } };
+      return { status: 503, json: { message: 'Unavailable' } };
+    });
+    try {
+      const found: any = await call('get_order_receipt', { orderId: 'ord_known' });
+      assert.equal(found.payload.record.orderNumber, 'ord_known'); assert.equal(found.payload.record.total, 42); assert.equal(found.payload.record.lineCount, 1);
+      const missing: any = await call('get_order_receipt', { orderId: 'ord_missing' });
+      assert.equal(missing.isError, false); assert.equal(missing.payload.record, null);
+      assert.equal((await call('get_order_receipt', { orderId: 'ord_outage' }) as any).isError, true);
+      assert.equal(vendor.seen.filter(request => request.method === 'POST' && request.path !== '/oauth/token').length, 0);
+    } finally { await vendor.close(); }
   });
 
   await t.test('it signs in once with the API client (basic auth, client credentials) and reuses the token', async () => {
@@ -335,7 +383,7 @@ async function main() {
   await t.test('get_order shows the custom lines of an order the shop recorded, with the tax-inclusive total and the tax', async () => {
     const { vendor, call } = await setup(() => ({ json: {
       id: ORDER, orderNumber: 'A1B2C3D4', orderState: 'Open', paymentState: 'Paid',
-      customLineItems: [{ name: { en: 'Boston Wall Hung Vanity' }, slug: '7603471', quantity: 1, totalPrice: { currencyCode: 'NZD', centAmount: 81501, fractionDigits: 2 } }, { name: { en: 'Pop Up Waste' }, slug: '7636725', quantity: 2, totalPrice: { currencyCode: 'NZD', centAmount: 8400, fractionDigits: 2 } }],
+      customLineItems: [{ name: { en: 'Boston Wall Hung Vanity' }, key: `jax_${Buffer.from('7603471').toString('base64url')}`, slug: `jax_${Buffer.from('7603471').toString('base64url')}`, quantity: 1, totalPrice: { currencyCode: 'NZD', centAmount: 81501, fractionDigits: 2 } }, { name: { en: 'Pop Up Waste' }, slug: '7636725', quantity: 2, totalPrice: { currencyCode: 'NZD', centAmount: 8400, fractionDigits: 2 } }],
       totalPrice: { currencyCode: 'NZD', centAmount: 89901, fractionDigits: 2 },
       taxedPrice: { totalGross: { currencyCode: 'NZD', centAmount: 103386, fractionDigits: 2 }, totalTax: { currencyCode: 'NZD', centAmount: 13485, fractionDigits: 2 } },
     } }));
@@ -347,6 +395,7 @@ async function main() {
     await vendor.close();
   });
   await t.test('place_order makes one cart of custom lines with external tax, turns it into the order with the customer\'s number, and marks it paid', async () => {
+    let prepared: any;
     const placed = (version: number, extra: any = {}) => ({
       id: ORDER, version, orderNumber: 'A1B2C3D4', orderState: 'Open', paymentState: extra.paymentState, createdAt: '2026-10-26T20:00:00.000Z',
       customLineItems: [{ name: { en: 'Boston Wall Hung Vanity' }, slug: '7603471', quantity: 1, totalPrice: { currencyCode: 'NZD', centAmount: 81501, fractionDigits: 2 } }, { name: { en: 'Pop Up Waste' }, slug: '7636725', quantity: 2, totalPrice: { currencyCode: 'NZD', centAmount: 8400, fractionDigits: 2 } }],
@@ -355,7 +404,9 @@ async function main() {
     });
     const { vendor, call } = await setup((request) => {
       if (request.method === 'GET' && request.path.includes('/orders/order-number=')) return { status: 404, json: { message: 'not found' } };
-      if (request.method === 'POST' && request.path === `/${PROJECT}/carts`) return { json: { id: CART, version: 1 } };
+      if (request.method === 'GET' && request.path.includes('/carts/key=')) return prepared ? { json: prepared } : { status: 404, json: {} };
+      if (request.method === 'POST' && request.path === `/${PROJECT}/carts`) { prepared = preparedCart(request.body); return { json: prepared }; }
+      if (request.method === 'POST' && request.path === `/${PROJECT}/carts/${CART}`) { prepared = taxedCart(prepared, request.body); return { json: prepared }; }
       if (request.method === 'POST' && request.path === `/${PROJECT}/orders`) return { json: placed(1) };
       if (request.method === 'POST' && request.path === `/${PROJECT}/orders/${ORDER}`) return { json: placed(2, { paymentState: 'Paid' }) };
       return undefined;
@@ -366,17 +417,17 @@ async function main() {
       shipping: { name: 'Sam Shopper', line1: '1 Queen St', city: 'Auckland', postalCode: '1010', country: 'NZ' },
     })) as any;
     const posts = vendor.seen.filter((request) => request.method === 'POST' && request.path !== '/oauth/token');
-    assert.deepEqual(posts.map((request) => request.path), [`/${PROJECT}/carts`, `/${PROJECT}/orders`, `/${PROJECT}/orders/${ORDER}`]);
+    assert.deepEqual(posts.map((request) => request.path), [`/${PROJECT}/carts`, `/${PROJECT}/carts/${CART}`, `/${PROJECT}/orders`, `/${PROJECT}/orders/${ORDER}`]);
     const body = posts[0].body;
-    assert.equal(body.taxMode, 'External');
+    assert.equal(body.taxMode, 'ExternalAmount');
     assert.equal(body.currency, 'NZD');
     assert.equal(body.customLineItems.length, 2);
-    assert.deepEqual(body.customLineItems[0].money, { type: 'centPrecision', currencyCode: 'NZD', centAmount: 81501 });
-    assert.deepEqual(body.customLineItems[1].externalTaxRate, { name: 'GST', amount: 0.15, country: 'NZ' });
+    assert.deepEqual(body.customLineItems[0].money, { type: 'centPrecision', currencyCode: 'NZD', centAmount: 81501, fractionDigits: 2 });
+    assert.deepEqual(posts[1].body.actions[1].externalTaxAmount.taxRate, { name: 'GST', amount: 0.15, country: 'NZ', includedInPrice: false });
     assert.equal(body.customLineItems[1].quantity, 2);
     assert.equal(body.shippingAddress.city, 'Auckland');
-    assert.deepEqual(posts[1].body, { id: CART, version: 1, orderNumber: 'A1B2C3D4' });
-    assert.deepEqual(posts[2].body.actions, [{ action: 'changePaymentState', paymentState: 'Paid' }]);
+    assert.deepEqual(posts[2].body, { id: CART, version: 2, orderNumber: 'A1B2C3D4' });
+    assert.deepEqual(posts[3].body.actions, [{ action: 'changePaymentState', paymentState: 'Paid' }]);
     assert.equal(payload.created, true);
     assert.equal(payload.record.orderNumber, 'A1B2C3D4');
     assert.equal(payload.record.paymentState, 'Paid');
@@ -394,10 +445,12 @@ async function main() {
     assert.equal(again.payload.record.orderNumber, 'A1B2C3D4');
     assert.equal(vendor.seen.filter((request) => request.method === 'POST' && request.path !== '/oauth/token').length, 0, 'nothing was made');
     await vendor.close();
+    let prepared: any;
     const discounted = await setup((request) => {
-      if (request.method === 'GET') return { status: 404, json: {} };
-      if (request.path === `/${PROJECT}/carts`) return { json: { id: CART, version: 1 } };
-      return { json: { id: ORDER, version: 1, orderNumber: 'X1', customLineItems: [], totalPrice: { currencyCode: 'NZD', centAmount: 0 } } };
+      if (request.method === 'GET') return prepared && request.path.includes('/carts/key=') ? { json: prepared } : { status: 404, json: {} };
+      if (request.path === `/${PROJECT}/carts`) { prepared = preparedCart(request.body); return { json: prepared }; }
+      if (request.path === `/${PROJECT}/carts/${CART}`) { prepared = taxedCart(prepared, request.body); return { json: prepared }; }
+      return { json: { ...prepared, id: ORDER, version: 1, orderNumber: 'X1' } };
     });
     await discounted.call('place_order', { orderNumber: 'X1', currency: 'NZD', taxRate: 0.15, discount: 10, paid: false, lines: [{ sku: 'A-1', name: 'One', quantity: 1, unitPrice: 60 }, { sku: 'B-2', name: 'Two', quantity: 1, unitPrice: 40 }] });
     const cartBody = discounted.vendor.seen.find((request) => request.path === `/${PROJECT}/carts` && request.method === 'POST')!.body;
@@ -405,6 +458,44 @@ async function main() {
     assert.equal(discounted.vendor.seen.filter((request) => request.method === 'POST' && request.path.startsWith(`/${PROJECT}/orders/`)).length, 0, 'paid: false leaves the payment state alone');
     await discounted.vendor.close();
   });
+  await t.test('an ordinary approved command cannot impersonate the paid-order workflow', async () => {
+    const { server, vendor } = await setup(() => undefined);
+    try {
+      const denied: any = await callTool(server, 'commercetools', 'place_order', {}, { operation: 'command', actionId: 'ordinary-command', principal: { audience: 'staff' }, capRuleIds: [] } as any);
+      assert.equal(denied.rpcError?.code, -32003); assert.equal(vendor.seen.length, 0);
+    } finally { await vendor.close(); }
+  });
+
+  await t.test('a source cart that differs from the paid amount cannot become an order', async () => {
+    const { vendor, call } = await setup(request => request.path.endsWith('/carts') ? { json: { id: CART, version: 1, totalPrice: { currencyCode: 'NZD', centAmount: 999 } } } : undefined);
+    try {
+      const refused: any = await call('place_order', { orderNumber: 'ord_exact', currency: 'NZD', taxRate: 0, expectedTotal: 10, lines: [{ sku: 'SKU/A', name: 'Actual item', quantity: 1, unitPrice: 10 }] });
+      assert.equal(refused.payload.error.code, 'price_mismatch');
+      const draft = vendor.seen.find(request => request.path.endsWith('/carts'))!.body;
+      assert.match(draft.customLineItems[0].key, /^jax_[A-Za-z0-9_-]+$/);
+      assert.equal(Buffer.from(draft.customLineItems[0].key.slice(4), 'base64url').toString('utf8'), 'SKU/A');
+      assert.equal(vendor.seen.some(request => request.method === 'POST' && request.path.endsWith('/orders')), false);
+    } finally { await vendor.close(); }
+  });
+
+  await t.test('payment recovery updates only the exact existing matching order and never creates a replacement', async () => {
+    const receipt = { id: ORDER, version: 1, orderNumber: 'ord_recovery', paymentState: 'BalanceDue', customLineItems: [{ key: `jax_${Buffer.from('SKU-A').toString('base64url')}`, slug: 'SKU-A', name: { en: 'Item' }, quantity: 1 }], totalPrice: { currencyCode: 'NZD', centAmount: 1000 } };
+    const { vendor, call } = await setup(request => {
+      if (request.path.endsWith('/orders/order-number=ord_recovery')) return { json: receipt };
+      if (request.method === 'POST' && request.path.endsWith(`/orders/${ORDER}`)) return { json: { ...receipt, paymentState: 'Paid', version: 2 } };
+      return undefined;
+    });
+    try {
+      const args = { orderNumber: 'ord_recovery', existingOrderId: ORDER, expectedTotal: 10, currency: 'NZD', taxRate: 0, lines: [{ sku: 'SKU-A', name: 'Item', quantity: 1, unitPrice: 10 }] };
+      const result: any = await call('place_order', args);
+      assert.equal(result.payload.record.paymentState, 'Paid'); assert.equal(result.payload.created, false);
+      const missing: any = await call('place_order', { ...args, orderNumber: 'ord_deleted' });
+      assert.equal(missing.isError, true);
+      assert.equal(vendor.seen.some(request => request.method === 'POST' && (request.path.endsWith('/carts') || request.path.endsWith('/orders'))), false);
+      assert.equal(vendor.seen.filter(request => request.method === 'POST' && request.path.endsWith(`/orders/${ORDER}`)).length, 1);
+    } finally { await vendor.close(); }
+  });
+
   await t.test('place_order refuses bad lines before the vendor is asked anything', async () => {
     const { vendor, call } = await setup(() => undefined);
     for (const lines of [[], [{ sku: 'A-1', name: 'One', quantity: 0, unitPrice: 5 }], [{ sku: 'A-1', name: '', quantity: 1, unitPrice: 5 }], [{ sku: 'A-1', name: 'One', quantity: 1, unitPrice: -1 }], [{ sku: '??', name: 'One', quantity: 1, unitPrice: 5 }]]) {

@@ -1,3 +1,6 @@
+import { OperationalDesksSchema } from '../operational-desks';
+import { CustomerProfilesSchema } from '../customer-profiles';
+import { SupportHandoffSchema } from '../support-handoff';
 import { z } from 'zod';
 import { ManifestSchema } from './manifest.schema';
 import { BusinessProfileSchema } from './business-profile.schema';
@@ -273,16 +276,23 @@ export const BusinessPackContentSchema = z.object({
       eventPrefetch: EventPrefetchSchema.optional(),
       productGuides: ProductGuidesSchema.optional(),
       customerAccount: CustomerAccountSchema.optional(),
+      customerProfiles: CustomerProfilesSchema.optional(),
       contentPages: ContentPagesSchema.optional(),
       checkoutReview: CheckoutReviewSchema.optional(),
       accessoryHelper: AccessoryHelperSchema.optional(),
       buyerFeedback: BuyerFeedbackSchema.optional(),
       branchStock: BranchStockSchema.optional(),
+      commerce: z.object({
+        quoteTitle: z.string().min(1).max(150).optional(),
+        pricing: z.object({ currency: z.string().regex(/^[A-Z]{3}$/), symbol: z.string().min(1).max(10), taxRate: z.number().min(0).max(1), discountRate: z.number().min(0).max(1) }).strict(),
+      }).strict().optional(),
       payment: PaymentSchema.optional(),
       brandTheme: BrandThemeSchema.optional(),
       voice: VoiceSchema.optional(),
       welcome: WelcomeSchema.optional(),
       dashboard: DashboardSchema.optional(),
+      operationalDesks: OperationalDesksSchema.optional(),
+      supportHandoff: SupportHandoffSchema.optional(),
       questionCards: QuestionCardsSchema.optional(),
       agentAccess: AgentAccessSchema.optional(),
       skillAccess: SkillAccessSchema.optional(),

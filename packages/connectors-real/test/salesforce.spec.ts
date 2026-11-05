@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { salesforce } from '../src/connectors/salesforce';
+import { RealConnectorServer } from '../src/server';
 import { callTool, leaks, listTools, mockVendor, realDeps, serverFor, suite, type Seen } from './helpers';
 
 const SECRET = 'sf-client-secret-very-private-456';
@@ -28,8 +29,10 @@ async function setup(extraEnv: Record<string, string> = {}, override?: (request:
     return undefined;
   });
   const env = { SALESFORCE_INSTANCE_URL: vendor.url, SALESFORCE_CLIENT_ID: 'sf-client-1', SALESFORCE_CLIENT_SECRET: SECRET, ...extraEnv };
-  const server = serverFor(salesforce(env, realDeps()));
-  return { vendor, server, call: (name: string, args: any = {}) => callTool(server, 'salesforce', name, args) };
+  const server = new RealConnectorServer({ connectors: [salesforce(env, realDeps())], environmentId: 'test', connectionRef: 'fixture-salesforce', commandScopeSecret: SECRET, warn: () => {} });
+  // Adapter contract tests supply a verified internal grant. HTTP signature/replay rejection is tested independently.
+  const command: any = { v: 2, tenantId: 'fixture', environmentId: 'test', queryId: 'fixture-query', correlationId: 'fixture-case', operation: 'command', actionId: 'fixture-approved-case', principal: { id: 'fixture-staff', audience: 'staff', groups: [] }, release: { version: '1.0.0', checksum: 'fixture' }, capRuleIds: [] };
+  return { vendor, server, call: (name: string, args: any = {}) => callTool(server, 'salesforce', name, args, name === 'create_case' ? command : undefined) };
 }
 const soqlSeen = (vendor: { seen: Seen[] }) => vendor.seen.filter((request) => request.path.endsWith('/query')).map((request) => request.query.get('q'));
 
@@ -45,15 +48,15 @@ async function main() {
     assert.equal(((await callTool(server, 'salesforce', 'find_account', {})) as any).payload.error.code, 'not_connected');
   });
 
-  await t.test('it offers the account and case tools, the sales and marketing tools (leads, deals, pipeline, campaigns), and only create_case changes anything', async () => {
+  await t.test('it declares the account/contact, case, sales and marketing tools and marks both supported commands as changes', async () => {
     const { server, vendor } = await setup();
     const tools = await listTools(server, 'salesforce');
-    assert.deepEqual(tools.map((tool) => tool.name), ['find_account', 'get_account', 'list_cases', 'get_case', 'find_lead', 'list_opportunities', 'get_opportunity', 'pipeline_summary', 'list_campaigns', 'get_campaign', 'create_case']);
-    assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['create_case']);
-    assert.deepEqual(Object.keys(tools[0].inputSchema.properties), ['query', 'limit'], 'no tier or branch filter until those fields are set');
+    assert.deepEqual(tools.map((tool) => tool.name), ['get_customer_profile', 'find_customer_profile', 'create_customer_profile', 'get_account_contact', 'correct_account_phone', 'find_account', 'get_account', 'list_cases', 'get_case', 'find_lead', 'list_opportunities', 'get_opportunity', 'pipeline_summary', 'list_campaigns', 'get_campaign', 'create_case']);
+    assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['create_customer_profile', 'correct_account_phone', 'create_case']);
+    assert.deepEqual(Object.keys(tools.find(tool => tool.name === 'find_account')!.inputSchema.properties), ['query', 'limit'], 'no tier or branch filter until those fields are set');
     await vendor.close();
     const withFields = await setup({ SALESFORCE_TIER_FIELD: 'Customer_Tier__c', SALESFORCE_BRANCH_FIELD: 'Home_Branch__c' });
-    assert.deepEqual(Object.keys((await listTools(withFields.server, 'salesforce'))[0].inputSchema.properties), ['query', 'tier', 'branchCode', 'limit']);
+    assert.deepEqual(Object.keys((await listTools(withFields.server, 'salesforce')).find(tool => tool.name === 'find_account')!.inputSchema.properties), ['query', 'tier', 'branchCode', 'limit']);
     await withFields.vendor.close();
   });
 

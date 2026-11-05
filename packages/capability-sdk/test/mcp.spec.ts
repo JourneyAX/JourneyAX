@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { CapabilityDispatcher } from '../src/dispatcher';
+import { MemoryActionLedger } from '../src/action-ledger';
 import {
   EnvMcpServerDirectory,
   EnvSecretResolver,
+  connectorSecretVariable,
   HttpMcpTransport,
   McpClient,
   McpClientPool,
@@ -30,7 +32,7 @@ async function test(name: string, fn: () => Promise<void> | void) {
 const META = { tenantId: 'tenant_a', environmentId: 'dev', correlationId: 'corr_1', principalId: 'person_1' };
 const SECRET_REF = 'tenant-secret://tenant_a/dev/sample-key';
 const SECRET = 'canary-secret-value-123456';
-const secrets = new EnvSecretResolver({ CONNECTOR_SECRET_SAMPLE_KEY: SECRET } as any);
+const secrets = new EnvSecretResolver({ [connectorSecretVariable(SECRET_REF)]: SECRET } as any);
 
 function poolFor(url: string, extra: Record<string, unknown> = {}) {
   return new McpClientPool({ directory: new StaticMcpServerDirectory({ stock: url }), secrets, nodeEnv: 'test', ...extra } as any);
@@ -203,16 +205,16 @@ async function main() {
   await test('tenants never share a client, a session or a tool list; the tenant reaches the server in a header', async () => {
     const server = await startTestServer({ tools: { who: { call: (_a, seen) => structured({ tenant: seen.headers['x-tenant-id'] }) } } });
     try {
-      const pool = poolFor(server.url);
+      const otherRef = 'tenant-secret://tenant_b/dev/sample-key';
+      const pool = poolFor(server.url, { secrets: new EnvSecretResolver({ [connectorSecretVariable(SECRET_REF)]: SECRET, [connectorSecretVariable(otherRef)]: 'isolated-other-tenant-secret' }) });
       const a = await pool.getClient('stock', scope());
       const b = await pool.getClient('stock', { tenantId: 'tenant_b', environmentId: 'dev', secretRef: 'tenant-secret://tenant_b/dev/sample-key' });
       assert.notEqual(a, b);
       assert.strictEqual(await pool.getClient('stock', scope()), a, 'the same tenant gets the same client');
-      process.env.CONNECTOR_SECRET_SAMPLE_KEY = SECRET;
       const ra = await a.callTool('who', {}, META);
       const rb = await b.callTool('who', {}, { ...META, tenantId: 'tenant_b' });
       assert.deepEqual([(ra.data as any).tenant, (rb.data as any).tenant], ['tenant_a', 'tenant_b']);
-    } finally { delete process.env.CONNECTOR_SECRET_SAMPLE_KEY; await server.close(); }
+    } finally { await server.close(); }
   });
 
   // --- the mcp_tool executor and the connector policy state in the gate ---
@@ -257,11 +259,11 @@ async function main() {
     } finally { await server.close(); }
   });
 
-  await test('policy state: blocked is denied before anything is sent; ask first waits for a confirmation; allow runs even a write tool', async () => {
+  await test('policy states preserve approval and durable write receipts; replay executes once', async () => {
     const server = await startTestServer({ tools: { tool: { call: () => structured({ ok: true }) } } });
     try {
-      const dispatcher = new CapabilityDispatcher({ mcpClients: poolFor(server.url) });
-      const run = (tool: ToolDefinition, request: Record<string, unknown>) => dispatcher.dispatch(tool, bindingFor(), { toolId: tool.toolId, input: {}, ...request } as any, ctx);
+      const dispatcher = new CapabilityDispatcher({ mcpClients: poolFor(server.url), actionLedger: new MemoryActionLedger() });
+      const run = (tool: ToolDefinition, request: Record<string, unknown>) => dispatcher.dispatch(tool, bindingFor(), { toolId: tool.toolId, input: {}, ...request } as any, { ...ctx, idempotencyKey: 'isolated-write-1' });
 
       const blocked = await run(readTool, { policyState: 'blocked' });
       assert.equal(blocked.status, 'denied');
@@ -276,6 +278,12 @@ async function main() {
 
       const writeAllowed = await run(writeTool, { policyState: 'allow' });
       assert.equal(writeAllowed.status, 'success', 'an administrator who allows a write tool is obeyed');
+      const writesBeforeReplay = server.seen.filter(call => call.method === 'tools/call').length;
+      assert.equal((await run(writeTool, { policyState: 'allow' })).status, 'success');
+      assert.equal(server.seen.filter(call => call.method === 'tools/call').length, writesBeforeReplay);
+      const withoutLedger = await new CapabilityDispatcher({ mcpClients: poolFor(server.url) }).dispatch(writeTool, bindingFor(), { toolId: writeTool.toolId, input: {}, policyState: 'allow' } as any, { ...ctx, idempotencyKey: 'isolated-write-2' });
+      assert.equal(withoutLedger.status, 'failure');
+      assert.match(withoutLedger.error!, /Durable action receipts/);
 
       // Without a state the gate is what it always was: a write tool needs a confirmation, and the single-role rule applies.
       const legacy = await run(writeTool, {});

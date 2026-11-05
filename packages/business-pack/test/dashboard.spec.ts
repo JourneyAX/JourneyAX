@@ -97,10 +97,10 @@ check('the person is found by login in any case, and an unknown login has no nam
   assert.equal(dashboardName(setting, undefined), undefined);
 });
 
-check('inputs say {me.name} for the person; without a name the input is left out, so the number becomes the team’s', () => {
+check('an unresolved owner placeholder is marked missing so callers fail closed', () => {
   const source = (setting.entries[0].metrics[0] as any).source;
   assert.deepEqual(resolveArgs(source.args, jess), { args: { stage: 'open', owner: jess, limit: 25 }, usedName: true });
-  assert.deepEqual(resolveArgs(source.args, undefined), { args: { stage: 'open', limit: 25 }, usedName: false });
+  assert.deepEqual(resolveArgs(source.args, undefined), { args: { stage: 'open', limit: 25 }, usedName: false, missingName: true });
 });
 
 check('each distinct call is asked once, however many figures and lists use it', () => {
@@ -125,9 +125,17 @@ check('figures are counted and added up from the tool’s answer, with the hint 
   assert.deepEqual(view.tile.map((t) => t.id), ['open-deals', 'closing-soon', 'open-cases']);
 });
 
-check('the figures are the person’s own when the pack names them, and the team’s when it does not', () => {
+check('a missing personal identity never widens a personal dashboard to the team', () => {
   assert.equal(buildDashboard(entry, outcomesFor(jess), { format, name: jess }).scope, 'mine');
-  const team = buildDashboard(entry, outcomesFor(undefined), { format });
+  const unresolved = outcomesFor(undefined);
+  const source = entry.metrics[0].source;
+  unresolved.set(callKey(source, resolveArgs(source.args, undefined).args), { ok: true, data: fixture.opps });
+  const personal = buildDashboard(entry, unresolved, { format });
+  assert.equal(personal.scope, 'mine');
+  assert.equal(personal.name, undefined);
+  assert.notEqual(personal.metrics.find(metric => metric.id === 'open-deals')?.value, String(fixture.opps.total));
+  const teamEntry = setting.entries[1];
+  const team = buildDashboard(teamEntry, new Map(), { format });
   assert.equal(team.scope, 'team');
   assert.equal(team.name, undefined);
 });

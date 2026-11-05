@@ -1,0 +1,890 @@
+{
+  "askVia": "card",
+  "announceSample": true,
+  "connectors": [
+    {
+      "connectorId": "commercetools",
+      "displayName": "commercetools",
+      "description": "The online store: products, carts and orders.",
+      "owner": "PlaceMakers operations",
+      "mcpServerName": "commercetools",
+      "secretRef": "tenant-secret://placemakers/test/real-connectors-key",
+      "connectionScope": "shop",
+      "connectionRef": "placemakers-business-systems-v5",
+      "sample": false,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "correct_order_contact",
+          "sideEffect": "write",
+          "summary": "Correct an unshipped order\u2019s street details or international phone number after exact human approval. Requires the current source version. Does not change country, state, city, postcode, items, tax, p"
+        },
+        {
+          "name": "find_product",
+          "sideEffect": "read",
+          "summary": "Search the online store's products by words in the name, and by brand or department. With no words it lists the most recently changed products. Returns sku, name, the retail price, the account price f"
+        },
+        {
+          "name": "get_product",
+          "sideEffect": "read",
+          "summary": "One product by its sku, with the details of that variant (price and its main attributes)."
+        },
+        {
+          "name": "get_cart",
+          "sideEffect": "read",
+          "summary": "A cart with its lines, quantities and total."
+        },
+        {
+          "name": "add_to_cart",
+          "sideEffect": "write",
+          "summary": "Add a quantity of a product (by sku) to an active cart. This changes the cart, so the person is asked first."
+        },
+        {
+          "name": "get_order_receipt",
+          "sideEffect": "read",
+          "summary": "Read a paid order delivery receipt by its stable order number. Returns record null only when the commerce system confirms it does not exist."
+        },
+        {
+          "name": "place_order",
+          "sideEffect": "write",
+          "summary": "Record a paid shop order: one order with its lines (name, product code, quantity, price before tax), tax at the given rate, the delivery address and the order number the customer saw. The shop calls i"
+        },
+        {
+          "name": "get_order",
+          "sideEffect": "read",
+          "summary": "An order by its id or its order number, with its lines, totals and states. Only the town and postcode of the delivery address are shown."
+        },
+        {
+          "name": "order_history",
+          "sideEffect": "read",
+          "summary": "The orders of one account (a commercetools customer, or a business unit when the connection is set up that way: then accountId is the unit key such as acc-0001), newest first."
+        },
+        {
+          "name": "list_orders",
+          "sideEffect": "read",
+          "summary": "The newest orders from every account, newest first. Filter by order state (open, confirmed, complete, cancelled), shipment state (pending, ready, partial, shipped, delayed, backorder) or how recently "
+        },
+        {
+          "name": "stock_by_branch",
+          "sideEffect": "read",
+          "summary": "Stock of one product (by sku) at each branch that holds it, most first, with the total. Pass part of a branch name (for example Hamilton) to look at one branch."
+        },
+        {
+          "name": "find_account",
+          "sideEffect": "read",
+          "summary": "Customer accounts on credit terms (business units) by part of the name, the account number or the unit key, optionally one tier as the merchant stores it. Returns the unit key, tier, home branch, acco"
+        },
+        {
+          "name": "get_account",
+          "sideEffect": "read",
+          "summary": "One customer account (business unit) by its unit key, account number or Salesforce account id: its terms, the people who work for it with their roles, its divisions and how many orders it has."
+        },
+        {
+          "name": "get_account_contact",
+          "sideEffect": "read",
+          "summary": "Read the exact business unit, all address contact fields and current version. Select the intended address explicitly."
+        },
+        {
+          "name": "correct_account_address_contact",
+          "sideEffect": "write",
+          "summary": "Correct the phone or mobile on one explicitly selected business-unit address after approval, preserving all other address fields."
+        }
+      ]
+    },
+    {
+      "connectorId": "salesforce",
+      "displayName": "Salesforce",
+      "description": "The CRM: customer accounts, support cases, leads, deals and the pipeline, and marketing campaigns with their briefs.",
+      "owner": "PlaceMakers operations",
+      "mcpServerName": "salesforce",
+      "secretRef": "tenant-secret://placemakers/test/real-connectors-key",
+      "connectionScope": "shop",
+      "connectionRef": "placemakers-business-systems-v5",
+      "sample": false,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "find_account",
+          "sideEffect": "read",
+          "summary": "Find customer accounts by part of the name (or list them in name order). Returns the account id, name, type, industry, phone, town, owner (the sales rep), and, where it is known, the account number an"
+        },
+        {
+          "name": "get_account",
+          "sideEffect": "read",
+          "summary": "One account by id, with its most recent cases and its main contacts."
+        },
+        {
+          "name": "list_cases",
+          "sideEffect": "read",
+          "summary": "Support cases, newest first, for an account or by status or priority. For status pass \"open\" (every case that is not closed: New, Working or Escalated), \"closed\", or one exact status such as Working. "
+        },
+        {
+          "name": "get_case",
+          "sideEffect": "read",
+          "summary": "One support case by its id or its case number, with the description and who owns it."
+        },
+        {
+          "name": "find_lead",
+          "sideEffect": "read",
+          "summary": "Find leads (new prospects that are not customers yet) by part of the name, company or e-mail, by status (New, Contacted, Nurturing, Qualified, Unqualified), by rating (Hot, Warm, Cold) or by the campa"
+        },
+        {
+          "name": "list_opportunities",
+          "sideEffect": "read",
+          "summary": "Deals (opportunities), soonest to close first for open ones and latest first for finished ones. Filter by account, by stage (\"open\", \"won\", \"lost\", or one stage such as Propose), by the rep who owns i"
+        },
+        {
+          "name": "get_opportunity",
+          "sideEffect": "read",
+          "summary": "One deal by its id or its deal number (the OPP-0001 in its name): the products on it with quantities and prices, the price book (the account's price tier), the contact, the owner, the next step and th"
+        },
+        {
+          "name": "pipeline_summary",
+          "sideEffect": "read",
+          "summary": "The sales pipeline in numbers: how many deals and how much money at each stage, with the open, won and lost totals; or, with groupBy \"rep\", each rep's open and won deals."
+        },
+        {
+          "name": "list_campaigns",
+          "sideEffect": "read",
+          "summary": "Marketing campaigns, with their parent campaign, type, status, dates, budget and cost, how many were sent to and responded, how many leads and contacts they reached, and the name of the brief. Filter "
+        },
+        {
+          "name": "get_campaign",
+          "sideEffect": "read",
+          "summary": "One campaign by its id or part of its name: the brief (key message, audience, what it is about), the channels under it, how many members were sent to and responded, who responded, and the deals of the"
+        },
+        {
+          "name": "create_case",
+          "sideEffect": "write",
+          "summary": "Open a new support case for an account. This adds a record in Salesforce, so the person is asked first."
+        },
+        {
+          "name": "get_account_contact",
+          "sideEffect": "read",
+          "summary": "Read the exact business account phone and current ETag before proposing a correction."
+        },
+        {
+          "name": "correct_account_phone",
+          "sideEffect": "write",
+          "summary": "Correct one exact business Account phone after approval with its current ETag. Does not change individual Contact mobiles or other systems."
+        }
+      ]
+    },
+    {
+      "connectorId": "zendesk",
+      "displayName": "Zendesk",
+      "description": "The customer-service ticket desk: support tickets and their conversations.",
+      "owner": "PlaceMakers operations",
+      "mcpServerName": "zendesk",
+      "secretRef": "tenant-secret://placemakers/test/real-connectors-key",
+      "connectionScope": "shop",
+      "connectionRef": "placemakers-business-systems-v5",
+      "sample": false,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "find_tickets",
+          "sideEffect": "read",
+          "summary": "Find support tickets, newest first, by words in the subject or text, by status (\"unsolved\" is every ticket not yet solved, or new, open, pending, hold, solved), by priority, by the requester's e-mail "
+        },
+        {
+          "name": "list_recent_tickets",
+          "sideEffect": "read",
+          "summary": "Read a current page of tickets, including existing backlog and follow-ups. Defaults to newest change first; oldest_first supports backlog work. Follow nextCursor while more is true. Give since to retu"
+        },
+        {
+          "name": "get_ticket",
+          "sideEffect": "read",
+          "summary": "Read a ticket and a page of its full public/internal conversation. Use nextCursor for remaining comments; never claim a truncated page is the whole thread."
+        },
+        {
+          "name": "get_customer_ticket",
+          "sideEffect": "read",
+          "summary": "Read a ticket owned by the verified requester, with public comments only. Paged; use nextCursor for remaining comments."
+        },
+        {
+          "name": "create_ticket",
+          "sideEffect": "write",
+          "summary": "Raise a new support ticket for a customer. This adds a ticket in Zendesk (and Zendesk may send the customer its \"we have your request\" message), so the person is asked first. The first message of the "
+        },
+        {
+          "name": "reply_to_ticket",
+          "sideEffect": "write",
+          "summary": "Send the exact approved public reply to a ticket, optionally changing its status. Requires the last observed updated timestamp and returns a vendor audit receipt. May notify the requester; ask first."
+        },
+        {
+          "name": "update_ticket",
+          "sideEffect": "write",
+          "summary": "Apply an approved ticket status, priority, assignment or internal note. Requires the last observed updated timestamp. Never sends a public reply. Returns a vendor audit receipt; ask first."
+        },
+        {
+          "name": "add_ticket_note",
+          "sideEffect": "write",
+          "summary": "Add an INTERNAL note to a ticket, visible to the support team and never to the customer. This changes the ticket, so the person is asked first. It cannot send a public reply."
+        },
+        {
+          "name": "count_tickets",
+          "sideEffect": "read",
+          "summary": "Read the provider-reported ticket count with an optional supported status filter; a ticket page length is not a backlog total."
+        }
+      ]
+    },
+    {
+      "connectorId": "erp-demo",
+      "displayName": "Demonstration ERP (MongoDB)",
+      "description": "Explicit synthetic ERP records; not SAP or live business data.",
+      "owner": "Demo operations",
+      "mcpServerName": "erp-demo",
+      "secretRef": "tenant-secret://placemakers/test/demo-erp-key",
+      "connectionScope": "shop",
+      "connectionRef": "demo-placemakers-v5",
+      "sample": true,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "find_account",
+          "sideEffect": "read",
+          "summary": "Find synthetic ERP account candidates by trading-name words. These are demonstration records."
+        },
+        {
+          "name": "account_balance",
+          "sideEffect": "read",
+          "summary": "Read the stored synthetic ERP account, currency, balance and terms."
+        },
+        {
+          "name": "get_order",
+          "sideEffect": "read",
+          "summary": "Read one synthetic ERP order by its ERP order ID."
+        },
+        {
+          "name": "get_invoice",
+          "sideEffect": "read",
+          "summary": "Read one synthetic ERP invoice by its ERP invoice ID."
+        },
+        {
+          "name": "list_orders",
+          "sideEffect": "read",
+          "summary": "Read this account's synthetic ERP orders."
+        },
+        {
+          "name": "list_invoices",
+          "sideEffect": "read",
+          "summary": "Read this account's synthetic ERP invoices."
+        },
+        {
+          "name": "list_deliveries",
+          "sideEffect": "read",
+          "summary": "Read this account's synthetic ERP deliveries."
+        },
+        {
+          "name": "stock_by_branch",
+          "sideEffect": "read",
+          "summary": "Read stored demonstration branch quantities. This is not live availability."
+        },
+        {
+          "name": "account_price",
+          "sideEffect": "read",
+          "summary": "Read the stored demonstration price for this account and SKU; no price is calculated or inferred."
+        }
+      ]
+    },
+    {
+      "connectorId": "jax-iq",
+      "displayName": "JAX IQ",
+      "description": "Shared scoped operational queries; business knowledge remains in OKF.",
+      "owner": "Platform operations",
+      "connectionScope": "shop",
+      "sample": false,
+      "enabled": true,
+      "tools": [
+        {
+          "name": "find",
+          "sideEffect": "read"
+        },
+        {
+          "name": "get",
+          "sideEffect": "read"
+        },
+        {
+          "name": "related",
+          "sideEffect": "read"
+        },
+        {
+          "name": "explain",
+          "sideEffect": "read"
+        }
+      ]
+    }
+  ],
+  "policy": [
+    {
+      "connectorId": "commercetools",
+      "tool": "correct_order_contact",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "find_product",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "marketing",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "get_product",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "marketing",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "get_cart",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "add_to_cart",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "get_order_receipt",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "place_order",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "get_order",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "order_history",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "list_orders",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "stock_by_branch",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "find_account",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "get_account",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "find_account",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "marketing",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "get_account",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "list_cases",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "get_case",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "branch",
+        "finance",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "find_lead",
+      "audience": "staff",
+      "groups": [
+        "sales",
+        "sales-managers",
+        "marketing",
+        "leadership",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "list_opportunities",
+      "audience": "staff",
+      "groups": [
+        "sales",
+        "sales-managers",
+        "leadership",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "get_opportunity",
+      "audience": "staff",
+      "groups": [
+        "sales",
+        "sales-managers",
+        "leadership",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "pipeline_summary",
+      "audience": "staff",
+      "groups": [
+        "sales-managers",
+        "leadership",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "list_campaigns",
+      "audience": "staff",
+      "groups": [
+        "sales",
+        "sales-managers",
+        "marketing",
+        "leadership",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "get_campaign",
+      "audience": "staff",
+      "groups": [
+        "sales",
+        "sales-managers",
+        "marketing",
+        "leadership",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "create_case",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "find_tickets",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "list_recent_tickets",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "get_ticket",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "sales",
+        "sales-managers",
+        "leadership",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "get_customer_ticket",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "create_ticket",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "reply_to_ticket",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "update_ticket",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "add_ticket_note",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "find_account",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "account_balance",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "get_order",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "get_invoice",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "list_orders",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "list_invoices",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "list_deliveries",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "stock_by_branch",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "account_price",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "jax-iq",
+      "tool": "*",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "erp-demo",
+      "tool": "stock_by_branch",
+      "audience": "shopper",
+      "groups": [],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "get_account_contact",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "salesforce",
+      "tool": "correct_account_phone",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "get_account_contact",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "commercetools",
+      "tool": "correct_account_address_contact",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "ask"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "count_tickets",
+      "audience": "staff",
+      "groups": [
+        "customer-service",
+        "administrators"
+      ],
+      "state": "allow"
+    },
+    {
+      "connectorId": "zendesk",
+      "tool": "create_ticket",
+      "audience": "shopper",
+      "groups": [],
+      "state": "ask"
+    }
+  ]
+}

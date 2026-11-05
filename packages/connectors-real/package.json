@@ -5,15 +5,23 @@
   "description": "Real connectors served over MCP: the same tool names as the sample connectors, backed by the vendors' own APIs (Salesforce, Google Analytics, Power BI, commercetools).",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "dependencies": {
+    "@journeyax/capability-sdk": "*",
+    "@journeyax/database": "*",
+    "@journeyax/shared-types": "*",
+    "zod": "^3.23.8 || ^4.0.0",
+    "@journeyax/jax-iq": "*"
+  },
   "scripts": {
     "build": "tsc",
     "serve": "tsx src/cli.ts",
     "check": "tsx scripts/live-check.ts",
-    "test": "tsx test/server.spec.ts && tsx test/commercetools.spec.ts && tsx test/salesforce.spec.ts && tsx test/google-analytics.spec.ts && tsx test/power-bi.spec.ts && tsx test/contract.spec.ts && tsx test/live-check.spec.ts && tsx test/loaders.spec.ts && tsx test/loaders-b2b.spec.ts && tsx test/loaders-crm.spec.ts && tsx test/zendesk.spec.ts && tsx test/place-sample-orders.spec.ts",
+    "test": "tsx test/server.spec.ts && tsx test/commercetools.spec.ts && tsx test/salesforce.spec.ts && tsx test/google-analytics.spec.ts && tsx test/power-bi.spec.ts && tsx test/contract.spec.ts && tsx test/live-check.spec.ts && tsx test/loaders.spec.ts && tsx test/loaders-b2b.spec.ts && tsx test/loaders-crm.spec.ts && tsx test/zendesk.spec.ts && tsx test/place-sample-orders.spec.ts && tsx --test test/shared-replay.spec.ts",
     "start": "node dist/cli.js",
     "dev": "node ../../scripts/dev/watch-service.mjs"
   },
   "devDependencies": {
-    "typescript": "^5"
+    "typescript": "^5",
+    "@journeyax/test-support": "*"
   }
 }

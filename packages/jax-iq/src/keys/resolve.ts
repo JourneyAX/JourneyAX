@@ -21,7 +21,7 @@ export type ResolveRefusal = 'no_words' | 'unknown_key_kind' | 'key_not_ready' |
 export type ResolveStatus = KeyStatus | 'none';
 
 export interface ResolveDeps {
-  repository: KeyRepository;
+  repository: Pick<KeyRepository, 'findBySystemKey' | 'findByCanonicalId'>;
   scope: KeyScope;
   /** One rule per identifier a system holds (the platform mapping supplies them). */
   kinds: KeyKindRule[];

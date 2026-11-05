@@ -9,6 +9,8 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": { "@journeyax/jax-iq": ["../../packages/jax-iq/src"] },
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },

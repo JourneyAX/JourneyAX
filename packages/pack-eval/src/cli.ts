@@ -4,11 +4,12 @@ import * as path from 'path';
 
 async function main() {
   const args = process.argv.slice(2);
-  let tenantId = 'placemakers';
-  let environmentId: 'dev' | 'test' | 'staging' | 'production' = 'production';
+  let tenantId: string | undefined;
+  let environmentId: 'dev' | 'test' | 'staging' | undefined;
+  let runtimeUrl: string | undefined;
   let suitePath: string | undefined;
 
-  let mode: 'http' | 'in_process' = 'in_process';
+  let mode: 'http' | 'in_process' = 'http';
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--tenant' && args[i + 1]) {
@@ -23,12 +24,20 @@ async function main() {
     } else if (args[i] === '--mode' && args[i + 1]) {
       mode = args[i + 1] as any;
       i++;
+    } else if (args[i] === '--runtime-url' && args[i + 1]) {
+      runtimeUrl = args[++i];
     }
   }
 
+  if (!tenantId || !environmentId || !['dev', 'test', 'staging'].includes(environmentId) || !runtimeUrl || mode !== 'http') {
+    throw new Error('Use --tenant <id> --env <dev|test|staging> --runtime-url <isolated gateway URL>. In-process evaluations use the API with an explicit isolated runtime factory.');
+  }
+  const target = new URL(runtimeUrl);
+  if (target.username || target.password || target.search || target.hash || target.pathname !== '/' || !(target.protocol === 'https:' || target.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(target.hostname))) throw new Error('Provide the secure isolated gateway origin or an explicit loopback HTTP origin.');
+
   console.log(`\n🧪 Running Evaluation Gate for Tenant: '${tenantId}' (${environmentId}) [mode=${mode}]...\n`);
 
-  const runner = new EvaluationRunner();
+  const runner = new EvaluationRunner(target.origin);
   try {
     const result = await runner.runSuite({
       tenantId,

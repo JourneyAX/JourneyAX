@@ -44,6 +44,7 @@ export const QuantityHelperSchema = z.object({
   coveragePatterns: z.array(z.string().min(1).max(300)).max(20).optional(),
   /** A side shorter than this (mm) means the product is sold by length, not as a piece that covers an area. */
   minPieceSideMm: z.number().min(1).max(5000).optional(),
+  pieceAreaCategories: z.array(z.string().min(1).max(160)).max(200).optional(),
   /** Units of area the shop understands, each as square metres per unit, keyed by the unit written plainly (lower case, no spaces: "ft2", "sqft"). */
   areaUnits: z.record(z.string().min(1).max(30), z.number().positive().max(1_000_000)).optional(),
   /** The words on the quantity card's working lines. */
@@ -108,6 +109,8 @@ export const CustomerAccountSchema = z.object({
     deliveries: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional(),
     price: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional(),
   }).strict().optional(),
+  /** Source price fields for the account's actual tier. Never infer a universal bronze/silver/gold programme. */
+  pricingFields: z.record(z.string().min(1).max(60), z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/).max(80)).optional(),
 }).strict();
 
 /**
@@ -175,6 +178,8 @@ export const BuyerFeedbackSchema = z.object({
  * as a limit; `note` is a line for the model. Nothing here names a system: the shop does.
  */
 export const BranchStockSchema = z.object({
+  /** Explicit demo opt-in; sample quantities never confirm live availability. */
+  dataMode: z.enum(['live', 'demo']).optional(),
   connector: z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,79}$/i),
   tool: z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,79}$/i),
   inputs: z.object({
@@ -200,11 +205,33 @@ export const CheckoutReviewSchema = z.object({
  * provider's own page; and whether the payment form also asks where the order goes. A tenant without it keeps the provider's page.
  */
 export const PaymentSchema = z.object({
+  /** Merchant authority to deliver exactly a provider-confirmed paid order, outside conversational tools. */
+  delivery: z.object({
+    contract: z.literal('paid-order-v1'),
+    connectorId: z.string().min(1).max(64),
+    writeTool: z.string().min(1).max(64),
+    receiptTool: z.string().min(1).max(64),
+    paymentWriteTool: z.string().min(1).max(64).optional(),
+    paymentReceiptTool: z.string().min(1).max(64).optional(),
+    taxCountry: z.string().regex(/^[A-Z]{2}$/),
+    taxLabel: z.string().min(1).max(80),
+  }).strict().optional(),
+  /** Server-only scoped credentials; the release contains references, never key values. */
+  stripe: z.object({
+    mode: z.literal('test'),
+    secretRef: z.string().min(1).max(500),
+    publishableKeyRef: z.string().min(1).max(500),
+    webhookSecretRef: z.string().min(1).max(500).optional(),
+  }).strict().optional(),
+  returnOrigins: z.array(z.string().url().refine(value => { const url = new URL(value); return url.origin === value && !url.username && !url.password && (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))); }, 'Use a secure origin or an explicit localhost origin.')).max(20).optional(),
   embedded: z.boolean().optional(),
   collectShipping: z.boolean().optional(),
   /** Two-letter country codes a delivery address may be in. */
   shippingCountries: z.array(z.string().regex(/^[A-Za-z]{2}$/)).max(20).optional(),
-}).strict();
+}).strict().superRefine((payment, ctx) => {
+  if (Boolean(payment.delivery?.paymentWriteTool) !== Boolean(payment.delivery?.paymentReceiptTool)) ctx.addIssue({ code: 'custom', path: ['delivery'], message: 'Payment linkage requires both a write tool and a receipt tool.' });
+  if (payment.delivery && (payment.collectShipping !== true || !payment.shippingCountries?.length)) ctx.addIssue({ code: 'custom', path: ['delivery'], message: 'Paid-order delivery requires a collected shipping address and configured shipping countries. Pickup requires a separate verified branch mapping.' });
+});
 
 const HexColour = z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'a colour as #rrggbb');
 

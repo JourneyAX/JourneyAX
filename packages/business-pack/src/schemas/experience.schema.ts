@@ -40,9 +40,13 @@ export const ExperienceThemeSchema = z.object({
 export const ExperienceCardsSchema = z.object({
   allowedCardTypes: z.array(z.string()).default([...DEFAULT_PLATFORM_CARD_TYPES]),
   defaultCardRenderer: z.string().default('@journeyax/ui-cards'),
+  /** Optional so reading historical releases does not change their content checksum. */
+  productCardMode: z.enum(['model', 'when_named', 'after_search']).optional(),
   allowedActions: z.array(z.string()).optional(),
   templates: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 });
+
+export type ProductCardMode = NonNullable<z.infer<typeof ExperienceCardsSchema>['productCardMode']>;
 
 export const ExperienceSchema = z.object({
   version: z.string().default('1.0.0'),

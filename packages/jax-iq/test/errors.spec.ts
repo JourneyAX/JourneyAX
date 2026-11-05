@@ -288,7 +288,7 @@ async function main() {
   await suite.test('a server that is not configured, a secret that is not set and an address the SDK refuses are all `not_configured`', async () => {
     const pool = new McpClientPool({ directory: new StaticMcpServerDirectory({}) });
     const noServer = await pool.getClient('ghost', { tenantId: 'test-tenant', environmentId: 'dev' }).then(() => undefined, (error: Error) => error);
-    const noSecret = await new EnvSecretResolver({}).resolve('connectors/some-name').then(() => undefined, (error: Error) => error);
+    const noSecret = await new EnvSecretResolver({}).resolve('tenant-secret://test-tenant/dev/some-name', { tenantId: 'test-tenant', environmentId: 'dev' }).then(() => undefined, (error: Error) => error);
     const messages = [
       noServer?.message, noSecret?.message,
       (() => { try { assertSafeMcpUrl('ftp://connector.invalid/mcp'); } catch (error) { return (error as Error).message; } })(),

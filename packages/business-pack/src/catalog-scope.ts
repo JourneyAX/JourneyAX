@@ -78,3 +78,13 @@ export function buildCatalogueBaseFilter(mapping: ResolvedCatalogMapping, tenant
   const and: Array<Record<string, unknown>> = excluded.length > 0 ? [{ $nor: excluded }] : [];
   return { filter: { $or: mapping.tenantFields.map((path) => ({ [path]: tenantId })), $and: and }, and };
 }
+
+/** Locate all owned rows for exact identifiers before lifecycle/integrity filtering, so an invalid duplicate cannot select a winner. */
+export function buildCatalogueIdentityFilter(mapping: ResolvedCatalogMapping, tenantId: string, skus: readonly string[]): Record<string, any> {
+  if (!tenantId || !skus.length || !mapping.tenantFields.length || !mapping.identifierPaths.length) return { _id: { $exists: false } };
+  return { $and: [
+    { $or: mapping.tenantFields.map(path => ({ [path]: tenantId })) },
+    ...mapping.tenantFields.map(path => ({ $or: [{ [path]: { $exists: false } }, { [path]: null }, { [path]: tenantId }] })),
+    { $or: mapping.identifierPaths.map(path => ({ [path]: { $in: [...skus] } })) },
+  ] };
+}

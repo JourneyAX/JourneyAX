@@ -328,15 +328,15 @@ export const DEFAULT_TEMPLATES: Record<CardType, Spec> = {
     actions: el('Box', { direction: 'row', gap: 'sm', wrap: true }, { children: ['add', 'handoff', 'ask', 'compare'] }),
     // Three questions customers ask most, one tap each; the consultant answers from the shop's own guides and records.
     asks: el('Box', { direction: 'row', gap: 'xs', wrap: true }, { children: ['askWhy', 'askWarranty', 'askInstall'] }),
-    askWhy: el('Button', { label: 'Why this one?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Why do you recommend ${/product/title} for me?' } } } } }),
-    askWarranty: el('Button', { label: 'Warranty and guarantee', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'What is the warranty and guarantee on ${/product/title}?' } } } } }),
-    askInstall: el('Button', { label: 'Who installs it?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Do I need a licensed tradesperson to install ${/product/title}, or can I do it myself? How is it installed?' } } } } }),
+    askWhy: el('Button', { label: 'Why this one?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { sku: S('/product/sku'), title: S('/product/title'), text: { $template: 'Why do you recommend ${/product/title} for me?' } } } } }),
+    askWarranty: el('Button', { label: 'Warranty and guarantee', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { sku: S('/product/sku'), title: S('/product/title'), text: { $template: 'What is the warranty and guarantee on ${/product/title}?' } } } } }),
+    askInstall: el('Button', { label: 'Who installs it?', variant: 'secondary', size: 'sm' }, { on: { press: { action: 'sendMessage', params: { sku: S('/product/sku'), title: S('/product/title'), text: { $template: 'Do I need a licensed tradesperson to install ${/product/title}, or can I do it myself? How is it installed?' } } } } }),
     add: el('Button', { label: 'Add', variant: 'primary', icon: 'cart' }, { on: { press: { action: 'addToCart', params: { sku: S('/product/sku'), qty: 1, title: S('/product/title') } } } }),
     // A configured hand-off (e.g. "Design it in The Forge") — a product whose
     // sale closes in the tenant's own tool, not in the bag. Present only when
     // the storefront matched a `handoffs` rule to this product.
     handoff: el('Button', { label: S('/handoff/label'), variant: 'primary', iconRight: 'chevron-right' }, { visible: [S('/handoff')], on: { press: { action: 'openUrl', params: { url: S('/handoff/url') } } } }),
-    ask: el('Button', { label: 'Ask about this', variant: 'secondary' }, { on: { press: { action: 'sendMessage', params: { text: { $template: 'Tell me more about ${/product/title}' } } } } }),
+    ask: el('Button', { label: 'Ask about this', variant: 'secondary' }, { on: { press: { action: 'sendMessage', params: { sku: S('/product/sku'), title: S('/product/title'), text: { $template: 'Tell me more about ${/product/title}' } } } } }),
     compare: el('Button', { label: 'Compare', variant: 'ghost', icon: 'plus' }, { on: { press: { action: 'toggleCompare', params: { sku: S('/product/sku'), title: S('/product/title') } } } }),
   }),
 

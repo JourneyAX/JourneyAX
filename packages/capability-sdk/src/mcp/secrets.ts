@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { validateSecretReference } from '@journeyax/business-pack';
 
 /** Turns a secret reference into the secret, at the last moment. The platform stores and passes references only. */
@@ -5,18 +6,18 @@ export interface SecretResolver {
   resolve(secretRef: string, scope: { tenantId: string; environmentId: string }): Promise<string>;
 }
 
-/**
- * Development resolver: the last part of the reference names an environment variable, `CONNECTOR_SECRET_<NAME>` (upper case, other
- * characters become `_`). A production deployment supplies its own resolver backed by the secret manager.
- */
+/** Exact reference bindings prevent two tenants' identically named secrets from resolving to the same environment slot. */
+export function connectorSecretVariable(secretRef: string): string {
+  return `CONNECTOR_SECRET_${createHash('sha256').update(secretRef).digest('hex').toUpperCase()}`;
+}
+
 export class EnvSecretResolver implements SecretResolver {
   constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
-
-  async resolve(secretRef: string): Promise<string> {
-    const name = secretRef.split('/').filter(Boolean).pop() || '';
-    const variable = `CONNECTOR_SECRET_${name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
-    const value = this.env[variable];
-    if (!value) throw new Error(`The secret '${name}' is not configured`);
+  async resolve(secretRef: string, scope: { tenantId: string; environmentId: string }): Promise<string> {
+    if (!scope?.tenantId || !scope?.environmentId) throw new Error('A scoped connector credential is not configured.');
+    assertSecretRefInScope(secretRef, scope);
+    const value = this.env[connectorSecretVariable(secretRef)];
+    if (!value) throw new Error('The scoped connector credential is not configured.');
     return value;
   }
 }

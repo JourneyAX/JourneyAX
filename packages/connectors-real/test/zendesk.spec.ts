@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { zendesk } from '../src/connectors/zendesk';
+import { RealConnectorServer } from '../src/server';
+import { hashScopeArguments } from '@journeyax/jax-iq';
 import { loadZendesk } from '../scripts/loaders/zendesk';
 import { plan as ticketPlan } from '../scripts/loaders/tickets';
 import { plan as story, STORY_TODAY } from '../scripts/loaders/story';
@@ -53,10 +55,21 @@ function desk(options: { canned?: (request: Seen) => any; expireTokens?: boolean
   return { answer, users, tickets, rejected, issued };
 }
 
-async function setup(answer: (request: Seen) => any, extra: Rec = {}) {
+async function setup(answer: (request: Seen) => any, extra: Rec = {}, approvedWrites = false) {
   const vendor = await mockVendor(answer);
-  const server = serverFor(zendesk(envFor(vendor.url, extra), deps));
-  return { vendor, server, call: (name: string, args: Rec = {}) => callTool(server, 'zendesk', name, args) };
+  const connector = zendesk(envFor(vendor.url, extra), deps);
+  const server = approvedWrites ? new RealConnectorServer({ connectors: [connector], tenants: ['fixture'], environmentId: 'test', connectionRef: 'fixture-connection', commandScopeSecret: 'offline-adapter-command-scope-'.repeat(2), warn: () => {} }) : serverFor(connector);
+  let callNumber = 0;
+  return { vendor, server, call: (name: string, args: Rec = {}) => {
+    // These adapter contract checks enter handle with an already verified fixture scope.
+    // Signed HTTP authority/replay is checked independently in the source-boundary suites.
+    const scope: any = approvedWrites && connector.tools.find(tool => tool.name === name)?.readOnly === false ? {
+      v: 2, operation: 'command', actionId: `fixture-${++callNumber}`, tenantId: 'fixture', environmentId: 'test', queryId: 'fixture', correlationId: 'fixture',
+      principal: { id: 'fixture-staff', audience: 'staff', groups: ['customer-service'] }, connectorId: 'zendesk', connectionRef: 'fixture-connection', tool: name,
+      toolState: 'allow', toolStateVia: 'tool', capRuleIds: [], argsHash: hashScopeArguments(args), fields: [], release: { version: 'fixture', checksum: 'fixture' }, iat: 1, exp: 2, jti: `fixture-${callNumber}`,
+    } : undefined;
+    return callTool(server, 'zendesk', name, args, scope);
+  } };
 }
 
 async function main() {
@@ -64,7 +77,7 @@ async function main() {
     const seen: string[] = [];
     const { vendor, call } = await setup((request) => {
       if (request.path === '/api/v2/tickets.json') {
-        seen.push(`${request.query.get('sort_by')} ${request.query.get('sort_order')} ${request.query.get('per_page')}`);
+        seen.push(`${request.query.get('sort')} ${request.query.get('page[size]')}`);
         return { json: { tickets: [
           { id: 4322, subject: 'Where is my pergola order?', status: 'new', requester_id: 7, created_at: '2026-10-26T09:44:00Z', updated_at: '2026-10-26T09:44:00Z', description: 'I ordered the posts last week.\n\nWhere are they?', via: { channel: 'web' }, tags: [] },
           { id: 4300, subject: 'Older', status: 'open', requester_id: 7, created_at: '2026-10-25T08:00:00Z', updated_at: '2026-10-25T08:00:00Z', description: 'Old one.' },
@@ -80,12 +93,32 @@ async function main() {
       assert.equal(all.payload.records[0].requester.email, 'sam@example.test');
       assert.equal(all.payload.records[0].description, 'I ordered the posts last week. Where are they?', 'the first message, tidied');
       assert.equal(all.payload.records[0].via, 'web');
-      assert.equal(seen[0], 'updated_at desc 25', 'it asks for the list, not the search (the search can lag)');
+      assert.equal(seen[0], '-updated_at 25', 'it asks for the current cursor-paginated list, not search');
       const recent: any = await call('list_recent_tickets', { since: '2026-10-26T00:00:00Z', limit: 5 });
       assert.deepEqual(recent.payload.records.map((r: any) => r.ticketId), [4322], 'only the ticket changed after since');
-      assert.equal(seen[1], 'updated_at desc 5');
+      assert.equal(seen[1], '-updated_at 5');
       const bad: any = await call('list_recent_tickets', { since: 'yesterday-ish' });
       assert.equal(bad.payload.error.code, 'invalid_arguments');
+    } finally { await vendor.close(); }
+  });
+
+  await t.test('backlog paging preserves the source cursor, oldest-first order and structured record references', async () => {
+    const { vendor, call } = await setup((request) => {
+      if (request.path === '/api/v2/tickets.json') {
+        assert.equal(request.query.get('sort'), 'updated_at');
+        const after = request.query.get('page[after]');
+        return { json: { tickets: [{ id: after ? 200 : 100, subject: 'Backlog item', external_id: 'source-reference', custom_fields: [{ id: 99, value: 'ORDER-REFERENCE' }], tags: Array.from({ length: 12 }, (_, i) => `tag-${i}`) }], meta: { has_more: !after, after_cursor: after ? null : 'next-page-token' } } };
+      }
+      return undefined;
+    });
+    try {
+      const first: any = await call('list_recent_tickets', { order: 'oldest_first' });
+      assert.equal(first.payload.more, true); assert.equal(first.payload.nextCursor, 'next-page-token');
+      assert.equal(first.payload.records[0].externalId, 'source-reference');
+      assert.deepEqual(first.payload.records[0].customFields, [{ id: 99, value: 'ORDER-REFERENCE' }]);
+      assert.equal(first.payload.records[0].tags.length, 12);
+      const second: any = await call('list_recent_tickets', { order: 'oldest_first', afterCursor: first.payload.nextCursor });
+      assert.equal(second.payload.more, false); assert.equal(second.payload.records[0].ticketId, 200);
     } finally { await vendor.close(); }
   });
 
@@ -99,11 +132,11 @@ async function main() {
     assert.deepEqual(zendesk({ ZENDESK_SUBDOMAIN: 'x', ZENDESK_CLIENT_ID: CLIENT_ID }, deps).missing(), ['ZENDESK_CLIENT_SECRET']);
   });
 
-  await t.test('it offers four tools and only create_ticket and add_ticket_note change anything', async () => {
+  await t.test('it declares read tools and the supported explicit ticket commands', async () => {
     const { server, vendor } = await setup(() => undefined);
     const tools = await listTools(server, 'zendesk');
-    assert.deepEqual(tools.map((tool) => tool.name), ['find_tickets', 'list_recent_tickets', 'get_ticket', 'create_ticket', 'add_ticket_note']);
-    assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['create_ticket', 'add_ticket_note']);
+    assert.deepEqual(tools.map((tool) => tool.name), ['find_tickets', 'count_tickets', 'list_recent_tickets', 'get_ticket', 'get_customer_ticket', 'create_ticket', 'reply_to_ticket', 'update_ticket', 'add_ticket_note']);
+    assert.deepEqual(tools.filter((tool) => tool.annotations.readOnlyHint === false).map((tool) => tool.name), ['create_ticket', 'reply_to_ticket', 'update_ticket', 'add_ticket_note']);
     await vendor.close();
   });
 
@@ -214,12 +247,16 @@ async function main() {
         return request.body.ticket.subject === 'Refuse me' ? { status: 422, json: { error: 'RecordInvalid', description: 'Record validation errors', details: { base: [{ description: 'Description: cannot be blank' }] } } } : { status: 201, json: { ticket: { id: 77, subject: request.body.ticket.subject, status: 'new', priority: 'high', tags: request.body.ticket.tags } } };
       }
       return undefined;
-    });
+    }, {}, true);
     const made = ((await call('create_ticket', { subject: 'Pallet damaged on delivery', description: 'Three sheets cracked.', requesterEmail: 'tessa@example.test', requesterName: 'Tessa Thornbury', priority: 'high', type: 'incident', tags: ['acc-0001', 'opp-0001'] })) as any).payload;
     const sent = vendor.seen.find((request) => request.method === 'POST')!.body.ticket;
     assert.deepEqual(sent, { subject: 'Pallet damaged on delivery', comment: { body: 'Three sheets cracked.', public: true }, requester: { email: 'tessa@example.test', name: 'Tessa Thornbury' }, priority: 'high', type: 'incident', tags: ['jx-assistant', 'acc-0001', 'opp-0001'] });
     assert.equal(made.created, true);
     assert.deepEqual(made.record, { ticketId: 77, subject: 'Pallet damaged on delivery', status: 'new', priority: 'high', tags: ['jx-assistant', 'acc-0001', 'opp-0001'] });
+    const emailOnly: any = await call('create_ticket', { subject: 'Help with a product', description: 'Please contact me about the selected product.', requesterEmail: 'another@example.test' });
+    assert.equal(emailOnly.payload.created, true);
+    const emailOnlyRequest = vendor.seen.filter((request) => request.method === 'POST').at(-1)!.body.ticket.requester;
+    assert.deepEqual(emailOnlyRequest, { email: 'another@example.test', name: 'another@example.test' }, 'a missing display name uses the actual email, never an invented customer name');
     const refused: any = await call('create_ticket', { subject: 'Refuse me', description: 'x y z', requesterEmail: 'a@example.test' });
     assert.equal(refused.payload.error.code, 'rejected');
     assert.match(refused.payload.error.message, /Record validation errors: Description: cannot be blank/);
@@ -229,7 +266,7 @@ async function main() {
   });
 
   await t.test('add_ticket_note adds an INTERNAL note only: it can never send a public reply', async () => {
-    const { vendor, call } = await setup((request) => (request.method === 'PUT' ? { json: { ticket: { id: 55, status: 'open', subject: 'Where is it?' } } } : undefined));
+    const { vendor, call } = await setup((request) => (request.method === 'PUT' ? { json: { ticket: { id: 55, status: 'open', subject: 'Where is it?' } } } : undefined), {}, true);
     // Asking for a public reply is refused outright: the tool has no such input, and nothing is sent to Zendesk.
     const refused: any = await call('add_ticket_note', { ticketId: 55, note: 'Customer rang; branch is checking.', public: true, publicReply: true });
     assert.equal(refused.isError, true);

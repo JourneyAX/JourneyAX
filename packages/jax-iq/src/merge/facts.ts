@@ -185,8 +185,8 @@ function settle(answer: BoundAnswer, fact: MergeFactDef, ctx: Context): Settled 
   if (binding.stateMap !== undefined) {
     const map = ctx.maps.get(binding.stateMap);
     const converted = map ? applyStateMap(map, result.value) : undefined;
-    if (!map || !converted || !converted.ok) {
-      const note = converted && !converted.ok ? converted.note : `State map '${binding.stateMap}' is not declared exactly once in this release.`;
+    if (!map || !converted || converted.ok === false) {
+      const note = converted && converted.ok === false ? converted.note : `State map '${binding.stateMap}' is not declared exactly once in this release.`;
       return { kind: 'failed', answer, unavailable: { reason: 'state_not_mapped', system: binding.system, retryable: false, note } };
     }
     value = converted.to;

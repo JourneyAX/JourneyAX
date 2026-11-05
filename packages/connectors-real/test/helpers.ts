@@ -30,8 +30,8 @@ export async function mockVendor(answer: (request: Seen, count: number) => Reply
 export const realDeps = (now: () => number = Date.now): Deps => ({ fetchImpl: fetch, now });
 
 /** Calls a tool through the real MCP handler, the way the runtime would, and returns the payload the model would get. */
-export async function callTool(server: RealConnectorServer, connectorId: string, name: string, args: Rec = {}) {
-  const answer: any = await server.handle(connectorId, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+export async function callTool(server: RealConnectorServer, connectorId: string, name: string, args: Rec = {}, callerScope?: Parameters<RealConnectorServer['handle']>[2]) {
+  const answer: any = await server.handle(connectorId, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, callerScope);
   if (answer.error) return { rpcError: answer.error as Rec };
   const payload = JSON.parse(answer.result.content[0].text) as Rec;
   return { payload, isError: Boolean(answer.result.isError) };

@@ -3,6 +3,8 @@ import { ToolDefinition, ToolBinding, StageBinding, AgentDefinition } from '@jou
 export { ToolDefinition, ToolBinding, StageBinding, AgentDefinition };
 
 export interface ExecutionContext {
+  /** Server-issued signed connector scope, never supplied by a model. */
+  callerScope?: string;
   tenantId: string;
   environmentId: 'dev' | 'test' | 'staging' | 'production';
   workspaceId: string;
@@ -13,6 +15,8 @@ export interface ExecutionContext {
   packVersionId: string;
   correlationId: string;
   idempotencyKey?: string;
+  /** Server-owned business action/confirmation slot. Never supplied by the model. */
+  actionId?: string;
   /** Pack-declared, checksum-bound settings handed to native handlers (e.g. the tenant catalog mapping). */
   packSettings?: { catalogMapping?: unknown; [key: string]: any };
   vocabulary?: any;
@@ -58,5 +62,7 @@ export interface PolicyCheckResult {
 }
 
 export interface NativeCapabilityHandler<TInput = any, TOutput = any> {
+  /** Platform-owned declaration: scoped draft state only, never payment, fulfilment or an external system. */
+  readonly reversibleDraft?: boolean;
   execute(input: TInput, ctx: ExecutionContext): Promise<TOutput>;
 }

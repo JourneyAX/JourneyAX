@@ -1,0 +1,20 @@
+[
+  {
+    "id": "cart.update",
+    "agentTool": "update_cart",
+    "aliases": ["update_cart", "add_to_cart", "cart-update"],
+    "name": "Update owned cart"
+  },
+  {
+    "id": "quote.create",
+    "agentTool": "create_quote",
+    "aliases": ["create_quote", "trade.quote_create", "quote"],
+    "name": "Create owned quote"
+  },
+  {
+    "id": "quote.update",
+    "agentTool": "update_quote",
+    "aliases": ["update_quote", "add_to_quote", "quote-update"],
+    "name": "Update owned quote"
+  }
+]

@@ -24,7 +24,7 @@ export interface DashboardFormat { today: string; currency?: string; locale?: st
 /** What one connector call gave back: the tool's answer, or the reason there is none. */
 export type CallOutcome = { ok: true; data: unknown } | { ok: false; reason: 'blocked' | 'unavailable' };
 
-export interface DashboardCall { key: string; connector: string; tool: string; args: Args }
+export interface DashboardCall { key: string; connector: string; tool: string; args: Args; blocked?: true }
 
 export interface RowView { title: string; subtitle?: string; detail?: string; badge?: string; tone?: DashboardTone; amount?: string; ask?: string }
 
@@ -102,19 +102,20 @@ const NEEDS_NAME = /\{me\.name\}/;
 const NAME_HOLE = /\{me\.name\}/g;
 
 /** The inputs of a call with `{me.name}` filled in; an input that needs a name nobody has is left out. */
-export function resolveArgs(args: Source['args'], name: string | undefined): { args: Args; usedName: boolean } {
+export function resolveArgs(args: Source['args'], name: string | undefined): { args: Args; usedName: boolean; missingName?: true } {
   const out: Args = {};
   let usedName = false;
+  let missingName = false;
   for (const [key, value] of Object.entries(args ?? {})) {
     if (typeof value === 'string' && NEEDS_NAME.test(value)) {
-      if (!name) continue;
+      if (!name) { missingName = true; continue; }
       out[key] = value.replace(NAME_HOLE, name);
       usedName = true;
     } else {
       out[key] = value;
     }
   }
-  return { args: out, usedName };
+  return { args: out, usedName, ...(missingName ? { missingName: true as const } : {}) };
 }
 
 const stable = (args: Args) => JSON.stringify(Object.keys(args).sort().map((key) => [key, args[key]]));
@@ -124,9 +125,9 @@ export const callKey = (source: { connector: string; tool: string }, args: Args)
 export function dashboardCalls(entry: DashboardEntry, name: string | undefined): DashboardCall[] {
   const seen = new Map<string, DashboardCall>();
   for (const source of [...entry.metrics.map((metric) => metric.source), ...entry.sections.map((section) => section.source)]) {
-    const { args } = resolveArgs(source.args, name);
+    const { args, missingName } = resolveArgs(source.args, name);
     const key = callKey(source, args);
-    if (!seen.has(key)) seen.set(key, { key, connector: source.connector, tool: source.tool, args });
+    if (!seen.has(key)) seen.set(key, { key, connector: source.connector, tool: source.tool, args, ...(missingName ? { blocked: true as const } : {}) });
   }
   return [...seen.values()];
 }
@@ -366,7 +367,8 @@ export function buildDashboard(entry: DashboardEntry, outcomes: ReadonlyMap<stri
   let usedName = false;
   const outcomeOf = (source: Source) => {
     const resolved = resolveArgs(source.args, context.name);
-    usedName = usedName || resolved.usedName;
+    usedName = usedName || resolved.usedName || resolved.missingName === true;
+    if (resolved.missingName) return undefined;
     return outcomes.get(callKey(source, resolved.args));
   };
   const metrics = entry.metrics.map((metric) => figure(metric, outcomeOf(metric.source), context.format));

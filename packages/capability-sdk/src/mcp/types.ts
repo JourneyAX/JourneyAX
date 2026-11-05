@@ -35,6 +35,7 @@ export interface McpRequestMeta {
   correlationId?: string;
   principalId?: string;
   connectionRef?: string;
+  callerScope?: string;
 }
 
 export interface McpSendOptions { meta: McpRequestMeta; signal?: AbortSignal }

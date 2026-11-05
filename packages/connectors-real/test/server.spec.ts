@@ -20,7 +20,7 @@ const t = suite('connectors-real: the MCP server');
 
 async function main() {
   const warnings: string[] = [];
-  const server = new RealConnectorServer({ connectors: [fake(async (args) => ({ echoed: args.text })), { ...fake(async () => ({}), false), connectorId: 'offline' }, { ...fake(async () => { throw new Error('boom: secret-token-xyz at /private/path'); }), connectorId: 'broken' }, { ...fake(async () => { throw new ToolError('not_found', 'No such thing.'); }), connectorId: 'missing-thing' }], apiKey: KEY, warn: (message) => warnings.push(message) });
+  const server = new RealConnectorServer({ tenants: ['placemakers'], connectors: [fake(async (args) => ({ echoed: args.text })), { ...fake(async () => ({}), false), connectorId: 'offline' }, { ...fake(async () => { throw new Error('boom: secret-token-xyz at /private/path'); }), connectorId: 'broken' }, { ...fake(async () => { throw new ToolError('not_found', 'No such thing.'); }), connectorId: 'missing-thing' }], apiKey: KEY, warn: (message) => warnings.push(message) });
   const base = await server.listen(0);
 
   await t.test('it answers the MCP handshake and lists a connector\'s tools with their read-only hints', async () => {
@@ -108,13 +108,17 @@ async function main() {
 
   await server.close();
 
-  await t.test('the five real connectors are all there, named as the pack names them, and none is connected without settings', async () => {
+  await t.test('the six real connectors include SAP, named as the pack names them, and none is connected without settings', async () => {
     const connectors = createRealConnectors({});
-    assert.deepEqual(connectors.map((connector) => connector.connectorId), ['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'zendesk']);
+    assert.deepEqual(connectors.map((connector) => connector.connectorId), ['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'zendesk', 'sap-s4hana']);
     assert.ok(connectors.every((connector) => connector.missing().length > 0));
     const all = new RealConnectorServer({ connectors });
     const health = all.health() as any;
     assert.equal(health.connectors.every((entry: any) => entry.connected === false && Array.isArray(entry.missing)), true);
+    const sapTools: any = await all.handle('sap-s4hana', { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+    assert.deepEqual(sapTools.result.tools, [], 'SAP offers no executable tools until its own source credentials are configured');
+    const sapCall: any = await all.handle('sap-s4hana', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_order', arguments: { orderId: 'unconfigured' } } });
+    assert.equal(JSON.parse(sapCall.result.content[0].text).error.code, 'not_connected');
     assert.equal(JSON.stringify(health).includes('SECRET'), true, 'setting names are listed so the owner knows what to fill in');
   });
 

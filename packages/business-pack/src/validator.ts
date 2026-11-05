@@ -21,8 +21,12 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
-export function validateBusinessPack(pack: BusinessPackRelease): ValidationResult {
+export function validateBusinessPack(pack: BusinessPackRelease, options: { publishedRead?: boolean } = {}): ValidationResult {
   const issues: ValidationIssue[] = [];
+  if (pack.catalogMapping?.pricing?.demoFallback?.enabled) {
+    issues.push({ severity: options.publishedRead ? 'warning' : 'error', path: 'catalogMapping.pricing.demoFallback', message: 'Generated prices are not supported. Configure an authoritative price source; missing prices remain price on request.' });
+  }
+
 
   // 1. Validate Secret References (No raw keys or tokens)
   const jsonStr = JSON.stringify(pack);
@@ -32,6 +36,19 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
       path: 'security',
       message: 'Detected raw API key or token in Business Pack snapshot. Use secretRef (e.g. gcp-secret://...) instead.',
     });
+  }
+
+  const payment = pack.extensions?.payment?.stripe;
+  const handoff = pack.extensions?.supportHandoff;
+  if (handoff) {
+    const source = pack.extensions?.connectors?.connectors.find(entry => entry.connectorId === handoff.connector && entry.enabled !== false);
+    const action = source?.tools.find(entry => entry.name === handoff.tool);
+    if (action?.sideEffect !== 'write') issues.push({ severity: 'error', path: 'extensions.supportHandoff', message: 'Support handoff requires an enabled connector and a declared write operation.' });
+    if (handoff.receiptCard && !pack.experience.cards.allowedCardTypes.includes('records')) issues.push({ severity: 'error', path: 'extensions.supportHandoff.receiptCard', message: 'Support receipt presentation requires the records card type.' });
+  }
+  if (payment) for (const field of ['secretRef', 'publishableKeyRef', 'webhookSecretRef'] as const) {
+    if (!payment[field]) continue;
+    for (const problem of validateSecretReference(payment[field]!, pack.manifest.tenantId, pack.manifest.environmentId)) issues.push({ severity: 'error', path: `extensions.payment.stripe.${field}`, message: problem.message });
   }
 
   // 2. Validate Model Policy References
@@ -48,6 +65,16 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
 
   // 3. Collect registered Tool IDs
   const registeredToolIds = new Set(pack.capabilities.toolDefinitions.map((t) => t.toolId));
+  for (const desk of pack.extensions?.operationalDesks?.desks ?? []) {
+    if (!desk.preparation) continue;
+    if (pack.extensions?.agentMode?.enabled !== true || pack.extensions?.jaxOntology?.enabled !== true) issues.push({ severity: 'error', path: `extensions.operationalDesks.${desk.deskId}.preparation`, message: 'Automatic preparation requires the canonical agent mode and shared IQ layer.' });
+    const agent = pack.agents.find(agent => agent.agentId === desk.preparation!.agentId);
+    if (!agent || !['read_desk', 'propose_connector_action', 'call_connector_tool'].every(tool => agent.allowedTools.includes(tool) || agent.allowedTools.includes('*'))) issues.push({ severity: 'error', path: `extensions.operationalDesks.${desk.deskId}.preparation`, message: 'Preparation needs an existing agent with the shared desk, proposal and approved connector tools.' });
+    for (const proposal of desk.preparation.proposalTools) {
+      const connector = pack.extensions?.connectors?.connectors.find(connector => connector.connectorId === proposal.connector);
+      if (connector?.enabled === false || !connector?.tools.some(tool => tool.name === proposal.tool && tool.sideEffect === 'write')) issues.push({ severity: 'error', path: `extensions.operationalDesks.${desk.deskId}.preparation.proposalTools`, message: 'A preparation proposal must reference an enabled, explicitly declared change tool.' });
+    }
+  }
 
   // 4. Validate Agent Allowed Tools
   for (const agent of pack.agents) {
@@ -228,7 +255,24 @@ export function validateBusinessPack(pack: BusinessPackRelease): ValidationResul
 
   // 4g. Validate what each tool may do for whom (extensions.toolStates). A row naming a tool no agent of the pack can call is a typo (a
   // warning: the tool may be added later), and a shopper row cannot name groups.
+  const delivery = (pack as any).extensions?.payment?.delivery;
+  if (delivery) {
+    const connector = (pack as any).extensions?.connectors?.connectors?.find((entry: any) => entry.connectorId === delivery.connectorId);
+    if (!connector || connector.enabled === false || !connector.connectionRef || connector.sample === true ||
+        !connector.tools?.some((tool: any) => tool.name === delivery.writeTool && tool.sideEffect === 'write') ||
+        !connector.tools?.some((tool: any) => tool.name === delivery.receiptTool && tool.sideEffect === 'read')) {
+      issues.push({ severity: 'error', path: 'extensions.payment.delivery', message: 'Paid order delivery requires an enabled, scoped, non-sample connector with declared write and receipt tools.' });
+    }
+    if (delivery.paymentWriteTool && (!connector?.tools?.some((tool: any) => tool.name === delivery.paymentWriteTool && tool.sideEffect === 'write') || !connector?.tools?.some((tool: any) => tool.name === delivery.paymentReceiptTool && tool.sideEffect === 'read'))) {
+      issues.push({ severity: 'error', path: 'extensions.payment.delivery', message: 'Payment linkage requires declared write and read receipt bindings on the paid-order connector.' });
+    }
+  }
   const toolRows = (pack as any).extensions?.toolStates?.rows as Array<{ toolId: string; audience: string; groups?: string[]; state: string }> | undefined;
+  for (const source of pack.extensions?.customerProfiles?.enabled ? pack.extensions.customerProfiles.sources : []) {
+    const connector = pack.extensions?.connectors?.connectors.find(c => c.connectorId === source.connectorId);
+    if (!connector || connector.enabled === false || connector.sample || !connector.connectionRef || !connector.tools.some(t => t.name === source.createTool && t.sideEffect === 'write') || !connector.tools.some(t => t.name === source.readTool && t.sideEffect === 'read')) issues.push({ severity: 'error', path: 'extensions.customerProfiles', message: 'Customer profile sources require real scoped connectors with declared creation and read-back tools.' });
+    if (source.orderLinkTool && (!connector?.tools.some(t => t.name === source.orderLinkTool && t.sideEffect === 'write') || !connector?.tools.some(t => t.name === source.orderReadTool && t.sideEffect === 'read'))) issues.push({ severity: 'error', path: 'extensions.customerProfiles', message: 'Customer order linkage requires declared write and read-back tools on the same scoped connector.' });
+  }
   if (Array.isArray(toolRows) && toolRows.length > 0) {
     const callable = new Set(agents.flatMap((a) => (Array.isArray((a as any).allowedTools) ? (a as any).allowedTools : [])));
     toolRows.forEach((row, index) => {

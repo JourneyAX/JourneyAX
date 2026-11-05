@@ -1,4 +1,6 @@
 import net from 'node:net';
+import dns from 'node:dns';
+import { MongoClient } from 'mongodb';
 
 /**
  * The no-world guard. Every new spec imports this first. It removes the settings that could point a spec at a database, a vendor or a key,
@@ -16,6 +18,8 @@ export function isWorldVariable(name: string): boolean {
 export function applyNoWorld(env: NodeJS.ProcessEnv = process.env): string[] {
   const removed = Object.keys(env).filter(isWorldVariable);
   for (const name of removed) delete env[name];
+  MongoClient.prototype.connect = async function () { throw new Error('no-world guard: a spec opened MongoDB. Inject isolated storage.'); };
+  dns.promises.resolveSrv = async () => { throw new Error('no-world guard: a spec attempted DNS service discovery.'); };
   globalThis.fetch = () => {
     throw new Error('no-world guard: a spec called fetch. Pass a fake fetch instead.');
   };

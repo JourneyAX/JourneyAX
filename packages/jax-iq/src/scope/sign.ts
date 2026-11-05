@@ -46,5 +46,5 @@ export function signScope(scope: CallScope, secret: ScopeSecret): SignedScope {
     throw new Error(`The scope is not valid and was not signed. Fix: ${where}.`);
   }
   const payloadPart = Buffer.from(JSON.stringify(parsed.data), 'utf8').toString('base64url');
-  return { header: `${payloadPart}.${signatureOf(payloadPart, secret)}`, scope: parsed.data };
+  return { header: `${payloadPart}.${signatureOf(payloadPart, secret)}`, scope: parsed.data as CallScope };
 }

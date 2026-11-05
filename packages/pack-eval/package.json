@@ -6,13 +6,15 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "eval": "tsx src/cli.ts"
+    "eval": "tsx src/cli.ts",
+    "test": "tsx --test test/eval-boundary.spec.ts"
   },
   "dependencies": {
     "@journeyax/business-pack": "*",
     "@journeyax/journey-core": "*",
     "@journeyax/capability-sdk": "*",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "@journeyax/shared-types": "*"
   },
   "devDependencies": {
     "@types/node": "^20.17.9",

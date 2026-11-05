@@ -102,6 +102,7 @@ export interface ChannelEvent {
 }
 
 export type DecisionType =
+  | 'respond'
   | 'ask_fact'
   | 'invoke_capability'
   | 'requires_approval'
@@ -264,6 +265,12 @@ export interface TurnCommand {
   principalGroups?: string[];
   /** Connectors the person switched off for this chat. It can only narrow what their role allows, never widen it. */
   disabledConnectors?: string[];
+  /** Caller-requested restriction: no external business mutations in this turn. Never widens authority. */
+  readOnly?: boolean;
+  /** Server-owned preparation allow-list; transport DTOs never accept it from a browser or model. */
+  proposalTools?: Array<{ connector: string; tool: string }>;
+  /** Server-only restriction for automatic research; prevents reading a different private request. */
+  researchSubject?: { thing: string; canonicalId: string; sourceSystem: string };
   correlationId: string;
 
   message?: string;

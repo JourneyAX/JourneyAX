@@ -13,11 +13,13 @@
  *             a customer tier and a home branch code; the tools only offer those filters when they are set), SALESFORCE_CASE_ORIGIN
  *             (the Origin given to a case opened by the assistant, for example Web)
  *
- * What it can change: it can open a case (create_case). It cannot edit or delete anything; every other tool only reads. The sample's `order_review_status` has no
+ * What it can change: open a case, or correct one business-account phone with an exact approval and ETag. It cannot delete records. The sample's `order_review_status` has no
  * counterpart in a standard org, so that tool is not offered here.
  */
 import { ToolError, type Deps, type Env, type RealConnector, type Rec, type ToolSpec } from '../types';
 import { TokenCache, VendorClient, boundedInt, clip, compact, errorFor, redact, send, setting, vendorMessage } from '../http';
+import { salesforceAccountContact } from './account-contact';
+import { salesforceCustomerProfile } from './customer-profile';
 
 const SYSTEM = 'Salesforce';
 const ID = /^[a-zA-Z0-9]{15,18}$/;
@@ -100,6 +102,14 @@ export function salesforce(env: Env, deps: Deps): RealConnector {
   };
 
   const tools: ToolSpec[] = [
+    ...salesforceCustomerProfile(api, version),
+    ...salesforceAccountContact({
+      read: async id => {
+        const answer = await client.response('GET', `${instance()}/services/data/${version()}/sobjects/Account/${encodeURIComponent(id)}`, { query: { fields: 'Id,Name,Phone,LastModifiedDate' } });
+        return { record: answer.json ?? {}, etag: answer.headers?.etag };
+      },
+      patch: async (id, phone, expectedEtag) => { await client.json('PATCH', `${instance()}/services/data/${version()}/sobjects/Account/${encodeURIComponent(id)}`, { headers: { 'If-Match': expectedEtag }, body: { Phone: phone } }); },
+    }),
     {
       name: 'find_account',
       readOnly: true,

@@ -28,7 +28,7 @@ export function welcomeFor(setting: unknown, person: { audience: string; groups:
       ...(entry.headline ? { headline: entry.headline } : {}),
       ...(entry.subtitle ? { subtitle: entry.subtitle } : {}),
       ...(entry.placeholder ? { placeholder: entry.placeholder } : {}),
-      ...(Array.isArray(entry.starters) && entry.starters.length ? { starters: entry.starters.map((s) => ({ label: s.label, prompt: s.prompt, ...(s.needs?.length ? { needs: s.needs } : {}) })) } : {}),
+      ...(Array.isArray(entry.starters) ? { starters: entry.starters.map((s) => ({ label: s.label, prompt: s.prompt, ...(s.needs?.length ? { needs: s.needs } : {}) })) } : {}),
     };
   }
   return undefined;

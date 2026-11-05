@@ -717,7 +717,7 @@ async function main() {
   await suite.test('the module is pure and neutral: it reaches no file, socket or environment, imports only its own files, the model and node:crypto, and holds none of the words the repository guard bans', () => {
     const folder = path.join(WORKTREE, 'packages/jax-iq/src/keys');
     const files = readdirSync(folder).filter((file) => file.endsWith('.ts'));
-    assert.deepEqual(files.sort(), ['index.ts', 'memory-repository.ts', 'normalise.ts', 'platform-mapping.ts', 'report.ts', 'repository.ts', 'resolve.ts', 'types.ts']);
+    assert.deepEqual(files.sort(), ['index.ts', 'memory-repository.ts', 'mongo-provisioner.ts', 'normalise.ts', 'platform-mapping.ts', 'report.ts', 'repository.ts', 'resolve.ts', 'types.ts']);
     const guard = JSON.parse(readFileSync(path.join(WORKTREE, 'scripts/guard-config.json'), 'utf8'));
     const banned = new RegExp(`\\b(?:${[...guard.forbiddenIndustryTerms, ...guard.forbiddenAttributeNames].join('|')})\\b`, 'i');
     for (const file of files) {

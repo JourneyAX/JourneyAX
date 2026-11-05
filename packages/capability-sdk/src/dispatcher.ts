@@ -10,6 +10,7 @@ import {
 } from './types';
 import { PolicyGate } from './policy-gate';
 import type { McpClientProvider } from './mcp/pool';
+import { actionIdentity, type ActionIdentity, type ActionLedger } from './action-ledger';
 
 export interface DispatcherOptions {
   activepiecesApiUrl?: string;
@@ -18,6 +19,7 @@ export interface DispatcherOptions {
   validateConnectionOwnership?: (tenantId: string, environmentId: string, connectionRef: string) => Promise<boolean> | boolean;
   /** Where `mcp_tool` bindings get their client. Absent: an `mcp_tool` call fails closed. */
   mcpClients?: McpClientProvider;
+  actionLedger?: ActionLedger;
 }
 
 export class CapabilityDispatcher {
@@ -82,7 +84,18 @@ export class CapabilityDispatcher {
       };
     }
 
+    let identity: ActionIdentity | undefined;
     try {
+      if (tool.sideEffect === 'write' || tool.sideEffect === 'transactional') {
+        if (!this.options.actionLedger) throw new Error('Durable action receipts are not configured; nothing was executed.');
+        identity = actionIdentity(tool.toolId, request.input, effectiveCtx);
+        const claim = await this.options.actionLedger.claim(identity);
+        if (claim.status === 'succeeded') return { toolId: tool.toolId, status: 'success', output: claim.output, durationMs: Date.now() - startTime, provenance: { executorType: binding.executor?.type || 'native_capability', executedAt: new Date().toISOString(), correlationId: ctx.correlationId } };
+        if (claim.status !== 'claimed') {
+          identity = undefined;
+          throw new Error(claim.status === 'running' ? 'This action is already running. No duplicate was executed.' : 'The earlier action needs reconciliation. No duplicate was executed.');
+        }
+      }
       const executor = binding.executor || {
         type: 'native_capability' as const,
         nativeHandler: (binding as any).adapterRef || tool.toolId,
@@ -124,6 +137,7 @@ export class CapabilityDispatcher {
           throw new Error(`Unsupported executor type: ${executor.type}`);
       }
 
+      if (identity) await this.options.actionLedger!.succeed(identity, output);
       return {
         toolId: tool.toolId,
         status: 'success',
@@ -136,13 +150,14 @@ export class CapabilityDispatcher {
         },
       };
     } catch (err: any) {
+      if (identity) await this.options.actionLedger?.uncertain(identity).catch(() => {});
       return {
         toolId: tool.toolId,
         status: 'failure',
         error: err.message || 'Capability execution failed',
         durationMs: Date.now() - startTime,
         provenance: {
-          executorType: binding.executor.type,
+          executorType: binding.executor?.type || 'native_capability',
           executedAt: new Date().toISOString(),
           correlationId: ctx.correlationId,
         },
@@ -206,6 +221,7 @@ export class CapabilityDispatcher {
       correlationId: ctx.correlationId,
       principalId: ctx.principalId,
       connectionRef,
+      callerScope: ctx.callerScope,
     });
     if (result.isError) {
       throw new Error(`The tool '${toolName}' on '${serverName}' reported an error: ${result.text || 'no detail given'}`.slice(0, 400));

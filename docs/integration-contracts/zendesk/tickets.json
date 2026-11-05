@@ -1,0 +1,423 @@
+{
+  "schemaVersion": "1.0.0",
+  "ontologyId": "zendesk-tickets",
+  "enabled": true,
+  "selfConnector": "jax-iq",
+  "things": [
+    {
+      "thing": "Ticket",
+      "meaning": "A support conversation held by the ticketing system.",
+      "aliases": [
+        "ticket",
+        "support request"
+      ],
+      "group": "Support",
+      "status": "active",
+      "key": {
+        "canonical": "ticket_id",
+        "pattern": "^[1-9][0-9]*$"
+      },
+      "keyKinds": [
+        {
+          "kind": "ticket_id",
+          "system": "zendesk",
+          "evidence": "real_field",
+          "caseRule": "as_is",
+          "ready": true
+        }
+      ],
+      "labelFact": "Ticket.subject",
+      "searchFacts": [
+        "Ticket.subject"
+      ],
+      "defaultFacts": [
+        "Ticket.subject",
+        "Ticket.status",
+        "Ticket.updated",
+        "Ticket.conversation",
+        "Ticket.more"
+      ],
+      "expectedIn": [
+        "zendesk"
+      ]
+    }
+  ],
+  "facts": [
+    {
+      "fact": "Ticket.subject",
+      "thing": "Ticket",
+      "label": "Subject",
+      "meaning": "The ticket subject supplied by the support system.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.status",
+      "thing": "Ticket",
+      "label": "Status",
+      "meaning": "The ticket status supplied by the support system.",
+      "type": "enum",
+      "freshnessKind": "reference",
+      "allowStale": false,
+      "enumValues": [
+        "new",
+        "open",
+        "pending",
+        "hold",
+        "solved",
+        "closed"
+      ]
+    },
+    {
+      "fact": "Ticket.updated",
+      "thing": "Ticket",
+      "label": "Last changed",
+      "meaning": "The ticket last changed supplied by the support system.",
+      "type": "datetime",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.conversation",
+      "thing": "Ticket",
+      "label": "Conversation",
+      "meaning": "The ticket conversation supplied by the support system.",
+      "type": "list",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.more",
+      "thing": "Ticket",
+      "label": "More comments",
+      "meaning": "The ticket more comments supplied by the support system.",
+      "type": "boolean",
+      "freshnessKind": "reference",
+      "allowStale": false
+    },
+    {
+      "fact": "Ticket.nextCursor",
+      "thing": "Ticket",
+      "label": "Next comment cursor",
+      "meaning": "The ticket next comment cursor supplied by the support system.",
+      "type": "text",
+      "freshnessKind": "reference",
+      "allowStale": false
+    }
+  ],
+  "links": [],
+  "bindings": [
+    {
+      "bindingId": "Ticket.subject@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.subject"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.subject",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.status@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.status"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.status",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.updated@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.updated"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.updated",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.conversation@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.conversation"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.conversation",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.more@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.more"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.more",
+      "presence": "required",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    },
+    {
+      "bindingId": "Ticket.nextCursor@zendesk.get_ticket",
+      "target": {
+        "kind": "fact",
+        "fact": "Ticket.nextCursor"
+      },
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "args": {
+        "ticketId": {
+          "from": "key",
+          "kind": "ticket_id",
+          "valueType": "integer"
+        },
+        "afterCursor": {
+          "from": "request",
+          "param": "afterCursor",
+          "optional": true
+        },
+        "limit": {
+          "from": "request",
+          "param": "limit",
+          "optional": true
+        }
+      },
+      "select": "record.nextCursor",
+      "presence": "optional",
+      "authority": "source_of_truth",
+      "freshnessKind": "reference",
+      "contract": {
+        "unit": "not_applicable",
+        "currency": "not_applicable",
+        "tax": "not_applicable",
+        "asOf": "retrieved",
+        "counts": "not_applicable"
+      },
+      "selfTest": {
+        "fixtureId": "zendesk-ticket-read"
+      }
+    }
+  ],
+  "permissionRules": [],
+  "signalRules": [],
+  "settings": [
+    {
+      "key": "timeout.call",
+      "label": "timeout.call",
+      "kind": "timeout",
+      "unit": "milliseconds",
+      "ownerRole": "operations",
+      "value": 15000
+    },
+    {
+      "key": "timeout.query",
+      "label": "timeout.query",
+      "kind": "timeout",
+      "unit": "milliseconds",
+      "ownerRole": "operations",
+      "value": 30000
+    },
+    {
+      "key": "retry.attempts",
+      "label": "retry.attempts",
+      "kind": "retry",
+      "unit": "count",
+      "ownerRole": "operations",
+      "value": 0
+    },
+    {
+      "key": "retry.delay",
+      "label": "retry.delay",
+      "kind": "retry",
+      "unit": "milliseconds",
+      "ownerRole": "operations",
+      "value": 0
+    },
+    {
+      "key": "cooldown.rateLimited",
+      "label": "cooldown.rateLimited",
+      "kind": "retry",
+      "unit": "seconds",
+      "ownerRole": "operations",
+      "value": 0
+    },
+    {
+      "key": "limit.parallelPerSystem",
+      "label": "limit.parallelPerSystem",
+      "kind": "limit",
+      "unit": "count",
+      "ownerRole": "operations",
+      "value": 4
+    },
+    {
+      "key": "evidence.retention",
+      "label": "evidence.retention",
+      "kind": "limit",
+      "unit": "seconds",
+      "ownerRole": "operations",
+      "value": 3600
+    },
+    {
+      "key": "freshness.reference",
+      "label": "freshness.reference",
+      "kind": "freshness",
+      "unit": "seconds",
+      "ownerRole": "operations",
+      "value": 60
+    }
+  ],
+  "severities": [],
+  "stateMaps": [],
+  "contractChanges": []
+}

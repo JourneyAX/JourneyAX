@@ -3,6 +3,7 @@ import { assertSafeMcpUrl, type McpServerDirectory } from './directory';
 import { EnvSecretResolver, SecretLedger, assertSecretRefInScope, type SecretResolver } from './secrets';
 import { HttpMcpTransport } from './transport';
 import type { McpClientLimits, McpScope } from './types';
+import { cloudServiceHeaders } from './service-auth';
 
 /** Gives the dispatcher a client for a named server, for one tenant and environment. */
 export interface McpClientProvider {
@@ -15,6 +16,7 @@ export interface McpClientPoolOptions {
   limits?: Partial<McpClientLimits>;
   fetchImpl?: typeof fetch;
   nodeEnv?: string;
+  serviceHeaders?: (target: string) => Promise<Record<string, string>>;
 }
 
 /**
@@ -46,10 +48,12 @@ export class McpClientPool implements McpClientProvider {
       fetchImpl: this.options.fetchImpl,
       redact: ledger.redact,
       headers: async (): Promise<Record<string, string>> => {
-        if (!scope.secretRef) return {};
+        const identity = await (this.options.serviceHeaders ?? cloudServiceHeaders)(url);
+        for (const credential of Object.values(identity)) { ledger.add(credential); ledger.add(credential.replace(/^Bearer /, '')); }
+        if (!scope.secretRef) return identity;
         const secret = await this.secrets.resolve(scope.secretRef, { tenantId: scope.tenantId, environmentId: scope.environmentId });
         ledger.add(secret);
-        return { Authorization: `Bearer ${secret}` };
+        return { ...identity, Authorization: `Bearer ${secret}` };
       },
     });
     const client = new McpClient(transport, serverName, this.options.limits, ledger.redact);

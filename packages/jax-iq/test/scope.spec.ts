@@ -261,7 +261,7 @@ async function main() {
   });
 
   await suite.test('a body the signer would never write is refused even with a good signature: other version, other shape, extra keys', () => {
-    refused(check(forge({ ...scopeFixture(), v: 2 })), 'unsupported_version');
+    refused(check(forge({ ...scopeFixture(), v: 3 })), 'unsupported_version');
     refused(check(forge({ ...scopeFixture(), v: '1' })), 'unsupported_version');
     const { v, ...noVersion } = scopeFixture();
     assert.equal(v, 1);

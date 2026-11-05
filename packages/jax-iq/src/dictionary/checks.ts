@@ -31,7 +31,7 @@ export function checkDictionary(input: unknown, ctx: DictionaryCheckContext): Di
   const found: DictionaryIssue[] = parsed.success ? [] : parsed.error.issues.map((entry) => dictionaryIssue('schema', issuePath(...entry.path), entry.message));
   if (isRecord(input) && input.enabled === false) return found;
   found.push(...checkShape(input));
-  if (parsed.success) found.push(...checkMeaning(parsed.data, ctx));
+  if (parsed.success) found.push(...checkMeaning(parsed.data as JaxOntologyRelease, ctx));
   return found;
 }
 
@@ -229,6 +229,35 @@ function checkMeaning(block: JaxOntologyRelease, ctx: DictionaryCheckContext): D
   unique('setting', 'settings', block.settings, (item) => item.key);
   unique('state map', 'stateMaps', block.stateMaps, (item) => item.id);
 
+  if (block.customerIdentity) {
+    const thing = things.get(block.customerIdentity.thing);
+    if (!thing) unknown('customerIdentity.thing', 'thing', block.customerIdentity.thing);
+    else if (!thing.keyKinds.some(kind => kind.kind === block.customerIdentity!.keyKind)) unknown('customerIdentity.keyKind', 'key kind', block.customerIdentity.keyKind);
+  }
+  if (block.retailCustomerIdentity) {
+    if (!things.has(block.retailCustomerIdentity.thing)) unknown('retailCustomerIdentity.thing', 'thing', block.retailCustomerIdentity.thing);
+    if (!(block.customerAccess ?? []).some(access => access.thing === block.retailCustomerIdentity!.thing && access.roles?.includes(block.retailCustomerIdentity!.role))) add('schema', 'retailCustomerIdentity.role', 'A retail identity must have an explicitly role-scoped customer grant.');
+  }
+  (block.customerAccess ?? []).forEach((access, index) => {
+    const at = (...parts: (string | number)[]) => issuePath('customerAccess', index, ...parts);
+    if (!thingKnown(access.thing)) unknown(at('thing'), 'thing', access.thing);
+    access.facts.forEach((name, position) => {
+      if (!factKnown(name)) unknown(at('facts', position), 'fact', name);
+      else if (facts.get(name)?.thing !== access.thing) add('r4_name_mismatch', at('facts', position), 'A customer grant must name facts on its own thing.');
+    });
+    access.links.forEach((name, position) => {
+      if (!linkKnown(name)) unknown(at('links', position), 'link', name);
+      else if (links.get(name)?.from !== access.thing) add('r4_name_mismatch', at('links', position), 'A customer grant must name relationships from its own thing.');
+    });
+  });
+  block.things.forEach((thing, index) => (thing.lookups ?? []).forEach((lookup, position) => {
+    const at = (...parts: (string | number)[]) => issuePath('things', index, 'lookups', position, ...parts);
+    const connector = connectors?.connectors.find(connector => connector.connectorId === lookup.system && connector.enabled !== false);
+    if (!connector) add('r1_system_unavailable', at('system'), 'Lookup source is not an enabled connector.');
+    else if (connector.tools.find(tool => tool.name === lookup.tool)?.sideEffect !== 'read') add('r2_tool_not_read', at('tool'), 'A lookup must use a declared read-only tool.');
+    if (!thing.keyKinds.some(kind => kind.kind === lookup.keyKind && kind.system === lookup.system)) unknown(at('keyKind'), 'source key kind', lookup.keyKind);
+  }));
+
   const freshnessUsers = new Map<string, string>();
   const noteFreshness = (kind: string, path: string) => {
     if (!freshnessUsers.has(kind)) freshnessUsers.set(kind, path);
@@ -244,6 +273,7 @@ function checkMeaning(block: JaxOntologyRelease, ctx: DictionaryCheckContext): D
       if (!factKnown(fact)) unknown(at('defaultFacts', position), 'fact', fact);
     });
     if (!thing.keyKinds.some((kind) => kind.kind === thing.key.canonical)) unknown(at('key', 'canonical'), 'key kind', thing.key.canonical);
+    if (thing.sourceIdentity && (thing.sourceIdentity.keyKind !== thing.key.canonical || !thing.keyKinds.some(kind => kind.system === thing.sourceIdentity!.system && kind.kind === thing.sourceIdentity!.keyKind && kind.ready && kind.evidence === 'real_field' && kind.caseRule === 'as_is'))) add('schema', at('sourceIdentity'), 'A native source identity must be the exact ready canonical record ID from a real source field, with no case conversion.');
   });
 
   block.facts.forEach((fact, index) => {
@@ -274,7 +304,7 @@ function checkMeaning(block: JaxOntologyRelease, ctx: DictionaryCheckContext): D
     if (!readable.has(key)) {
       const groups = new Set((connectors?.policy ?? []).filter((row) => row.connectorId === system).flatMap((row) => row.groups ?? []));
       const people = [[], ...[...groups].sort().map((group) => [group])];
-      readable.set(key, people.some((groupsOfPerson) => connectorToolState(connectors, system, tool, { audience: 'staff', groups: groupsOfPerson }).state === 'allow'));
+      readable.set(key, connectorToolState(connectors, system, tool, { audience: 'shopper', groups: [] }).state === 'allow' || people.some((groupsOfPerson) => connectorToolState(connectors, system, tool, { audience: 'staff', groups: groupsOfPerson }).state === 'allow'));
     }
     return readable.get(key)!;
   };
@@ -284,6 +314,12 @@ function checkMeaning(block: JaxOntologyRelease, ctx: DictionaryCheckContext): D
   block.bindings.forEach((binding: Binding, index) => {
     const at = (...rest: Array<string | number>) => issuePath('bindings', index, ...rest);
     const label = `Binding '${binding.bindingId}'`;
+    if (binding.page?.cursorParam && !Object.values(binding.args).some(arg => arg.from === 'request' && arg.param === binding.page!.cursorParam)) add('r4_name_mismatch', at('page', 'cursorParam'), 'A paging cursor must map to a declared request argument.');
+    for (const path of Object.keys(binding.rows?.factFields ?? {})) {
+      const fact = facts.get(path);
+      const link = binding.target.kind === 'link' ? links.get(binding.target.link) : undefined;
+      if (!fact || !link || fact.thing !== link.to || ['money', 'percent'].includes(fact.type) || !block.bindings.some(other => other.target.kind === 'fact' && other.target.fact === path && other.system === binding.system && other.authority === 'source_of_truth' && !other.currencyFrom && !other.stateMap)) add('r4_name_mismatch', at('rows', 'factFields', path), 'A row projection must name a non-financial target fact with an authoritative binding in the same source system.');
+    }
     const connector = connectors?.connectors.find((entry) => entry.connectorId === binding.system);
     if (!connector) add('r1_system_unavailable', at('system'), `${label} reads from '${binding.system}', which is not a connector of this pack.`);
     else {
@@ -308,6 +344,7 @@ function checkMeaning(block: JaxOntologyRelease, ctx: DictionaryCheckContext): D
       if (!linkKnown(target)) unknown(at('target', 'link'), 'link', target);
     }
     boundThings.add(thing);
+    if (binding.identity && !block.things.find(entry => entry.thing === thing)?.keyKinds.some(kind => kind.kind === binding.identity!.keyKind && kind.system === binding.system && kind.ready && kind.evidence !== 'name_only')) add('schema', at('identity'), 'A returned-record identity must name a ready key of this thing in the same source.');
     for (const [name, source] of Object.entries(binding.args)) {
       if (source.from === 'key' && !kindKnown(source.kind) && !outsideThing(thing)) unknown(at('args', name, 'kind'), 'key kind', source.kind);
     }

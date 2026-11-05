@@ -101,7 +101,7 @@ export function compileModelPolicy(input: CompileModelPolicyInput): ModelPolicy 
         })),
         dataResidency: p.dataResidency || dataResidency,
         acceptedResidencies: p.acceptedResidencies || [p.dataResidency || dataResidency, 'au', 'us', 'global'],
-        residencyAttestation: p.residencyAttestation,
+        residencyAttestation: p.residencyAttestation ?? undefined,
         maxInputTokens: p.maxInputTokens ?? 20000,
         maxOutputTokens: p.maxOutputTokens ?? 2000,
         fallbackAllowed: p.fallbackAllowed ?? (p.candidates && p.candidates.length > 1),

@@ -72,11 +72,16 @@ export const ThingDefSchema = z.object({
   group: Line(60),
   status: z.enum(['active', 'modelled_only']),
   key: z.object({ canonical: KeyKind, pattern: RegexSource }).strict(),
+  sourceIdentity: z.object({ system: ConnectorId, keyKind: KeyKind }).strict().optional(),
   keyKinds: list(KeyKindDefSchema, 20),
   labelFact: FactPath,
   searchFacts: list(FactPath, 20),
   defaultFacts: list(FactPath, 100),
   expectedIn: list(ConnectorId, 20),
+  lookups: list(z.object({
+    system: ConnectorId, tool: ToolName, queryArg: ArgName, rows: AnswerPath,
+    keyField: AnswerPath, keyKind: KeyKind, labelField: AnswerPath,
+  }).strict(), 20).optional(),
 }).strict();
 
 export const FactDefSchema = z.object({
@@ -116,8 +121,9 @@ export const MeaningContractSchema = z.object({
 }).strict();
 
 export const ArgSourceSchema = z.discriminatedUnion('from', [
-  z.object({ from: z.literal('key'), kind: KeyKind }).strict(),
-  z.object({ from: z.literal('request'), param: ArgName }).strict(),
+  z.object({ from: z.literal('key'), kind: KeyKind, valueType: z.enum(['string', 'integer']).optional() }).strict(),
+  z.object({ from: z.literal('request'), param: ArgName, optional: z.boolean().optional() }).strict(),
+  z.object({ from: z.literal('principal'), field: z.literal('id') }).strict(),
   z.object({ from: z.literal('literal'), value: z.union([z.string().max(200), z.number().finite(), z.boolean()]) }).strict(),
 ]);
 
@@ -131,9 +137,10 @@ export const BindingSchema = z.object({
   tool: ToolName,
   args: z.record(ArgName, ArgSourceSchema).refine((args) => Object.keys(args).length <= 20, 'at most 20 arguments'),
   select: AnswerPath,
-  rows: z.object({ path: AnswerPath, keyField: AnswerPath }).strict().optional(),
+  identity: z.object({ keyKind: KeyKind, select: AnswerPath }).strict().optional(),
+  rows: z.object({ path: AnswerPath, keyField: AnswerPath, keyKind: KeyKind.optional(), factFields: z.record(FactPath, AnswerPath).refine(value => Object.keys(value).length <= 20, 'At most twenty row fact projections.').optional() }).strict().optional(),
   currencyFrom: AnswerPath.optional(),
-  page: z.object({ totalPath: AnswerPath.optional(), morePath: AnswerPath.optional() }).strict().optional(),
+  page: z.object({ totalPath: AnswerPath.optional(), morePath: AnswerPath.optional(), nextCursorPath: AnswerPath.optional(), cursorParam: ArgName.optional() }).strict().refine(page => (!page.nextCursorPath && !page.cursorParam) || !!(page.morePath && page.nextCursorPath && page.cursorParam), 'Cursor paging requires morePath, nextCursorPath and cursorParam together.').optional(),
   presence: z.enum(['required', 'optional']),
   authority: z.enum(['source_of_truth', 'cross_check', 'fallback']),
   stateMap: Identifier.optional(),
@@ -277,6 +284,9 @@ export const JaxOntologyReleaseSchema = z.object({
   enabled: z.boolean(),
   selfConnector: ConnectorId,
   claimGuard: z.object({ figures: z.enum(['off', 'withhold']) }).strict().optional(),
+  customerAccess: list(z.object({ thing: ThingName, facts: list(FactPath, 100), links: list(LinkName, 100), roles: list(Identifier, 50).optional() }).strict(), 200).optional(),
+  customerIdentity: z.object({ thing: ThingName, keyKind: KeyKind }).strict().optional(),
+  retailCustomerIdentity: z.object({ thing: ThingName, role: Identifier, selfAlias: Identifier }).strict().optional(),
   things: list(ThingDefSchema, 200),
   facts: list(FactDefSchema, 3000),
   links: list(LinkDefSchema, 600),

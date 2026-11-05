@@ -4,7 +4,7 @@
  * into a JAX IQ error code.
  */
 export type ConnectorOutcome =
-  | { ok: true; data: unknown; truncated: boolean; bytes: number }
+  | { ok: true; data: unknown; truncated: boolean; incomplete?: boolean; bytes: number }
   | { ok: false; kind: 'tool_error' | 'transport' | 'timeout' | 'not_configured' | 'protocol' | 'not_read_only'; code?: string; message: string };
 
 export type FailedConnectorOutcome = Extract<ConnectorOutcome, { ok: false }>;

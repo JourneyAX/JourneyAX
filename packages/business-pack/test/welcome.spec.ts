@@ -59,6 +59,10 @@ check('no setting, or a setting that is not a list, gives nothing', () => {
   assert.equal(welcomeFor({ entries: 'x' }, person('rep', ['sales'])), undefined);
 });
 
+check('an explicit empty starter list survives the server boundary', () => {
+  assert.deepEqual(welcomeFor({ entries: [{ audience: 'shopper', starters: [] }] }, person('buyer')), { starters: [] });
+});
+
 check('the setting is checked: an entry must say who it is for, a tool must look like system.tool, and nothing extra is allowed', () => {
   assert.equal(WelcomeSchema.safeParse({ entries: [{ headline: 'Hi' }] }).success, false);
   assert.equal(WelcomeSchema.safeParse({ entries: [{ audience: 'staff', starters: [{ label: 'a', prompt: 'b', needs: ['nosystem'] }] }] }).success, false);

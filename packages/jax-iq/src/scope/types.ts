@@ -11,13 +11,18 @@ import { z } from 'zod';
 export const SCOPE_HEADER = 'X-Caller-Scope';
 
 export interface CallScope {
-  v: 1;
+  v: 1 | 2;
+  /** Read scopes cannot authorise commands. Command scopes are issued by the governed harness action path. */
+  operation?: 'read' | 'command';
+  actionId?: string;
   tenantId: string;
   environmentId: string;
   queryId: string;
   correlationId: string;
-  principal: { id: string; audience: 'staff'; groups: string[] };
+  principal: { id: string; audience: 'staff' | 'shopper'; groups: string[] };
   connectorId: string;
+  /** V2 binds the physical connection, not just the logical vendor. */
+  connectionRef?: string;
   tool: string;
   /** Only 'allow' is ever signed. */
   toolState: 'allow';
@@ -54,17 +59,20 @@ const ReleaseWord = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.+\
 const Seconds = z.number().int().safe().nonnegative();
 
 export const CallScopeSchema = z.object({
-  v: z.literal(1),
+  v: z.union([z.literal(1), z.literal(2)]),
+  operation: z.enum(['read', 'command']).optional(),
+  actionId: OuterId.optional(),
   tenantId: Identifier,
   environmentId: Identifier,
   queryId: Identifier,
   correlationId: OuterId,
   principal: z.object({
     id: OuterId,
-    audience: z.literal('staff'),
+    audience: z.enum(['staff', 'shopper']),
     groups: z.array(GroupId).max(50),
   }).strict(),
   connectorId: ConnectorId,
+  connectionRef: OuterId.optional(),
   tool: ToolName,
   toolState: z.literal('allow'),
   toolStateVia: z.enum(['tool', 'default', 'none']),
@@ -75,4 +83,9 @@ export const CallScopeSchema = z.object({
   iat: Seconds,
   exp: Seconds,
   jti: Identifier,
-}).strict().refine((scope) => scope.exp > scope.iat, { path: ['exp'], message: 'A scope expires after it is issued.' });
+}).strict().superRefine((scope, ctx) => {
+  if (scope.operation === 'command' && (scope.v !== 2 || !scope.actionId)) ctx.addIssue({ code: 'custom', path: ['operation'], message: 'Commands require a V2 connection-bound action identity.' });
+  if (scope.v === 1 && scope.principal.audience !== 'staff') ctx.addIssue({ code: 'custom', path: ['principal', 'audience'], message: 'V1 remains staff-only.' });
+  if (scope.v === 1 && scope.connectionRef !== undefined) ctx.addIssue({ code: 'custom', path: ['connectionRef'], message: 'Use V2 for connection-bound grants.' });
+  if (scope.v === 2 && (!scope.connectionRef || scope.exp - scope.iat > 60)) ctx.addIssue({ code: 'custom', path: ['v'], message: 'V2 requires an exact connection and a lifetime of at most 60 seconds.' });
+}).refine((scope) => scope.exp > scope.iat, { path: ['exp'], message: 'A scope expires after it is issued.' });

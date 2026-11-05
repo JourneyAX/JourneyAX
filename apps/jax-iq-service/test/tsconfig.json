@@ -2,6 +2,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
+    "baseUrl": ".",
     "types": ["node"],
     "paths": {
       "@journeyax/business-pack": ["../../../packages/business-pack/src"],

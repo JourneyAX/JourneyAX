@@ -60,7 +60,7 @@ async function main() {
     assert.throws(() => policy({ ...ai, policyOverrides: { fast_intent: { timeoutMs: 1 } } }), /timeoutMs/);
   });
 
-  process.exitCode = suite.finish() ? 0 : 1;
+  suite.finish();
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

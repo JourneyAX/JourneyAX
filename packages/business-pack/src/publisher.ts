@@ -185,7 +185,10 @@ export async function publishBusinessPack(
       `[BusinessPackPublisher] Schema validation failed: ${JSON.stringify(parsed.error.format())}`
     );
   }
-  const pack = parsed.data;
+  // MongoDB stores undefined object fields as null. Hash and store the same JSON
+  // representation so optional absent fields cannot corrupt a newly published release.
+  // Explicit nulls stay null; historical releases and checksum rules are unchanged.
+  const pack = JSON.parse(JSON.stringify(parsed.data)) as BusinessPackRelease;
 
   // 2. Strict semantic validation
   const validation = validateBusinessPack(pack);

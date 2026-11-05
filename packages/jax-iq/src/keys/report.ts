@@ -145,7 +145,7 @@ export function buildKeyReport(records: KeySourceRecord[], options: KeyReportOpt
         continue;
       }
       const checked = normaliseKeyValue(key.value, rule);
-      if (!checked.ok) {
+      if (checked.ok === false) {
         if (checked.reason !== 'absent') warnings.add(`${record.system} ${record.recordId}: ${key.keyKind} is not a usable value (${checked.reason === 'too_long' ? 'too long' : 'wrong shape'}).`);
         continue;
       }

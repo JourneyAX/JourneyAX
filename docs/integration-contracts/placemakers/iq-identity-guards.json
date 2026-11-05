@@ -1,0 +1,46 @@
+{
+  "guards": [
+    {
+      "thing": "Ticket",
+      "system": "zendesk",
+      "tool": "get_ticket",
+      "keyKind": "ticket_id",
+      "select": "record.ticketId"
+    },
+    {
+      "thing": "Order",
+      "system": "commercetools",
+      "tool": "get_order",
+      "keyKind": "order_number",
+      "select": "record.orderNumber"
+    },
+    {
+      "thing": "Account",
+      "system": "salesforce",
+      "tool": "get_account",
+      "keyKind": "sf_account_id",
+      "select": "record.accountId"
+    },
+    {
+      "thing": "Account",
+      "system": "salesforce",
+      "tool": "get_account_contact",
+      "keyKind": "sf_account_id",
+      "select": "record.accountId"
+    },
+    {
+      "thing": "Account",
+      "system": "commercetools",
+      "tool": "get_account",
+      "keyKind": "ct_unit_key",
+      "select": "record.unitKey"
+    },
+    {
+      "thing": "Account",
+      "system": "commercetools",
+      "tool": "get_account_contact",
+      "keyKind": "ct_unit_key",
+      "select": "record.unitKey"
+    }
+  ]
+}

@@ -4,8 +4,8 @@ import { isUsableSecret, signatureOf, type ScopeSecret } from './sign';
 import { CallScopeSchema, type CallScope } from './types';
 
 /**
- * The reference check a connector service can run on the `X-Caller-Scope` header before it does any work. The connector servers do not run
- * it in this round (design only); it is here so that the later round starts from a tested contract.
+ * The reference check a connector service can run on the `X-Caller-Scope` header before it does any work. V5 connector servers run
+ * this check before IQ source reads, including the exact V2 connection reference.
  *
  * Every message of one tool call carries the same header: `initialize`, `notifications/initialized` and then `tools/call`. All three need a
  * valid, unexpired signature for this tenant and environment, and for this connector when the verifier says which connector it serves.
@@ -26,6 +26,7 @@ export type ScopeRefusal =
   | 'wrong_connector'
   | 'wrong_tool'
   | 'wrong_arguments'
+  | 'wrong_operation'
   | 'replayed';
 
 export type ScopeVerdict =
@@ -34,6 +35,7 @@ export type ScopeVerdict =
 
 export interface VerifyScopeOptions {
   secret: ScopeSecret;
+  operation?: 'read' | 'command';
   now: Date;
   /** The JSON-RPC method of the message the header came with. */
   method: string;
@@ -46,6 +48,7 @@ export interface VerifyScopeOptions {
    * always give it; without it the check is skipped.
    */
   connectorId?: string;
+  connectionRef?: string;
   /** The tool the message names. Required on `tools/call`. */
   toolName?: string;
   /** The hash of the arguments the message carries (`hashScopeArguments`); when given it must equal the scope's. */
@@ -69,6 +72,7 @@ const MESSAGES: Record<ScopeRefusal, string> = {
   wrong_connector: 'The caller scope was made for another connector.',
   wrong_tool: 'The caller scope was made for another tool.',
   wrong_arguments: 'The caller scope was made for other arguments.',
+  wrong_operation: 'The caller scope cannot authorise this operation.',
   replayed: 'The caller scope was already used for a call.',
 };
 
@@ -87,6 +91,7 @@ export function verifyScope(header: string | undefined | null, options: VerifySc
   if (!isUsableSecret(options.secret)) return refuse('no_secret');
   if (typeof header !== 'string' || header.length === 0) return refuse('missing');
 
+  if (header.length > 16000) return refuse('malformed');
   const parts = header.split('.');
   if (parts.length !== 2 || !BASE64URL.test(parts[0]) || !BASE64URL.test(parts[1])) return refuse('malformed');
   const [payloadPart, signaturePart] = parts;
@@ -101,17 +106,19 @@ export function verifyScope(header: string | undefined | null, options: VerifySc
   }
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return refuse('malformed');
   const raw = body as Record<string, unknown>;
-  if (raw.v !== 1) return refuse('unsupported_version');
+  if (raw.v !== 1 && raw.v !== 2) return refuse('unsupported_version');
   if (raw.toolState !== 'allow') return refuse('tool_state_not_allow');
   const parsed = CallScopeSchema.safeParse(raw);
   if (!parsed.success) return refuse('malformed');
-  const scope = parsed.data;
+  const scope = parsed.data as CallScope;
+  if ((scope.operation ?? 'read') !== (options.operation ?? 'read')) return refuse('wrong_operation');
 
   // Written so that a time that is not a time (an invalid date) counts as expired, not as in time.
-  if (!(options.now.getTime() < scope.exp * 1000)) return refuse('expired');
+  if (!(options.now.getTime() < scope.exp * 1000) || (scope.v === 2 && scope.iat * 1000 > options.now.getTime() + 5000)) return refuse('expired');
   if (scope.tenantId !== options.tenantHeader) return refuse('wrong_tenant');
   if (scope.environmentId !== options.environmentHeader) return refuse('wrong_environment');
   if (options.connectorId !== undefined && scope.connectorId !== options.connectorId) return refuse('wrong_connector');
+  if (options.connectionRef !== undefined && (scope.v !== 2 || scope.connectionRef !== options.connectionRef)) return refuse('wrong_connector');
   const isToolCall = options.method === TOOL_CALL;
   if ((isToolCall || options.toolName !== undefined) && scope.tool !== options.toolName) return refuse('wrong_tool');
   if (options.argsHash !== undefined && scope.argsHash !== options.argsHash) return refuse('wrong_arguments');

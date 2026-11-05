@@ -1,0 +1,83 @@
+{
+  "suiteId": "placemakers-grounded-answer-acceptance",
+  "name": "PlaceMakers source-backed answers and conversation continuity",
+  "tenantId": "placemakers",
+  "version": "1.0.1",
+  "blockingOnPublish": true,
+  "scenarios": [
+    {
+      "scenarioId": "catalogue-warranty",
+      "name": "Real catalogue specifications and a limited warranty record",
+      "prompt": "For laundry cabinet SKU 7853935, give the width in millimetres and recorded catalogue warranty duration. Clearly distinguish that duration from full written guarantee terms. Do not invent missing terms. Keep it brief.",
+      "assertions": [
+        {
+          "type": "response_contains",
+          "expected": "600"
+        },
+        {
+          "type": "response_not_contains",
+          "expected": "lifetime guarantee"
+        },
+        {
+          "type": "no_hallucinated_skus"
+        }
+      ],
+      "timeoutMs": 60000
+    },
+    {
+      "scenarioId": "laundry-context",
+      "name": "Retain the room and explicit customer constraints across turns",
+      "messages": [
+        "I am renovating my laundry, 2.4 metres by 1.8 metres, with a front loading washer. Keep the existing plumbing. I want storage.",
+        "Summarise the room and constraints I already gave you before we choose products. Do not invent an appliance size or ask which room again."
+      ],
+      "assertions": [
+        {
+          "type": "response_contains",
+          "expected": "laundry"
+        },
+        {
+          "type": "response_contains",
+          "expected": "2.4"
+        },
+        {
+          "type": "response_not_contains",
+          "expected": "which room"
+        },
+        {
+          "type": "no_hallucinated_skus"
+        }
+      ],
+      "timeoutMs": 60000
+    },
+    {
+      "scenarioId": "unavailable-sku",
+      "name": "Missing catalogue evidence cannot become a fabricated product",
+      "prompt": "Look up exact SKU JAX-NOT-A-CATALOGUE-SKU. Tell me whether it exists. Do not offer substitutes or invent its price or availability. If the lookup returns found=false, state its factualStatement clearly.",
+      "assertions": [
+        {
+          "type": "response_not_contains",
+          "expected": "available for purchase"
+        },
+        {
+          "type": "no_hallucinated_skus"
+        },
+        {
+          "type": "response_contains",
+          "expected": "not found"
+        },
+        {
+          "type": "response_not_contains",
+          "expected": "structural calculations"
+        }
+      ],
+      "timeoutMs": 60000
+    }
+  ],
+  "sourceFixtures": {
+    "productSkus": [
+      "7853935",
+      "3230182"
+    ]
+  }
+}

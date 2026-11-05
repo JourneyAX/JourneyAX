@@ -9,6 +9,8 @@ export type { KeyMapping, KeyMappingEntry } from './platform-mapping';
 export { canonicalKeyId, checkKeyRow, checkKeyUniqueness, systemKeyId } from './repository';
 export type { KeyProblem, KeyRepository, KeyRuleName, KeyWriteResult } from './repository';
 export { MemoryKeyRepository } from './memory-repository';
+export { ensureIqKeyIndexes, provisionIqKeys, IQ_KEYS_COLLECTION } from './mongo-provisioner';
+export type { KeyProvisionScope } from './mongo-provisioner';
 export { resolveSubject } from './resolve';
 export type {
   ResolveCandidate, ResolveDeps, ResolveOutcome, ResolveRefusal, ResolveRequest, ResolveResult, ResolveStatus, ResolveSystemAnswer, ResolveSystemHit, ResolveKeyRef,

@@ -58,6 +58,7 @@ export class HttpMcpTransport implements McpTransport {
       ...(meta.correlationId ? { 'X-Correlation-ID': meta.correlationId } : {}),
       ...(meta.principalId ? { 'X-Principal-ID': meta.principalId } : {}),
       ...(meta.connectionRef ? { 'X-Connection-Ref': meta.connectionRef } : {}),
+      ...(meta.callerScope ? { 'X-Caller-Scope': meta.callerScope } : {}),
       ...(this.sessionId ? { 'Mcp-Session-Id': this.sessionId } : {}),
       ...extra,
     };

@@ -123,7 +123,9 @@ export function verifyPersistedBusinessPackRelease(
   const content = parsed.data;
 
   // 6. semantic / reference validation
-  const validation = validateBusinessPack(content);
+  // Historical flags stay in the immutable checksum. Normalization ignores generated prices;
+  // new publication still uses the validator's strict default and refuses the flag.
+  const validation = validateBusinessPack(content, { publishedRead: true });
   if (!validation.valid) {
     const errors = validation.issues
       .filter((i) => i.severity === 'error')

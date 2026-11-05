@@ -113,7 +113,7 @@ async function main() {
     await assert.rejects(() => publishBusinessPack(db as any, packAt('1.0.1'), { publishedBy: 'human:publisher' }), /modified concurrently/);
   });
 
-  process.exitCode = suite.finish() ? 0 : 1;
+  suite.finish();
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

@@ -12,15 +12,33 @@ export interface Deps {
   now: () => number;
 }
 
+/** Source-side metadata from the verified command grant. Never model arguments. */
+export interface ToolExecutionContext {
+  actionId: string;
+  tenantId: string;
+  environmentId: string;
+  principalId: string;
+  workspaceId?: string;
+  releaseChecksum: string;
+}
+
 export interface ToolSpec {
+  /** Reserved server-owned workflow grant, never derived from model arguments. */
+  requiredWorkflowGrant?: string;
   name: string;
   description: string;
   /** JSON Schema for the arguments (an object). The server checks the arguments against it before the tool runs. */
   inputSchema: Rec;
   /** False for a tool that changes something in the vendor's system. */
   readOnly: boolean;
+  /** Tool returns staff-only fields, irrespective of a mistakenly broad dictionary mapping. */
+  staffOnly?: boolean;
+  /** For a shopper, these flat inputs must equal the identity in the signed caller grant. */
+  shopperIdentityFields?: string[];
+  /** Only the provider-confirmed payment workflow may record a paid commerce order. */
+  requiresPaymentReceipt?: boolean;
   /** Returns what goes into the result next to `ok` and `connector`. Throws a {@link ToolError} for anything the model should be told. */
-  run(args: Rec): Promise<Rec>;
+  run(args: Rec, execution?: ToolExecutionContext): Promise<Rec>;
 }
 
 export interface RealConnector {

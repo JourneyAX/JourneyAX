@@ -1,0 +1,402 @@
+{
+  "retailCustomerIdentity": {
+    "thing": "Customer",
+    "role": "owner",
+    "selfAlias": "self"
+  },
+  "customerAccess": [
+    {
+      "thing": "Customer",
+      "facts": [
+        "Customer.reference",
+        "Customer.commerceVersion"
+      ],
+      "links": [
+        "Customer.orders"
+      ],
+      "roles": [
+        "owner"
+      ]
+    },
+    {
+      "thing": "Order",
+      "facts": [
+        "Order.number",
+        "Order.state",
+        "Order.paymentState",
+        "Order.total",
+        "Order.lines",
+        "Order.version"
+      ],
+      "links": [],
+      "roles": [
+        "owner"
+      ]
+    }
+  ],
+  "sourceReads": [
+    {
+      "system": "commercetools",
+      "tool": "get_my_customer_profile"
+    },
+    {
+      "system": "commercetools",
+      "tool": "get_my_orders"
+    },
+    {
+      "system": "commercetools",
+      "tool": "get_my_order"
+    }
+  ],
+  "part": {
+    "partId": "registered-retail-customer-access",
+    "links": [
+      {
+        "link": "Customer.orders",
+        "from": "Customer",
+        "to": "Order",
+        "meaning": "Actual commerce orders belonging to the authenticated registered customer; source ownership is confirmed on every read.",
+        "cardinality": "1:n"
+      }
+    ],
+    "bindings": [
+      {
+        "bindingId": "Customer.reference@commercetools.get_my_customer_profile",
+        "target": {
+          "kind": "fact",
+          "fact": "Customer.reference"
+        },
+        "system": "commercetools",
+        "tool": "get_my_customer_profile",
+        "args": {
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          }
+        },
+        "select": "record.externalCustomerKey",
+        "identity": {
+          "keyKind": "customer_ref",
+          "select": "record.externalCustomerKey"
+        },
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "registered-customer-source-identity"
+        }
+      },
+      {
+        "bindingId": "Customer.commerceVersion@commercetools.get_my_customer_profile",
+        "target": {
+          "kind": "fact",
+          "fact": "Customer.commerceVersion"
+        },
+        "system": "commercetools",
+        "tool": "get_my_customer_profile",
+        "args": {
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          }
+        },
+        "select": "record.version",
+        "identity": {
+          "keyKind": "customer_ref",
+          "select": "record.externalCustomerKey"
+        },
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "registered-customer-source-identity"
+        }
+      },
+      {
+        "bindingId": "Order.number@commercetools.get_my_order",
+        "target": {
+          "kind": "fact",
+          "fact": "Order.number"
+        },
+        "system": "commercetools",
+        "tool": "get_my_order",
+        "args": {
+          "orderId": {
+            "from": "key",
+            "kind": "order_number"
+          },
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          }
+        },
+        "select": "record.orderNumber",
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "placemakers-operational-source-contract"
+        },
+        "identity": {
+          "keyKind": "order_number",
+          "select": "record.orderNumber"
+        }
+      },
+      {
+        "bindingId": "Order.version@commercetools.get_my_order",
+        "target": {
+          "kind": "fact",
+          "fact": "Order.version"
+        },
+        "system": "commercetools",
+        "tool": "get_my_order",
+        "args": {
+          "orderId": {
+            "from": "key",
+            "kind": "order_number"
+          },
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          }
+        },
+        "select": "record.version",
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "placemakers-operational-source-contract"
+        },
+        "identity": {
+          "keyKind": "order_number",
+          "select": "record.orderNumber"
+        }
+      },
+      {
+        "bindingId": "Order.state@commercetools.get_my_order",
+        "target": {
+          "kind": "fact",
+          "fact": "Order.state"
+        },
+        "system": "commercetools",
+        "tool": "get_my_order",
+        "args": {
+          "orderId": {
+            "from": "key",
+            "kind": "order_number"
+          },
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          }
+        },
+        "select": "record.state",
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "placemakers-operational-source-contract"
+        },
+        "identity": {
+          "keyKind": "order_number",
+          "select": "record.orderNumber"
+        }
+      },
+      {
+        "bindingId": "Order.paymentState@commercetools.get_my_order",
+        "target": {
+          "kind": "fact",
+          "fact": "Order.paymentState"
+        },
+        "system": "commercetools",
+        "tool": "get_my_order",
+        "args": {
+          "orderId": {
+            "from": "key",
+            "kind": "order_number"
+          },
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          }
+        },
+        "select": "record.paymentState",
+        "presence": "optional",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "placemakers-operational-source-contract"
+        },
+        "identity": {
+          "keyKind": "order_number",
+          "select": "record.orderNumber"
+        }
+      },
+      {
+        "bindingId": "Order.total@commercetools.get_my_order",
+        "target": {
+          "kind": "fact",
+          "fact": "Order.total"
+        },
+        "system": "commercetools",
+        "tool": "get_my_order",
+        "args": {
+          "orderId": {
+            "from": "key",
+            "kind": "order_number"
+          },
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          }
+        },
+        "select": "record.total",
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "currency amount",
+          "currency": "from_record",
+          "tax": "unknown",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "placemakers-operational-source-contract"
+        },
+        "currencyFrom": "record.currency",
+        "identity": {
+          "keyKind": "order_number",
+          "select": "record.orderNumber"
+        }
+      },
+      {
+        "bindingId": "Order.lines@commercetools.get_my_order",
+        "target": {
+          "kind": "fact",
+          "fact": "Order.lines"
+        },
+        "system": "commercetools",
+        "tool": "get_my_order",
+        "args": {
+          "orderId": {
+            "from": "key",
+            "kind": "order_number"
+          },
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          }
+        },
+        "select": "record.lines",
+        "presence": "optional",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "placemakers-operational-source-contract"
+        },
+        "identity": {
+          "keyKind": "order_number",
+          "select": "record.orderNumber"
+        }
+      },
+      {
+        "bindingId": "Customer.orders@commercetools.get_my_orders",
+        "target": {
+          "kind": "link",
+          "link": "Customer.orders"
+        },
+        "system": "commercetools",
+        "tool": "get_my_orders",
+        "args": {
+          "requesterEmail": {
+            "from": "principal",
+            "field": "id"
+          },
+          "afterCursor": {
+            "from": "request",
+            "param": "afterCursor",
+            "optional": true
+          }
+        },
+        "select": "records",
+        "identity": {
+          "keyKind": "customer_ref",
+          "select": "record.externalCustomerKey"
+        },
+        "presence": "required",
+        "authority": "source_of_truth",
+        "freshnessKind": "reference",
+        "contract": {
+          "unit": "not_applicable",
+          "currency": "not_applicable",
+          "tax": "not_applicable",
+          "asOf": "retrieved",
+          "counts": "not_applicable"
+        },
+        "selfTest": {
+          "fixtureId": "registered-customer-source-identity"
+        },
+        "rows": {
+          "path": "records",
+          "keyField": "orderNumber",
+          "keyKind": "order_number"
+        },
+        "page": {
+          "morePath": "more",
+          "nextCursorPath": "nextCursor",
+          "cursorParam": "afterCursor"
+        }
+      }
+    ]
+  }
+}

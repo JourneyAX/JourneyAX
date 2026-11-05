@@ -24,6 +24,12 @@ export interface JaxOntologyRelease {
   selfConnector: ConnectorId;
   /** `withhold`: the reply checker holds back a figure it cannot trace to a JAX IQ answer. Absent means `off`. */
   claimGuard?: { figures: 'off' | 'withhold' };
+  /** Explicit customer reads. Absent means staff only. Subject ownership is supplied by the authenticated server, never the model. */
+  customerAccess?: Array<{ thing: ThingName; facts: FactPath[]; links: LinkName[]; roles?: string[] }>;
+  /** The key kind carried by a server-verified company-directory link. No name or email matching. */
+  customerIdentity?: { thing: ThingName; keyKind: KeyKind };
+  /** A registered retail profile, resolved by the harness from its authenticated principal. */
+  retailCustomerIdentity?: { thing: ThingName; role: string; selfAlias: string };
   things: ThingDef[];
   facts: FactDef[];
   links: LinkDef[];
@@ -79,6 +85,8 @@ export interface ThingDef {
   /** `modelled_only`: written down, no binding yet; a question about it answers "no source". */
   status: 'active' | 'modelled_only';
   key: { canonical: KeyKind; pattern: string };
+  /** Opt-in: the canonical identifier is this source's actual immutable record ID, not a cross-system match. */
+  sourceIdentity?: { system: ConnectorId; keyKind: KeyKind };
   /** Every identifier this thing has, per system. */
   keyKinds: KeyKindDef[];
   labelFact: FactPath;
@@ -88,6 +96,8 @@ export interface ThingDef {
   defaultFacts: FactPath[];
   /** The systems where a record should exist; they drive the "unmatched" report. */
   expectedIn: ConnectorId[];
+  /** Source-owned name lookup; results are candidates until joined through the verified key table. */
+  lookups?: Array<{ system: ConnectorId; tool: string; queryArg: string; rows: string; keyField: string; keyKind: KeyKind; labelField: string }>;
 }
 
 export interface KeyKindDef {
@@ -139,8 +149,9 @@ export interface LinkDef {
 }
 
 export type ArgSource =
-  | { from: 'key'; kind: KeyKind }                          // from the key table, for the resolved thing
-  | { from: 'request'; param: string }                      // from the caller's request, a filter
+  | { from: 'key'; kind: KeyKind; valueType?: 'string' | 'integer' }                          // from the key table, for the resolved thing
+  | { from: 'request'; param: string; optional?: boolean }                      // from the caller's request, a filter
+  | { from: 'principal'; field: 'id' }                                        // signed server identity, never a model filter
   | { from: 'literal'; value: string | number | boolean };  // fixed by the binding
 
 export interface Binding {
@@ -153,12 +164,16 @@ export interface Binding {
   args: Record<string, ArgSource>;
   /** A dot path into the tool's answer, for example 'record.balance'. No expressions. */
   select: string;
+  /** Verify the returned record names this subject's key in the same source.
+   * The path is included in the signed source field scope but is never exposed
+   * as a fact unless separately declared and permitted. */
+  identity?: { keyKind: KeyKind; select: string };
   /** For links: where the list is and which field of a row is the target's key. */
-  rows?: { path: string; keyField: string };
+  rows?: { path: string; keyField: string; keyKind?: KeyKind; factFields?: Record<FactPath, string> };
   /** For money: the path to the currency. */
   currencyFrom?: string;
   /** How the tool says "there are more". */
-  page?: { totalPath?: string; morePath?: string };
+  page?: { totalPath?: string; morePath?: string; nextCursorPath?: string; cursorParam?: string };
   /** `optional`: absent means "not recorded in the source". `required`: absent means the answer has the wrong shape. */
   presence: 'required' | 'optional';
   authority: 'source_of_truth' | 'cross_check' | 'fallback';
