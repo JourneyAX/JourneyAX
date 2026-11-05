@@ -49,6 +49,8 @@ export async function POST(req: Request) {
     knowledgeNote: String(body?.draft?.knowledgeNote ?? ''),
   };
   const tenantId = await resolveTenant(req);
+  const environmentId = process.env.COMMERCE_ENVIRONMENT || 'production';
+  if (!['dev', 'test', 'staging', 'production'].includes(environmentId)) return NextResponse.json({ error: 'The publication environment is not configured.' }, { status: 503 });
   const headers = { ...auth, 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId };
   const base = `${PROJECT_API}/api/v1/projects/${encodeURIComponent(tenantId)}`;
 
@@ -71,7 +73,7 @@ export async function POST(req: Request) {
 
     const published = await fetch(`${base}/publish`, {
       method: 'POST', headers, signal: AbortSignal.timeout(60000),
-      body: JSON.stringify({ environmentId: 'production', note: `Agent "${built.agent.name}" added from the Customize page` }),
+      body: JSON.stringify({ environmentId, note: `Agent "${built.agent.name}" added from the Customize page` }),
     });
     if (!published.ok) {
       const detail: any = await published.json().catch(() => ({}));

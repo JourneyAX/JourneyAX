@@ -9,14 +9,13 @@
  *      (see scopeTenant): a tenant user is pinned to their own workspace; only a
  *      platform admin may target another project.
  *
- * No implicit fail-open: without a token these routes 401 unless AUTH_DEV_BYPASS
- * is explicitly set (local dev only).
+ * Authentication is required in every environment. A development flag or an
+ * unavailable auth service can never manufacture administrative authority.
  */
 import { can, permissionsFor, type Permission } from '@journeyax/shared-types';
 import { readCookie, COOKIE_AT } from './bff-auth';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:8080';
-const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
 
 export interface AuthedIdentity {
   email: string;
@@ -31,10 +30,6 @@ type AuthResult =
   | { ok: true; identity: AuthedIdentity; token: string }
   | { ok: false; status: number; message: string };
 
-function devIdentity(): AuthResult {
-  return { ok: true, identity: { email: 'dev@local', role: 'admin', tenantId: 'platform', permissions: permissionsFor('admin') }, token: 'dev' };
-}
-
 export async function requireAuth(req: Request, permission: Permission): Promise<AuthResult> {
   // Prefer the HttpOnly access cookie (R4); fall back to a Bearer header for any
   // remaining direct/service callers.
@@ -42,7 +37,6 @@ export async function requireAuth(req: Request, permission: Permission): Promise
   const token = readCookie(req, COOKIE_AT) || (header.startsWith('Bearer ') ? header.slice(7).trim() : '');
 
   if (!token) {
-    if (DEV_BYPASS) return devIdentity();
     return { ok: false, status: 401, message: 'Authentication required.' };
   }
 
@@ -61,7 +55,6 @@ export async function requireAuth(req: Request, permission: Permission): Promise
     }
     return { ok: true, identity: { email: payload.sub, role: payload.role, tenantId: payload.tenantId, permissions: permissionsFor(payload.role) }, token };
   } catch {
-    if (DEV_BYPASS) return devIdentity();
     return { ok: false, status: 503, message: 'Auth service unreachable.' };
   }
 }
@@ -72,11 +65,7 @@ export async function requireAuth(req: Request, permission: Permission): Promise
  * NEVER trusted to widen scope (this is the cross-tenant-enumeration fix).
  */
 export function isPlatformIdentity(identity: AuthedIdentity): boolean {
-  return (
-    identity.tenantId === 'platform' ||
-    identity.role === 'platform_admin' ||
-    (identity.role === 'admin' && identity.tenantId === 'platform')
-  );
+  return identity.role === 'admin' && identity.tenantId === 'platform';
 }
 
 /**

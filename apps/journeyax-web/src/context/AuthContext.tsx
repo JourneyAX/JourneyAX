@@ -14,6 +14,9 @@
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { setStorageOwner } from '@/lib/conversations';
+import { closeCanvas, closePanelCard } from '@/lib/shell/sidePanelStore';
+
+function clearWorkingSurface() { closeCanvas(); closePanelCard(); }
 
 export interface AuthUser {
   email: string;
@@ -47,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch('/api/auth/session', { credentials: 'same-origin', cache: 'no-store' });
         const data = res.ok ? await res.json() : null;
         if (cancelled) return;
+        clearWorkingSurface();
         if (data?.authenticated && data.user) {
           // Whose saved chats the page reads, set before anything is shown that reads them.
           setStorageOwner(data.user.email);
@@ -56,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setState({ user: null, isAuthenticated: false, isLoading: false });
         }
       } catch {
-        if (!cancelled) setState({ user: null, isAuthenticated: false, isLoading: false });
+        if (!cancelled) { clearWorkingSurface(); setStorageOwner(null); setState({ user: null, isAuthenticated: false, isLoading: false }); }
       }
     })();
     return () => { cancelled = true; };
@@ -75,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, message: data.message || 'Invalid email or password.' };
       }
       setStorageOwner(data.user?.email);
+      clearWorkingSurface();
       setState({ user: data.user, isAuthenticated: true, isLoading: false });
       return { success: true };
     } catch {
@@ -87,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
     } catch { /* cookies are cleared server-side; best effort */ }
     setStorageOwner(null);
+    clearWorkingSurface();
     setState({ user: null, isAuthenticated: false, isLoading: false });
   }, []);
 

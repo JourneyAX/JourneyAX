@@ -1,36 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { resolveTenant } from '../../../../lib/tenant';
+import { upstreamAuthHeaders, unauthorized } from '../../../../lib/bff-auth';
+import { isSameOriginRequest } from '../../../../lib/request-origin';
 
-/**
- * POST /api/kit/quote — price the kit on the rack.
- *
- * Styles and counts only; every monetary figure is computed by the quote engine
- * (P0-04). Nothing here does arithmetic on money, and nothing the browser sends
- * can influence a price.
- */
-const AGENT_API = process.env.AGENT_SERVICE_URL || 'http://localhost:3004';
-
-export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const projectId = (
-    req.headers.get('x-tenant-id') ||
-    req.nextUrl.searchParams.get('project') ||
-    process.env.DEFAULT_PROJECT_ID ||
-    'caroma'
-  ).toLowerCase();
-
+/** Specialised configurator quote (roster/planner constraints), through the same verified gateway as checkout. */
+export async function POST(req: Request) {
+  const auth = upstreamAuthHeaders(req);
+  if (!auth) return unauthorized();
+  if (!isSameOriginRequest(req)) return Response.json({ error: 'Invalid origin.' }, { status: 403 });
+  const tenantId = await resolveTenant(req);
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return Response.json({ error: 'Invalid quote request.' }, { status: 400 });
+  const base = (process.env.GATEWAY_URL || 'http://localhost:3010').replace(/\/+$/, '');
   try {
-    const res = await fetch(
-      `${AGENT_API}/api/v1/${encodeURIComponent(projectId)}/commerce/kit/quote`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': projectId },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(30000),
-      },
-    );
-    if (!res.ok) return NextResponse.json({ error: 'Could not price that kit.' }, { status: 200 });
-    return NextResponse.json(await res.json());
-  } catch {
-    return NextResponse.json({ error: 'The quote service is not responding.' }, { status: 200 });
-  }
+    const response = await fetch(`${base}/api/v1/${encodeURIComponent(tenantId)}/commerce/kit/quote`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId }, body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(30_000) });
+    return Response.json(await response.json(), { status: response.status, headers: { 'Cache-Control': 'no-store' } });
+  } catch { return Response.json({ error: 'The quote service is unavailable.' }, { status: 502 }); }
 }

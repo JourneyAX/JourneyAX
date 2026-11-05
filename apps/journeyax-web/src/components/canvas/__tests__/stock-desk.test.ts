@@ -114,11 +114,11 @@ async function main() {
     assert.equal(allowedCarePath('GET', ['stock', 'tickets', 'x7301', 'approve']), false);
   });
 
-  await check('the three stock screens can be opened', () => {
-    assert.equal(canvasCanOpen({ kind: 'stock-queue' }), true);
-    assert.equal(canvasCanOpen({ kind: 'stock-board' }), true);
+  await check('the retired fixture stock screens stay closed in the real registry', () => {
+    assert.equal(canvasCanOpen({ kind: 'stock-queue' }), false, 'retired fixture surfaces stay unregistered');
+    assert.equal(canvasCanOpen({ kind: 'stock-board' }), false);
     assert.equal(canvasCanOpen({ kind: 'stock-ticket' }), false);
-    assert.equal(canvasCanOpen({ kind: 'stock-ticket', params: { ticketId: 'x7301' } }), true);
+    assert.equal(canvasCanOpen({ kind: 'stock-ticket', params: { ticketId: 'x7301' } }), false);
   });
 
   await check('the stock list names the exception, the product and the person, in the stock desk\'s words', async () => {

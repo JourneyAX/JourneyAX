@@ -6,5 +6,6 @@
 const OWN_PLACE = new Set(['records']);
 
 export function keepsOwnPlace(card: { cardType: string; variant?: string }): boolean {
+  if (card.cardType === 'confirm') return true;
   return card.variant === 'append' || OWN_PLACE.has(card.cardType);
 }

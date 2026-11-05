@@ -13,7 +13,7 @@ export interface TileWords {
 export const DEFAULT_TILE_WORDS: TileWords = {
   compare: 'Compare',
   comparing: 'Comparing ✓',
-  availableAt: (branches, total) => `Available at ${branches} of ${total} branches`,
+  availableAt: (branches, total) => `Catalogue lists ${branches} of ${total} branches; confirm stock`,
   askPrice: (title) => `What would ${title} cost, and how do I get a price?`,
 };
 

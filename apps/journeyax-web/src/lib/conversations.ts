@@ -158,6 +158,19 @@ export function activeSessionId(projectId?: string): string | undefined {
   return localStorage.getItem(sessionKey(projectId, id)) || undefined;
 }
 
+/** Allocate one browser-chosen handle before either chat or cart starts. The server still namespaces it to the signed identity. */
+export function ensureActiveSessionId(projectId?: string): string {
+  if (typeof window === 'undefined') throw new Error('A browser conversation is required.');
+  const { id } = resolveActiveConversation(projectId);
+  const key = sessionKey(projectId, id);
+  let sessionId = localStorage.getItem(key);
+  if (!sessionId) {
+    sessionId = `ws_${crypto.randomUUID()}`;
+    localStorage.setItem(key, sessionId);
+  }
+  return sessionId;
+}
+
 /** Name a thread after what the customer actually asked for. */
 export function titleFrom(messagesJson: string | null | undefined): string {
   if (!messagesJson) return 'New conversation';

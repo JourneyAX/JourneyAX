@@ -67,4 +67,10 @@ check('the page still falls back to its own when the pack has no starters for th
   assert.equal(welcomeOffer(parseWelcome({ welcome: { headline: 'How can we help?' } }), list({})), undefined, 'an entry with words but no starters');
 });
 
+check('an explicit empty merchant starter list suppresses legacy scenario buttons', () => {
+  const welcome = parseWelcome({ welcome: { headline: 'Tell us your goal', starters: [] } });
+  assert.deepEqual(welcome?.starters, []);
+  assert.deepEqual(welcomeOffer(welcome, list({ salesforce: ['find_account'] })), []);
+});
+
 console.log(`\n${passed} passed`);

@@ -6,10 +6,12 @@ import { JourneyMessage } from '@/lib/types';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { sanitizeMessageText } from '../lib/sanitize';
 import { WorkedSummary } from './shell/WorkedFold';
-import { openCanvas } from '@/lib/shell/sidePanelStore';
 import { orderIdForRef, orderRef, rememberOrder } from './canvas/money';
 import { readableUserText } from '@/lib/chat/readableText';
 import { linkProps } from '@/lib/links';
+import { useAuth } from '@/context/AuthContext';
+import { isStaffRole } from '@journeyax/shared-types';
+import { openOrderSurface } from '@/lib/shell/orderSurface';
 
 export { sanitizeMessageText };
 
@@ -193,7 +195,7 @@ function parseBold(text: string) {
       const orderId = match[6] || orderIdForRef(match[7]);
       if (orderId) {
         rememberOrder(orderId);
-        parts.push(<button key={match.index} type="button" className="msg__link msg__link--btn" onClick={() => openCanvas({ kind: 'order', orderId })}>{`#${orderRef(orderId)}`}</button>);
+        parts.push(<OrderReference key={match.index} orderId={orderId} />);
       } else {
         parts.push(match[0]);
       }
@@ -207,6 +209,12 @@ function parseBold(text: string) {
   }
 
   return parts.length > 0 ? parts : [text];
+}
+
+function OrderReference({ orderId }: { orderId: string }) {
+  const cfg = useStorefrontConfig();
+  const { user } = useAuth();
+  return <button type="button" className="msg__link msg__link--btn" onClick={() => { void openOrderSurface(orderId, cfg.projectId, isStaffRole(user?.role)); }}>{`#${orderRef(orderId)}`}</button>;
 }
 
 /** "PlaceMakers (Fletcher Building)" → PM, "Caroma Industries Ltd" → CI:

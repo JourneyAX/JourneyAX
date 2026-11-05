@@ -5,6 +5,7 @@
  * (the server's record), so it is the same whether the customer has just paid or comes back to it later.
  */
 import { useEffect, useState } from 'react';
+import { openCanvas } from '@/lib/shell/sidePanelStore';
 import { formatMoney, orderRef } from './money';
 
 interface Party { name?: string; email?: string; phone?: string; address?: { line1?: string; line2?: string; city?: string; state?: string; postalCode?: string; country?: string } }
@@ -42,11 +43,12 @@ export default function OrderCanvas({ orderId }: { orderId: string }) {
     return () => { cancelled = true; };
   }, [orderId]);
 
-  if (failed) return <div className="cv"><div className="cv__body"><p className="cv__empty-title">We could not find that order</p><p className="cv__empty-text">Please check the order number, or ask us and we will look it up.</p></div></div>;
+  if (failed) return <div className="cv"><div className="cv__body"><p className="cv__empty-title">Order details are unavailable</p><p className="cv__empty-text">Please check the order number or try again. A failed lookup does not confirm the payment status.</p></div></div>;
   if (!order) return <div className="cv"><div className="cv__body"><p className="cv__empty-text">Getting your order…</p></div></div>;
 
   const money = (amount: number | null | undefined) => formatMoney(amount, order.symbol, order.currency);
   const paid = order.status === 'paid';
+  const ended = order.status === 'failed' || order.status === 'cancelled';
   const billingLines = addressLines(order.billing);
   const shippingLines = addressLines(order.shipping);
 
@@ -57,10 +59,11 @@ export default function OrderCanvas({ orderId }: { orderId: string }) {
           <div>
             <div className="cv__eyebrow">Order</div>
             <div className="cv__order-no">#{orderRef(order.orderId)}</div>
-            {when(order.paidAt || order.createdAt) && <div className="cv__meta">{paid ? 'Paid' : 'Placed'} {when(order.paidAt || order.createdAt)}</div>}
+            {when(order.paidAt || order.createdAt) && <div className="cv__meta">{paid ? 'Paid' : 'Started'} {when(order.paidAt || order.createdAt)}</div>}
           </div>
-          <span className={`cv__chip ${paid ? 'cv__chip--ok' : 'cv__chip--wait'}`}>{paid ? 'Paid' : order.status === 'pending_payment' ? 'Waiting for payment' : order.status}</span>
+          <span className={`cv__chip ${paid ? 'cv__chip--ok' : 'cv__chip--wait'}`}>{paid ? 'Paid' : order.status === 'pending_payment' ? 'Waiting for payment' : order.status === 'failed' ? 'Payment not completed' : order.status === 'cancelled' ? 'Payment cancelled' : order.status}</span>
         </div>
+        {ended && <div role="status" className="cv__notice">This payment session has ended. The items below are the saved order record. Review your cart and refresh the quote before starting another checkout.<button type="button" className="cv__link" onClick={() => openCanvas({ kind: 'cart' })}>View current cart</button></div>}
 
         <h3 className="cv__h">Items</h3>
         <ul className="cv__lines">
@@ -95,7 +98,7 @@ export default function OrderCanvas({ orderId }: { orderId: string }) {
                 {order.shipping.name && <strong>{order.shipping.name}</strong>}
                 {shippingLines.map((part, i) => <span key={i}>{part}</span>)}
               </address>
-            ) : <p className="cv__meta">No delivery address on this order. It can be collected from a branch.</p>}
+            ) : <p className="cv__meta">No delivery address is recorded on this order. Delivery or collection arrangements are not confirmed here.</p>}
           </section>
         </div>
 

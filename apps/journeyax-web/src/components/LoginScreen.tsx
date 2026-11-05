@@ -54,7 +54,7 @@ export default function LoginScreen() {
             {cfg.labels?.headerTitle || 'Your project, planned in one conversation.'}
           </h1>
           <p style={{ fontSize: 15, lineHeight: 1.6, color: 'rgba(255,255,255,0.78)', margin: 0, maxWidth: 420 }}>
-            {cfg.brandOverlay ? cfg.brandOverlay.loginTagline : `Sign in to talk to your ${brand} consultant — real catalogue, real stock, one complete quote.`}
+            {cfg.brandOverlay ? cfg.brandOverlay.loginTagline : cfg.labels?.loginTagline || `Sign in to continue your conversation with ${brand}.`}
           </p>
         </div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>JourneyAX · Agent Experience</div>
@@ -102,38 +102,6 @@ export default function LoginScreen() {
             {busy ? 'Signing in…' : 'Sign in →'}
           </button>
 
-          <button
-            id="quick-login-btn"
-            type="button"
-            onClick={async () => {
-              setEmail('admin');
-              setPassword('admin');
-              setBusy(true);
-              const r = await login('admin', 'admin');
-              setBusy(false);
-              if (!r.success) setError(r.message || 'Sign-in failed.');
-            }}
-            style={{
-              marginTop: 10,
-              width: '100%',
-              padding: '10px 14px',
-              fontSize: 13,
-              fontWeight: 600,
-              color: '#334155',
-              background: '#f1f5f9',
-              border: '1px dashed #94a3b8',
-              borderRadius: 8,
-              cursor: 'pointer'
-            }}
-          >
-            ⚡ Quick Demo Sign-in (admin / admin)
-          </button>
-
-          {process.env.NODE_ENV !== 'production' && (
-            <p style={{ margin: '14px 0 0', fontSize: 12, color: '#A29A8B', textAlign: 'center' }}>
-              Dev credentials: admin / admin
-            </p>
-          )}
         </form>
       </div>
     </div>

@@ -7,7 +7,7 @@ import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
 import { useAuth } from '@/context/AuthContext';
 import {
   type Conversation, resolveActiveConversation, saveConversations, setActiveConversation,
-  deleteConversation, messagesKey, sessionKey, journeyKey, newId, summarise,
+  deleteConversation, messagesKey, sessionKey, journeyKey, newId, summarise, ensureActiveSessionId,
 } from '@/lib/conversations';
 import MessageBubble from './MessageBubble';
 import { WorkingLive } from './shell/WorkedFold';
@@ -40,8 +40,9 @@ import { CHAT_REQUEST_ACCEPTS_AGENT_ID, CHAT_REQUEST_ACCEPTS_PARENT_MESSAGE } fr
 import { answerWithId, branchBase, canBranchAt, cardCountToKeep, retryableIndex, withMessageIds } from '@/lib/chat/branching';
 import { takePendingAgent } from '@/lib/shell/pendingAgent';
 import { BLANK_TITLE, forSidebar } from '@/lib/shell/conversationNav';
-import { CARE_ENTRIES, INVOICES_ENTRIES, QUOTES_ENTRIES, STOCK_ENTRIES, useCareAccess, useInvoicesAccess, useQuotesAccess, useStockAccess } from '@/components/canvas/care/careAccess';
+import { useOperationalDesks } from '@/components/canvas/desks/operationalDeskApi';
 import { registerAskHandler } from '@/lib/shell/askInChat';
+import { registerDeskReviewHandler } from '@/lib/shell/deskReview';
 import { SHEET_BREAKPOINT } from '@/lib/shell/panel';
 import MyDayTile from './shell/MyDayTile';
 import DashboardHome from './shell/DashboardHome';
@@ -338,7 +339,7 @@ function personaliseGreeting(greeting: string, name?: string | null): string {
 }
 
 export default function ChatPanel({ embed = false }: { embed?: boolean }) {
-  const { state, dispatch, bom, cartOpen, setCartOpen } = useJourney();
+  const { state, dispatch, bom, cartOpen, setCartOpen, refreshCart } = useJourney();
   const cfg = useStorefrontConfig();
   // Retail bag affordance: a cart brand always needs a way BACK to its bag. Once
   // the complete-the-look step takes over the panel, the bag is no longer the
@@ -388,14 +389,12 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
   const [isLoading, setIsLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string>('');
   const { user: authUser } = useAuth();
-  const careAccess = useCareAccess(authUser?.email);
-  const stockAccess = useStockAccess(authUser?.email);
-  const quotesAccess = useQuotesAccess(authUser?.email);
-  const invoicesAccess = useInvoicesAccess(authUser?.email);
-  /** The desk screens this person is offered: customer care's, the stock desk's, the quotes desk's, the invoices desk's, any mix, or none. */
-  const careEntries = [...(careAccess ? CARE_ENTRIES : []), ...(stockAccess ? STOCK_ENTRIES : []), ...(quotesAccess ? QUOTES_ENTRIES : []), ...(invoicesAccess ? INVOICES_ENTRIES : [])];
+  const desks = useOperationalDesks(authUser?.email, cfg.projectId);
+  const careEntries = desks.flatMap(desk => [{ label: desk.title, kind: 'operational-desk', deskId: desk.deskId, mode: 'list' }, ...(desk.boardTitle ? [{ label: desk.boardTitle, kind: 'operational-desk', deskId: desk.deskId, mode: 'board' }] : [])]);
+  const openDesk = (entry: typeof careEntries[number]) => openCanvas({ kind: entry.kind, title: entry.label, params: { deskId: entry.deskId, projectId: cfg.projectId, mode: entry.mode } });
   const [convoId, setConvoId] = useState('');
   const [convos, setConvos] = useState<Conversation[]>([]);
+  useEffect(() => { if (convoId && authUser) void refreshCart(); }, [convoId, authUser, refreshCart]);
   const [convoMenuOpen, setConvoMenuOpen] = useState(false);
   // The agent that answered the latest turn (named by the composer's agent chip).
   const [answeringAgentId, setAnsweringAgentId] = useState('');
@@ -628,6 +627,20 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     setConvoMenuOpen(false);
   }, [convoId, cfg.projectId, dispatch, restoreJourney]);
 
+  useEffect(() => registerDeskReviewHandler(review => {
+    if (review.projectId !== cfg.projectId || review.person !== authUser?.email || stateRef.current.isThinking || isLoading) return false;
+    const id = `desk_${review.sessionId}`;
+    if (!convos.some(conversation => conversation.id === id)) {
+      const next = [{ id, title: `Review ${review.recordId}`, updatedAt: Date.now() }, ...convos];
+      saveConversations(cfg.projectId, next); setConvos(next);
+      localStorage.setItem(sessionKey(cfg.projectId, id), review.sessionId);
+      localStorage.setItem(messagesKey(cfg.projectId, id), JSON.stringify([{ role: 'user', content: `Review ${review.recordId}` }, { role: 'assistant', content: review.summary }]));
+      localStorage.setItem(journeyKey(cfg.projectId, id), JSON.stringify({ phase: 'intro', cards: review.cards.map((card, index) => ({ ...card, id: `desk-${review.sessionId}-${index}`, createdAt: '2' })) }));
+    }
+    openConversation(id);
+    return true;
+  }), [cfg.projectId, authUser?.email, convos, openConversation, isLoading]);
+
   const handleDeleteConversation = useCallback((id: string) => {
     if (typeof window !== 'undefined' && !window.confirm('Delete this conversation?')) return;
     const next = deleteConversation(cfg.projectId, id);
@@ -668,7 +681,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
       // session, so switching threads switches what the agent remembers.
       const sKey = sessionKey(cfgRef.current.projectId, convoIdRef.current);
       const existingSessionId =
-        typeof window !== 'undefined' ? localStorage.getItem(sKey) || undefined : undefined;
+        typeof window !== 'undefined' ? ensureActiveSessionId(cfgRef.current.projectId) : undefined;
 
       const requestBody = JSON.stringify({
         message: newUserMessage,
@@ -792,9 +805,10 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             // verbatim — the client never recomputes prices.
             const lines = action.arguments?.lines || [];
             if (lines.length > 0) {
-              dispatch({ type: 'SET_SERVER_QUOTE', quote: action.arguments });
-              hasPhaseChange = true;
+              dispatch({ type: 'SET_SERVER_QUOTE', quote: action.arguments, keepPhase: true });
             }
+          } else if (action.name === 'clearCart') {
+            dispatch({ type: 'CLEAR_QUOTE' });
           } else if (action.name === 'showItems') {
             // Product recommendations — set them in state for ProductsPanel
             const prods = action.arguments?.products || action.arguments?.items || [];
@@ -883,11 +897,6 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             dispatch({ type: 'SET_PHASE', phase: 'spacePlanner' });
             hasPhaseChange = true;
           }
-        }
-        // If AI called updateQuote but forgot setPhase('quote'), do it (only if quote has products)
-        if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'updateQuote' && (a.arguments?.lines?.length > 0))) {
-          dispatch({ type: 'SET_PHASE', phase: 'quote' });
-          hasPhaseChange = true;
         }
         // If AI called showProducts but forgot setPhase('products'), do it
         if (!hasPhaseChange && data.uiActions.some((a: any) => a.name === 'showItems')) {
@@ -1014,7 +1023,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     (window as any).__journeySendEvent = (customerEvent: any) =>
       append({
         role: 'user',
-        content: customerEvent?.payload?.title ? `[${customerEvent.type}: ${customerEvent.payload.title}]` : `[${customerEvent.type}]`,
+        content: customerEvent?.type === 'confirmTool' ? (customerEvent.payload?.decision === 'allow' ? 'Approve the proposed action.' : 'Decline the proposed action.') : typeof customerEvent?.payload?.question === 'string' ? customerEvent.payload.question : customerEvent?.payload?.title ? `[${customerEvent.type}: ${customerEvent.payload.title}]` : `[${customerEvent.type}]`,
         customerEvent,
       } as any);
     return () => {
@@ -1169,7 +1178,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
     if (!orderId || state.placedOrder?.status !== 'paid') return;
     const key = `jx:thanked:${orderId}`;
     try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch { /* still send once this session */ }
-    const t = setTimeout(() => { rememberOrder(orderId); void handleUserMessageRef.current(`Payment received for order #${orderRef(orderId)}.`, { silent: true }); }, 600);
+    const t = setTimeout(() => { rememberOrder(orderId); void handleUserMessageRef.current(`Please confirm my checkout receipt for order ${orderId}.`, { silent: true }); }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.placedOrder?.orderId, state.placedOrder?.status]);
@@ -1338,15 +1347,16 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             bagCount={bagCount}
             bagOpen={cartOpen}
             onBag={() => { if (panelEnabled) { if (getCanvas()?.kind === 'cart') closeCanvas(); else openCanvas({ kind: 'cart' }); } else setCartOpen((v) => !v); }}
-            extra={panelEnabled ? <MyDayTile person={authUser?.email} projectId={cfg.projectId} hidden={dashboardReady} /> : null}
+            extra={panelEnabled ? <><MyDayTile person={authUser?.email} projectId={cfg.projectId} hidden={dashboardReady} />{!isEmpty && careEntries.map(entry => <button type="button" className="cv__link" key={`${entry.deskId}:${entry.mode}`} onClick={() => openDesk(entry)}>{entry.label}</button>)}</> : null}
           />
+          {state.orderError && <p role="alert" style={{ margin: '8px 20px', color: 'var(--status-error, #B42318)' }}>{state.orderError}</p>}
 
           {/* The board a team starts on: what needs them, their figures and lists; the box below starts the conversation. */}
           {dashboardReady && (
             <DashboardHome
               title={welcomeLoaded ? hero.title : ''}
               subtitle={welcomeLoaded ? hero.subtitle : undefined}
-              links={careEntries.map((entry) => ({ label: entry.label, onOpen: () => openCanvas({ kind: entry.kind }) }))}
+              links={careEntries.map((entry) => ({ label: entry.label, onOpen: () => openDesk(entry) }))}
             />
           )}
 
@@ -1429,7 +1439,7 @@ export default function ChatPanel({ embed = false }: { embed?: boolean }) {
             {isEmpty && !dashboardReady && !dashboardPending && (careEntries.length > 0 || starters.length > 0) && (
               <div className="ax-suggestions" role="group" aria-label="Things you can ask">
                 {careEntries.map((entry) => (
-                  <button key={entry.kind} type="button" className="ax-suggestion" onClick={() => openCanvas({ kind: entry.kind })}>
+                  <button key={entry.deskId} type="button" className="ax-suggestion" onClick={() => openDesk(entry)}>
                     {entry.label}
                   </button>
                 ))}

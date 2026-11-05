@@ -1,6 +1,9 @@
 // POST /api/tryon — virtual try-on: composite a catalogue garment onto the shopper's
 // uploaded photo. Consent + "AI preview, not a fit guarantee" is enforced by the UI.
 import { NextRequest, NextResponse } from 'next/server';
+import { upstreamAuthHeaders, unauthorized } from '../../../lib/bff-auth';
+import { isSameOriginRequest } from '../../../lib/request-origin';
+import { resolveTenant } from '../../../lib/tenant';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,6 +13,9 @@ const MAX_PERSON_BYTES = 8 * 1024 * 1024;      // cap the uploaded photo at ~8MB
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3010';
 
 export async function POST(req: NextRequest) {
+  if (!isSameOriginRequest(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = upstreamAuthHeaders(req);
+  if (!auth) return unauthorized();
   try {
     const body = await req.json().catch(() => null);
     const personDataUrl: string = body?.personImage || '';
@@ -25,18 +31,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please use a photo under 8MB.' }, { status: 413 });
     }
 
-    const projectId = (
-      req.headers.get('x-tenant-id') ||
-      req.nextUrl.searchParams.get('project') ||
-      process.env.DEFAULT_PROJECT_ID ||
-      'caroma'
-    ).toLowerCase();
+    const projectId = await resolveTenant(req);
 
     const res = await fetch(`${GATEWAY_URL}/api/v1/${encodeURIComponent(projectId)}/products/tryon`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-ID': projectId,
+        ...auth,
       },
       body: JSON.stringify({
         personDataUrl,

@@ -29,6 +29,10 @@ import { openCanvas, openPanelCard, rememberPanelOpener } from '@/lib/shell/side
 import { openLink } from '@/lib/links';
 import FormCard from './FormCard';
 import RecordsCard from './RecordsCard';
+import ConfirmationCard from './ConfirmationCard';
+import { useAuth } from '@/context/AuthContext';
+import { isStaffRole } from '@journeyax/shared-types';
+import { openOrderSurface } from '@/lib/shell/orderSurface';
 
 /**
  * Action → storefront behaviour (docs/v3-card-cms-architecture.md
@@ -96,6 +100,9 @@ function postCustomerEvent(event: { type: string; payload?: any; sourceCard?: an
 export function useCardActions() {
   const { state, dispatch, handleApprove, addToCart, removeFromCart, setQuantity, setCartOpen } = useJourney();
   const cfg = useStorefrontConfig();
+  const { user } = useAuth();
+  const staffRef = useRef(isStaffRole(user?.role));
+  staffRef.current = isStaffRole(user?.role);
   const stateRef = useRef(state);
   stateRef.current = state;
   // The closing surface's own word — a retail brand has a bag, a trade brand
@@ -115,7 +122,9 @@ export function useCardActions() {
     const w = typeof window !== 'undefined' ? (window as any) : {};
     switch (name) {
       case 'sendMessage':
-        w.__journeySend?.(String(params?.text ?? ''));
+        if (typeof params?.sku === 'string' && params.sku.trim()) {
+          postCustomerEvent({ type: 'askProduct', payload: { sku: params.sku, title: String(params.title || ''), question: String(params.text || '') } });
+        } else w.__journeySend?.(String(params?.text ?? ''));
         break;
       case 'chooseOption': {
         const questionId = String(params?.questionId ?? '');
@@ -182,8 +191,7 @@ export function useCardActions() {
         if (!confirmationId) break;
         const card = state.cards.find((c) => c.cardType === 'confirm' && (c.state as any)?.confirmationId === confirmationId);
         if (card) {
-          const said = decision === 'allow' ? (card.state as any)?.allowedText : (card.state as any)?.deniedText;
-          dispatch({ type: 'PATCH_CARD', id: card.id, state: { ...card.state, pending: false, outcome: said || (decision === 'allow' ? 'Allowed.' : 'Not now.') } });
+          dispatch({ type: 'PATCH_CARD', id: card.id, state: { ...card.state, pending: false, outcome: decision === 'allow' ? 'Approval submitted. Waiting for the source result.' : 'Decline submitted. Waiting for confirmation.' } });
         }
         postCustomerEvent({ type: 'confirmTool', payload: { confirmationId, decision }, sourceCard: { id: card?.id, cardType: 'confirm' } });
         break;
@@ -354,39 +362,18 @@ export function useCardActions() {
         }
 
         const cardId = params?.cardId ? String(params.cardId) : undefined;
-        postCustomerEvent({
-          type: 'addToCart',
-          payload: { sku, quantity: qty, title: name },
+        // Only a saved quote confirms an addition. Neither the tile nor the
+        // assistant may announce success before the server accepts it.
+        void addToCart(sku, qty, title, p).then(() => postCustomerEvent({
+          type: 'addToCart', payload: { sku, quantity: qty, title: name },
           sourceCard: { id: cardId, cardType: 'products' },
-        });
-
-        // Optimistic UI feedback: immediately mark inBag so the button becomes 'Added ✓'
-        if (cardId) {
-          const card = state.cards.find((c) => c.id === cardId);
-          if (card && card.cardType === 'products') {
-            const prods = ((card.state as any)?.products || []).map((prod: any) =>
-              String(prod.sku).toUpperCase() === sku.toUpperCase() ? { ...prod, inBag: true } : prod
-            );
-            dispatch({ type: 'PATCH_CARD', id: cardId, state: { products: prods } });
-          }
-        }
-
-        // Await authoritative quote pricing then open drawer and confirm in conversation
-        (async () => {
-          await addToCart(sku, qty, title, p);
-          // The cart count in the header is the confirmation; the consultant's reply (its own turn) says what goes with it.
-        })();
+        })).catch(() => { /* JourneyContext exposes the save error. */ });
         break;
       }
       case 'addAllToCart': {
         const items = Array.isArray(params?.items) ? (params!.items as any[]) : [];
         if (items.length > 0) {
-          postCustomerEvent({
-            type: 'addAllToCart',
-            payload: { items: items.map((i) => ({ sku: i?.sku, quantity: i?.quantity ?? i?.qty, title: i?.title || i?.name })) },
-            sourceCard: { cardType: 'products' },
-          });
-          (async () => {
+          void (async () => {
             for (const item of items) {
               const sku = String(item?.sku || '').trim();
               if (!sku || /^unsku-/i.test(sku)) continue;
@@ -395,12 +382,8 @@ export function useCardActions() {
               const p = state.recommendedProducts.find((r) => r.sku === sku) || findCardProduct(state.cards, sku);
               await addToCart(sku, qty, title, p);
             }
-            dispatch({
-              type: 'ADD_MESSAGE',
-              role: 'ai',
-              text: `Added ${items.length} items to your ${closing}. You can review your quote and check branch stock in the materials drawer.`,
-            });
-          })();
+            postCustomerEvent({ type: 'addAllToCart', payload: { items: items.map((i) => ({ sku: i?.sku, quantity: i?.quantity ?? i?.qty, title: i?.title || i?.name })) }, sourceCard: { cardType: 'products' } });
+          })().catch(() => { /* Any saved lines remain visible; the failed save is explicit. */ });
         }
         break;
       }
@@ -408,24 +391,22 @@ export function useCardActions() {
         const sku = String(params?.sku ?? '').trim();
         const qty = Math.max(0, Math.floor(Number(params?.qty ?? params?.quantity) || 0));
         if (sku) {
-          postCustomerEvent({
+          void setQuantity(sku, qty).then(() => postCustomerEvent({
             type: 'setQuantity',
             payload: { sku, quantity: qty },
             sourceCard: { cardType: 'cart' },
-          });
-          setQuantity(sku, qty);
+          })).catch(() => {});
         }
         break;
       }
       case 'removeFromCart': {
         const sku = String(params?.sku ?? '').trim();
         if (sku) {
-          postCustomerEvent({
+          void removeFromCart(sku).then(() => postCustomerEvent({
             type: 'removeFromCart',
             payload: { sku },
             sourceCard: { cardType: 'cart' },
-          });
-          removeFromCart(sku);
+          })).catch(() => {});
         }
         break;
       }
@@ -461,7 +442,7 @@ export function useCardActions() {
         if (params?.panel === 'quote' || params?.panel === 'cart' || params?.panel === 'bag') {
           openCanvas({ kind: 'cart' });
         } else if (params?.panel === 'order' && params?.orderId) {
-          openCanvas({ kind: 'order', orderId: String(params.orderId) });
+          void openOrderSurface(String(params.orderId), cfgRef.current.projectId, staffRef.current);
         } else if (params?.panel) {
           dispatch({ type: 'SET_PHASE', phase: params.panel as any });
         }
@@ -502,6 +483,7 @@ function dedupeSkuLists<T extends Record<string, unknown>>(state: T): T {
 /** One card, rendered inline at its place in the conversation thread. */
 export function CardTile({ card, onAction }: { card: CardInstance; onAction: (name: string, params?: Record<string, unknown>) => void }) {
   const cfg = useStorefrontConfig();
+  if (card.cardType === 'confirm') return <div className="jx-root chat-inline-card" data-card-type="confirm"><ConfirmationCard state={card.state as any} onAction={(name, params) => onAction(name, { ...params, cardId: card.id })} /></div>;
   // A form is the shop's own fields filled in by the person: it needs its own state, so it is drawn by its own component.
   if (card.cardType === 'form') {
     return (

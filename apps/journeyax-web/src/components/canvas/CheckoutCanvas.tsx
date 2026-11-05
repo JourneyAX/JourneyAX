@@ -5,7 +5,7 @@
  * the page and no card data touches us). When the payment completes, the order is read back from the server until it says paid, then
  * recorded in the journey (which tells the consultant) and the order opens in the panel.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJourney } from '@/context/JourneyContext';
 import { openCanvas } from '@/lib/shell/sidePanelStore';
 import { formatMoney, orderRef } from './money';
@@ -19,7 +19,7 @@ function loadStripeJs(): Promise<void> {
   if (!stripeScript) {
     stripeScript = new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = 'https://js.stripe.com/v3/';
+      script.src = 'https://js.stripe.com/endive/stripe.js';
       script.async = true;
       script.onload = () => resolve();
       script.onerror = () => { stripeScript = null; reject(new Error('The payment form could not be loaded.')); };
@@ -29,16 +29,41 @@ function loadStripeJs(): Promise<void> {
   return stripeScript;
 }
 
-type Phase = 'loading' | 'ready' | 'confirming' | 'error';
+type Phase = 'loading' | 'ready' | 'confirming' | 'ended' | 'error';
 
 export default function CheckoutCanvas({ orderId, payment }: { orderId: string; payment: { clientSecret: string; publishableKey: string } }) {
-  const { state, dispatch, bom, totals } = useJourney();
+  const { state, dispatch, bom, totals, repriceCart } = useJourney();
   const mount = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [message, setMessage] = useState('');
+  const [cancelling, setCancelling] = useState(false);
   const symbol = state.serverQuote?.symbol;
   const currency = state.serverQuote?.currency;
   const money = (amount: number | null | undefined) => formatMoney(amount, symbol, currency);
+  const showPaidOrder = useCallback((order: any) => {
+    dispatch({ type: 'SET_PLACED_ORDER', order });
+    dispatch({ type: 'CLEAR_QUOTE' });
+    openCanvas({ kind: 'order', orderId });
+  }, [dispatch, orderId]);
+  const returnToCart = async () => {
+    setCancelling(true);
+    try { await repriceCart(); openCanvas({ kind: 'cart' }); }
+    catch (error: any) { setPhase('error'); setMessage(error.message || 'The cart could not be repriced. Please check it before paying again.'); }
+    finally { setCancelling(false); }
+  };
+
+  const cancel = async () => {
+    setCancelling(true);
+    try {
+      const response = await fetch(`/api/order${window.location.search}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId }) });
+      const result = await response.json();
+      if (!response.ok || !result.found) throw new Error(result.error || result.message || 'Could not confirm cancellation. Please check this order before paying again.');
+      if (result.status === 'paid') { showPaidOrder(result); return; }
+      if (result.status !== 'cancelled' && result.status !== 'failed') throw new Error('Payment is still processing. Please wait before changing the cart.');
+      await repriceCart(); openCanvas({ kind: 'cart' });
+    } catch (error: any) { setPhase('error'); setMessage(error.message); }
+    finally { setCancelling(false); }
+  };
 
   useEffect(() => {
     let destroyed = false;
@@ -50,13 +75,14 @@ export default function CheckoutCanvas({ orderId, payment }: { orderId: string; 
         try {
           const res = await fetch(`/api/order?orderId=${encodeURIComponent(orderId)}&${window.location.search.slice(1)}`, { cache: 'no-store' });
           const data = await res.json();
+          if (destroyed) return;
           if (data?.found && data.status === 'paid') {
             // The journey now knows the order is paid (it tells the consultant and shows the order card); the order opens here.
-            dispatch({ type: 'SET_PLACED_ORDER', order: data });
-            // The order is placed: the cart is empty for the next one.
-            dispatch({ type: 'CLEAR_QUOTE' });
-            openCanvas({ kind: 'order', orderId });
+            showPaidOrder(data);
             return;
+          }
+          if (data?.found && (data.status === 'failed' || data.status === 'cancelled')) {
+            setPhase('ended'); setMessage('This payment session has ended. Return to your cart to review the items before starting a new checkout.'); return;
           }
         } catch { /* try again */ }
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -66,10 +92,20 @@ export default function CheckoutCanvas({ orderId, payment }: { orderId: string; 
 
     (async () => {
       try {
+        // A returned/expired session is checked before mounting a payment form.
+        // Only the server receipt can establish whether this order was paid.
+        const response = await fetch(`/api/order?orderId=${encodeURIComponent(orderId)}&${window.location.search.slice(1)}`, { cache: 'no-store' });
+        const current = await response.json();
+        if (destroyed) return;
+        if (!response.ok || !current.found) throw new Error('This order could not be checked. Please check its status before trying another payment.');
+        if (current.status === 'paid') { showPaidOrder(current); return; }
+        if (current.status === 'failed' || current.status === 'cancelled') { setPhase('ended'); setMessage('This payment session has ended. Return to your cart to review the items before starting a new checkout.'); return; }
+        if (current.status !== 'pending_payment') throw new Error('This order is not ready for payment. Please check its status before trying again.');
         await loadStripeJs();
         if (destroyed || !mount.current) return;
         const stripe = window.Stripe!(payment.publishableKey);
-        checkout = await stripe.initEmbeddedCheckout({ clientSecret: payment.clientSecret, onComplete: () => { void confirm(); } });
+        if (typeof stripe.createEmbeddedCheckoutPage !== 'function') throw new Error('The secure payment library needs a page refresh. Please check this order before trying another payment.');
+        checkout = await stripe.createEmbeddedCheckoutPage({ fetchClientSecret: async () => payment.clientSecret, onComplete: () => { void confirm(); } });
         if (destroyed || !mount.current) { checkout?.destroy?.(); return; }
         checkout!.mount(mount.current);
         setPhase('ready');
@@ -79,7 +115,7 @@ export default function CheckoutCanvas({ orderId, payment }: { orderId: string; 
     })();
 
     return () => { destroyed = true; try { checkout?.destroy?.(); } catch { /* already gone */ } };
-  }, [orderId, payment.clientSecret, payment.publishableKey, dispatch]);
+  }, [orderId, payment.clientSecret, payment.publishableKey, showPaidOrder]);
 
   return (
     <div className="cv">
@@ -95,10 +131,11 @@ export default function CheckoutCanvas({ orderId, payment }: { orderId: string; 
           {bom.map((line, index) => <li key={`${line.key}-${index}`}><span>{line.quantity ?? 1} × {line.name}</span></li>)}
         </ul>
         {phase === 'loading' && <p className="cv__meta">Opening the secure payment form…</p>}
-        {phase === 'confirming' && <p className="cv__notice" role="status">Payment received. Confirming your order…</p>}
-        {phase === 'error' && <div role="alert" className="cv__alert">{message}</div>}
-        <div ref={mount} className="cv__pay" hidden={phase === 'error' || phase === 'confirming'} />
+        {phase === 'confirming' && <p className="cv__notice" role="status">Checking payment and confirming your order…</p>}
+        {(phase === 'error' || phase === 'ended') && <div role="alert" className="cv__alert">{message}</div>}
+        <div ref={mount} className="cv__pay" hidden={phase === 'error' || phase === 'ended' || phase === 'confirming'} />
         <p className="cv__meta cv__secure">Card details go straight to Stripe. We never see or store them.</p>
+        <button type="button" className="cv__btn" disabled={cancelling || phase === 'confirming'} onClick={() => { if (phase === 'ended') void returnToCart(); else void cancel(); }}>{cancelling ? 'Checking your cart…' : phase === 'ended' ? 'Return to cart' : 'Cancel payment and edit cart'}</button>
       </div>
     </div>
   );

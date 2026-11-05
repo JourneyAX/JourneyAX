@@ -32,8 +32,8 @@ check('the catalogue\'s record wins where it has an answer', () => {
   assert.equal(p.featuresText, '- One\n- Two');
   assert.deepEqual([p.hasFeatures, p.hasSpecs, p.hasDocuments, p.hasSuggested, p.hasRelated, p.hasProductUrl], [true, true, true, true, true, true]);
   assert.equal(p.suggested[0].sku, 'T1');
-  assert.equal(p.stockLabel, 'Available at 2 of 88 branches');
-  assert.deepEqual([p.stockOk, p.stockWarn], [true, false]);
+  assert.equal(p.stockLabel, 'Catalogue lists 2 of 88 branches; current stock not checked');
+  assert.deepEqual([p.stockOk, p.stockWarn], [false, false], 'catalogue counts are not current stock');
   assert.equal(p.related[0].sku, 'R1');
 });
 
@@ -53,14 +53,24 @@ check('a product the tile does not know still opens from the catalogue alone', (
   assert.equal(p.hasSpecs, true);
 });
 
-check('availability that says none is shown as a warning, not as stock', () => {
+check('a catalogue zero count remains unknown, rather than a current out-of-stock receipt', () => {
   const p: any = buildDetailProduct(tile, { ...detail, availability: { label: 'Not showing as available at any of 10 branches', inStock: false, branchesWithStock: 0, branchCount: 10 } }, 'S1');
-  assert.deepEqual([p.stockOk, p.stockWarn], [false, true]);
+  assert.deepEqual([p.stockOk, p.stockWarn], [false, false]);
+  assert.match(p.stockLabel, /current stock not checked/);
 });
 
-check('a tile\'s own spec table is used when the catalogue sends none', () => {
+check('an explicitly quarantined server record cannot refill itself from an old tile', () => {
+  const p: any = buildDetailProduct({ ...tile, price: 999, specs: { Width: 'Invented' }, featuresList: ['Old claim'] }, { ...detail, integrity: { identityConsistent: false } }, 'S1');
+  assert.equal(p.price, null); assert.equal(p.title, 'SKU S1');
+  assert.deepEqual(p.specList, []); assert.equal(p.hasFeatures, false); assert.equal(p.imageUrl, undefined);
+  assert.match(p.description, /source record needs review/);
+});
+
+check('a successful current lookup with no specifications never refills stale tile facts', () => {
   const p: any = buildDetailProduct({ ...tile, specs: { Thickness: '10 mm' } }, { ...detail, specs: [] }, 'S1');
-  assert.deepEqual(p.specList, [{ label: 'Thickness', value: '10 mm' }]);
+  assert.deepEqual(p.specList, []);
+  const unknownPrice: any = buildDetailProduct({ ...tile, price: 500 }, { ...detail, price: null }, 'S1');
+  assert.equal(unknownPrice.price, null);
 });
 
 check('a shared "no picture" placeholder is not shown as the product photo', () => {

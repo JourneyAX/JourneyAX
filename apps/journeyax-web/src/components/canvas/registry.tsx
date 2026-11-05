@@ -10,9 +10,7 @@ import { registerCanvas, type CanvasRequest } from '@/lib/shell/canvasRegistry';
 import CartCanvas from './CartCanvas';
 import CheckoutCanvas from './CheckoutCanvas';
 import OrderCanvas from './OrderCanvas';
-import CareQueueCanvas from './care/CareQueueCanvas';
-import CareTicketCanvas from './care/CareTicketCanvas';
-import CareBoardCanvas from './care/CareBoardCanvas';
+import OperationalDeskCanvas from './desks/OperationalDeskCanvas';
 import DashboardCanvas from './dashboard/DashboardCanvas';
 import { getDashboardState } from '@/lib/shell/dashboardStore';
 import { orderRef } from './money';
@@ -34,45 +32,7 @@ registerCanvas({
   ready: (request) => !!request.orderId,
 });
 
-/** Customer care: the person's tickets, one ticket with the AI's work-up, and the care board. */
-registerCanvas({ kind: 'care-queue', title: () => 'My tickets', minWidth: CANVAS_MIN_WIDTH });
-registerCanvas({
-  kind: 'care-ticket',
-  title: (request) => `Ticket${request.params?.ticketId ? ` #${String(request.params.ticketId).replace(/^t/, '')}` : ''}`,
-  minWidth: CANVAS_MIN_WIDTH,
-  ready: (request) => !!request.params?.ticketId,
-});
-registerCanvas({ kind: 'care-board', title: () => 'Care board', minWidth: CANVAS_MIN_WIDTH });
-
-/** The stock exceptions desk: the same three screens for the branch team, with their own words. */
-registerCanvas({ kind: 'stock-queue', title: () => 'Stock exceptions', minWidth: CANVAS_MIN_WIDTH });
-registerCanvas({
-  kind: 'stock-ticket',
-  title: (request) => `Exception${request.params?.ticketId ? ` ${String(request.params.ticketId).replace(/^x/, 'EX-')}` : ''}`,
-  minWidth: CANVAS_MIN_WIDTH,
-  ready: (request) => !!request.params?.ticketId,
-});
-registerCanvas({ kind: 'stock-board', title: () => 'Stock board', minWidth: CANVAS_MIN_WIDTH });
-
-/** The quotes desk: the same three screens for the sales team, with their own words. */
-registerCanvas({ kind: 'quotes-queue', title: () => 'Quote requests', minWidth: CANVAS_MIN_WIDTH });
-registerCanvas({
-  kind: 'quotes-ticket',
-  title: (request) => `Quote request${request.params?.ticketId ? ` ${String(request.params.ticketId).replace(/^q/, 'QT-')}` : ''}`,
-  minWidth: CANVAS_MIN_WIDTH,
-  ready: (request) => !!request.params?.ticketId,
-});
-registerCanvas({ kind: 'quotes-board', title: () => 'Quotes board', minWidth: CANVAS_MIN_WIDTH });
-
-/** The invoices desk: the same three screens for the finance team, with their own words. */
-registerCanvas({ kind: 'invoices-queue', title: () => 'Invoice exceptions', minWidth: CANVAS_MIN_WIDTH });
-registerCanvas({
-  kind: 'invoices-ticket',
-  title: (request) => `Invoice exception${request.params?.ticketId ? ` ${String(request.params.ticketId).replace(/^i/, 'IX-')}` : ''}`,
-  minWidth: CANVAS_MIN_WIDTH,
-  ready: (request) => !!request.params?.ticketId,
-});
-registerCanvas({ kind: 'invoices-board', title: () => 'Finance board', minWidth: CANVAS_MIN_WIDTH });
+registerCanvas({ kind: 'operational-desk', title: request => request.title || 'Working surface', minWidth: CANVAS_MIN_WIDTH, ready: request => typeof request.params?.deskId === 'string' && typeof request.params?.projectId === 'string' });
 
 /** The dashboard the corner tile opens; its name is the shop's own (what the pack calls this team's dashboard). */
 registerCanvas({ kind: 'dashboard', title: (request) => getDashboardState().data?.title || request.title || 'Dashboard', minWidth: CANVAS_MIN_WIDTH });
@@ -80,26 +40,7 @@ registerCanvas({ kind: 'dashboard', title: (request) => getDashboardState().data
 type Draw = (request: CanvasRequest) => ReactNode;
 
 const drawers: Record<string, Draw> = {
-  'care-queue': () => <CareQueueCanvas />,
-  'care-ticket': (request) => (request.params?.ticketId
-    ? <CareTicketCanvas key={String(request.params.ticketId)} ticketId={String(request.params.ticketId)} failStep={request.params.failStep ? String(request.params.failStep) : undefined} />
-    : null),
-  'care-board': () => <CareBoardCanvas />,
-  'stock-queue': () => <CareQueueCanvas desk="stock" />,
-  'stock-ticket': (request) => (request.params?.ticketId
-    ? <CareTicketCanvas key={String(request.params.ticketId)} ticketId={String(request.params.ticketId)} desk="stock" failStep={request.params.failStep ? String(request.params.failStep) : undefined} />
-    : null),
-  'stock-board': () => <CareBoardCanvas desk="stock" />,
-  'quotes-queue': () => <CareQueueCanvas desk="quotes" />,
-  'quotes-ticket': (request) => (request.params?.ticketId
-    ? <CareTicketCanvas key={String(request.params.ticketId)} ticketId={String(request.params.ticketId)} desk="quotes" failStep={request.params.failStep ? String(request.params.failStep) : undefined} />
-    : null),
-  'quotes-board': () => <CareBoardCanvas desk="quotes" />,
-  'invoices-queue': () => <CareQueueCanvas desk="invoices" />,
-  'invoices-ticket': (request) => (request.params?.ticketId
-    ? <CareTicketCanvas key={String(request.params.ticketId)} ticketId={String(request.params.ticketId)} desk="invoices" failStep={request.params.failStep ? String(request.params.failStep) : undefined} />
-    : null),
-  'invoices-board': () => <CareBoardCanvas desk="invoices" />,
+  'operational-desk': request => <OperationalDeskCanvas deskId={String(request.params!.deskId)} projectId={String(request.params!.projectId)} initialMode={request.params?.mode === 'board' ? 'board' : 'list'} initialRecordId={typeof request.params?.recordId === 'string' ? request.params.recordId : undefined} />,
   dashboard: () => <DashboardCanvas />,
   cart: () => <CartCanvas />,
   checkout: (request) => (request.orderId && request.payment ? <CheckoutCanvas key={request.orderId} orderId={request.orderId} payment={request.payment} /> : null),

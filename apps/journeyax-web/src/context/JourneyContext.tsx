@@ -11,7 +11,9 @@ import {
   mapProductsCard, mapQuoteCard, mapGuideCard, mapAccessoriesCard, mapClarifyCard,
   mapWarrantyCard, mapFitmentCard, mapPlanCard, mapOrderStatusCard, mapHeroCard, mapComparisonCard, mapBundleCard,
 } from '@/lib/cards/mappers';
-import { activeSessionId } from '@/lib/conversations';
+import { useAuth } from './AuthContext';
+import { changeOwnedCart, readOwnedCart, type CartChange } from '@/lib/cart-client';
+import { activeSessionId, ensureActiveSessionId } from '@/lib/conversations';
 import { buildReviewEvent, reviewFingerprint } from '@/lib/cards/reviewEvent';
 import { closeCanvas, openCanvas } from '@/lib/shell/sidePanelStore';
 import { keepCardsUpTo } from '@/lib/chat/branching';
@@ -309,7 +311,7 @@ function reducer(state: JourneyState, action: Action): JourneyState {
     case 'PUSH_CARD': {
       const append = keepsOwnPlace(action.card);
       // If a card with the same ID already exists, update it in place
-      const existingIdx = state.cards.findIndex((c) => c.id === action.card.id);
+      const existingIdx = state.cards.findIndex((c) => c.id === action.card.id || (c.cardType === 'confirm' && action.card.cardType === 'confirm' && c.state?.confirmationId && c.state.confirmationId === action.card.state?.confirmationId));
       if (existingIdx !== -1) {
         const updated = [...state.cards];
         updated[existingIdx] = action.card;
@@ -400,6 +402,8 @@ interface JourneyContextType {
   requestCheckout: () => void;
   handleRestart: () => void;
   handleTryRemove: () => void;
+  refreshCart: () => Promise<void>;
+  repriceCart: () => Promise<void>;
   addToCart: (sku: string, qty?: number, title?: string, product?: any) => Promise<void>;
   removeFromCart: (sku: string) => Promise<void>;
   setQuantity: (sku: string, qty: number) => Promise<void>;
@@ -420,6 +424,10 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   const [cartOpen, setCartOpen] = useState(false);
   const cfg = useStorefrontConfig();
+  const { user: cartUser } = useAuth();
+  const cartOwner = `${cfg.projectId}|${cartUser?.email ?? ''}`;
+  const cartOwnerRef = useRef(cartOwner);
+  cartOwnerRef.current = cartOwner;
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -494,35 +502,6 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.serverQuote, state.selectedBranch, state.selectedBranchName, state.phase]);
-
-  // Auto-check the FIRST configured branch as soon as a real quote with SKUs
-  // exists — was PlaceMakers-only (`isPlaceMakers && bomSkuSig && !state.
-  // selectedBranch` inside QuotePanel.tsx); now runs for any tenant whose
-  // config actually lists fulfilment branches, so the "In Stock" status shown
-  // is real from the first render instead of requiring an extra click.
-  useEffect(() => {
-    const branches = cfg.fulfilment?.branches;
-    const skus = state.serverQuote?.lines?.filter((l) => l.sku).map((l) => l.sku);
-    if (!branches?.length || !skus?.length || state.selectedBranch) return;
-    const branchId = branches[0].id;
-    let cancelled = false;
-    (async () => {
-      try {
-        const items = state.serverQuote!.lines.filter((l) => l.sku).map((l) => ({ sku: l.sku, productTitle: l.name }));
-        const res = await fetch('/api/branch-stock' + window.location.search, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items, branch: branchId }),
-        });
-        const data = await res.json();
-        if (cancelled || !data?.ok) return;
-        const bySku: Record<string, any> = {};
-        for (const r of data.results || []) bySku[r.sku] = r;
-        dispatch({ type: 'APPLY_QUOTE_BRANCH_STOCK', branch: branchId, branchName: data.branchName || branchId, bySku });
-      } catch { /* best-effort — the branch selector still works manually */ }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.serverQuote, cfg.fulfilment, state.selectedBranch]);
 
   useEffect(() => {
     if (state.guideSteps.length === 0) return;
@@ -631,7 +610,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
               label: `${l.branchStock.status}${l.branchStock.clickAndCollectReady ? ` · ${l.branchStock.collectionTimeframe}` : ''}`,
               color: l.branchStock.status === 'In Stock' ? '#4E7C59' : l.branchStock.status === 'Low Stock' ? '#B58A3C' : '#B00020',
             }
-          : { label: l.inStock ? 'In stock' : 'Out of stock', color: l.inStock ? '#4E7C59' : '#B58A3C' },
+          : { label: l.inStock === true ? 'Catalogue available; branch stock not checked' : l.inStock === false ? 'Catalogue unavailable' : 'Stock not checked', color: '#B58A3C' },
       }))
     : (state.customBom || []);
   const totals: QuoteTotals = sq
@@ -650,144 +629,46 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; });
 
-  const addToCart = useCallback(async (sku: string, qty: number = 1, title?: string, product?: any) => {
-    const cleanSku = String(sku || '').trim();
-    if (!cleanSku) return;
-    const addQty = Math.max(1, Math.floor(Number(qty) || 1));
+  const cartQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const refreshCart = useCallback(async () => {
     const tenantId = resolveTenantId(cfg.projectId);
-    if (!tenantId) {
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Project context is unavailable. The cart was not changed.' });
-      return;
-    }
-
-    const existingLines = (stateRef.current.serverQuote?.lines && stateRef.current.serverQuote.lines.length > 0)
-      ? stateRef.current.serverQuote.lines
-      : (stateRef.current.customBom || []);
-
-    const matchIdx = existingLines.findIndex((l) => (l.sku || '').toLowerCase() === cleanSku.toLowerCase());
-    let nextItems: { sku: string; quantity: number }[] = [];
-
-    if (matchIdx >= 0) {
-      nextItems = existingLines.map((l, idx) => ({
-        sku: l.sku!,
-        quantity: idx === matchIdx ? (l.quantity || 1) + addQty : (l.quantity || 1),
-      }));
-    } else {
-      nextItems = [
-        ...existingLines.filter((l) => l.sku).map((l) => ({ sku: l.sku!, quantity: l.quantity || 1 })),
-        { sku: cleanSku, quantity: addQty },
-      ];
-    }
-
+    if (!tenantId || !cartUser) return;
+    const owner = cartOwner;
+    const sessionId = ensureActiveSessionId(tenantId);
     try {
-      const res = await fetch(`/api/kit/quote?project=${encodeURIComponent(tenantId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId },
-        body: JSON.stringify({
-          sessionId: activeSessionId(tenantId),
-          items: nextItems,
-        }),
-      });
-      const data = await res.json();
-      if (data?.quote) {
-        dispatch({ type: 'SET_SERVER_QUOTE', quote: data.quote, keepPhase: true });
-        return;
-      }
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: data?.error || 'The cart could not be updated.' });
-      return;
-    } catch (e) {
-      console.warn('Failed to fetch server quote on addToCart', e);
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'The quote service is unavailable. The cart was not changed.' });
-    }
-  }, [cfg.projectId, dispatch]);
+      const result = await readOwnedCart(tenantId, sessionId);
+      if (cartOwnerRef.current !== owner || activeSessionId(tenantId) !== sessionId) return;
+      if (result.quote) dispatch({ type: 'SET_SERVER_QUOTE', quote: result.quote, keepPhase: true });
+      else dispatch({ type: 'CLEAR_QUOTE' });
+    } catch { /* A failed refresh cannot confirm new prices or replace the displayed cart. Checkout revalidates on the server. */ }
+  }, [cfg.projectId, cartOwner, cartUser]);
 
-  const removeFromCart = useCallback(async (sku: string) => {
-    const cleanSku = String(sku || '').trim();
-    if (!cleanSku) return;
+  const changeCart = useCallback((change: CartChange): Promise<void> => {
     const tenantId = resolveTenantId(cfg.projectId);
-    if (!tenantId) {
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Project context is unavailable. The cart was not changed.' });
-      return;
-    }
-
-    const existingLines = (stateRef.current.serverQuote?.lines && stateRef.current.serverQuote.lines.length > 0)
-      ? stateRef.current.serverQuote.lines
-      : (stateRef.current.customBom || []);
-
-    const nextItems = existingLines
-      .filter((l) => (l.sku || '').toLowerCase() !== cleanSku.toLowerCase())
-      .map((l) => ({ sku: l.sku!, quantity: l.quantity || 1 }));
-
-    if (nextItems.length === 0) {
-      dispatch({ type: 'CLEAR_QUOTE' });
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/kit/quote?project=${encodeURIComponent(tenantId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId },
-        body: JSON.stringify({
-          sessionId: activeSessionId(tenantId),
-          items: nextItems,
-        }),
-      });
-      const data = await res.json();
-      if (data?.quote) {
-        dispatch({ type: 'SET_SERVER_QUOTE', quote: data.quote, keepPhase: true });
-        return;
+    const owner = cartOwner;
+    const sessionId = tenantId ? ensureActiveSessionId(tenantId) : '';
+    const isCurrent = () => cartOwnerRef.current === owner && !!tenantId && activeSessionId(tenantId) === sessionId;
+    const pending = cartQueue.current.catch(() => {}).then(async () => {
+      if (!tenantId || !cartUser || !isCurrent()) throw new Error('The cart session changed. Please try again in the current conversation.');
+      try {
+        dispatch({ type: 'SET_ORDERING', ordering: false });
+        const result = await changeOwnedCart(tenantId, sessionId, change);
+        if (!isCurrent()) throw new Error('The cart session changed. Open the original conversation to review its saved cart.');
+        if (result.quote) dispatch({ type: 'SET_SERVER_QUOTE', quote: result.quote, keepPhase: true });
+        else dispatch({ type: 'CLEAR_QUOTE' });
+      } catch (error) {
+        if (isCurrent()) dispatch({ type: 'SET_ORDERING', ordering: false, error: error instanceof Error ? error.message : 'The cart could not be updated.' });
+        throw error;
       }
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: data?.error || 'The cart could not be updated.' });
-      return;
-    } catch (e) {
-      console.warn('Failed to fetch server quote on removeFromCart', e);
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'The quote service is unavailable. The cart was not changed.' });
-    }
-  }, [cfg.projectId, dispatch]);
+    });
+    cartQueue.current = pending;
+    return pending;
+  }, [cfg.projectId, cartOwner, cartUser]);
 
-  const setQuantity = useCallback(async (sku: string, qty: number) => {
-    const cleanSku = String(sku || '').trim();
-    if (!cleanSku) return;
-    const newQty = Math.floor(Number(qty) || 0);
-    if (newQty <= 0) {
-      return removeFromCart(cleanSku);
-    }
-    const tenantId = resolveTenantId(cfg.projectId);
-    if (!tenantId) {
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Project context is unavailable. The cart was not changed.' });
-      return;
-    }
-
-    const existingLines = (stateRef.current.serverQuote?.lines && stateRef.current.serverQuote.lines.length > 0)
-      ? stateRef.current.serverQuote.lines
-      : (stateRef.current.customBom || []);
-
-    const nextItems = existingLines.map((l) => ({
-      sku: l.sku!,
-      quantity: (l.sku || '').toLowerCase() === cleanSku.toLowerCase() ? newQty : (l.quantity || 1),
-    }));
-
-    try {
-      const res = await fetch(`/api/kit/quote?project=${encodeURIComponent(tenantId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': tenantId },
-        body: JSON.stringify({
-          sessionId: activeSessionId(tenantId),
-          items: nextItems,
-        }),
-      });
-      const data = await res.json();
-      if (data?.quote) {
-        dispatch({ type: 'SET_SERVER_QUOTE', quote: data.quote, keepPhase: true });
-        return;
-      }
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: data?.error || 'The cart could not be updated.' });
-      return;
-    } catch (e) {
-      console.warn('Failed to fetch server quote on setQuantity', e);
-      dispatch({ type: 'SET_ORDERING', ordering: false, error: 'The quote service is unavailable. The cart was not changed.' });
-    }
-  }, [cfg.projectId, dispatch, removeFromCart]);
+  const addToCart = useCallback((sku: string, quantity = 1, _title?: string, _product?: any) => changeCart({ kind: 'add', sku, quantity }), [changeCart]);
+  const removeFromCart = useCallback((sku: string) => changeCart({ kind: 'remove', sku }), [changeCart]);
+  const setQuantity = useCallback((sku: string, quantity: number) => changeCart({ kind: 'set', sku, quantity }), [changeCart]);
+  const repriceCart = useCallback(() => changeCart({ kind: 'refresh' }), [changeCart]);
 
   const handleApprove = useCallback(async () => {
     const quote = stateRef.current.serverQuote;
@@ -816,11 +697,11 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (inPanel && data?.success && data?.status === 'paid' && data?.orderId) {
-        // No payment provider is switched on for this shop (a demo or a credit account): the order stands as placed.
+        // A replay can return an already-paid order; only its saved receipt confirms it.
         dispatch({ type: 'SET_ORDERING', ordering: false });
         try {
           const done = await (await fetch(`/api/order?orderId=${encodeURIComponent(data.orderId)}&${window.location.search.slice(1)}`, { cache: 'no-store' })).json();
-          if (done?.found) dispatch({ type: 'SET_PLACED_ORDER', order: done });
+          if (done?.found && done.status === 'paid') { dispatch({ type: 'SET_PLACED_ORDER', order: done }); dispatch({ type: 'CLEAR_QUOTE' }); }
         } catch { /* the order still opens below */ }
         openCanvas({ kind: 'order', orderId: data.orderId });
         return;
@@ -851,7 +732,7 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
   // P0-04: on return from Stripe (?order=<id>&status=success) poll the order until
   // the webhook has confirmed payment, THEN show "ordered". Never before.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !cartUser) return;
     const params = new URLSearchParams(window.location.search);
     const orderId = params.get('order');
     const status = params.get('status');
@@ -864,17 +745,26 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
       try {
         const r = await fetch(`/api/order?orderId=${encodeURIComponent(orderId)}&${window.location.search.slice(1)}`, { cache: 'no-store' });
         const d = await r.json();
+        if (cancelled) return;
         if (d?.found && d.status === 'paid') {
           dispatch({ type: 'SET_PLACED_ORDER', order: d });
+          dispatch({ type: 'CLEAR_QUOTE' });
           dispatch({ type: 'SET_PHASE', phase: 'ordered' });
+          openCanvas({ kind: 'order', orderId });
+          return;
+        }
+        if (d?.found && (d.status === 'failed' || d.status === 'cancelled')) {
+          dispatch({ type: 'SET_ORDERING', ordering: false, error: 'This payment session has ended. Review your cart and refresh the quote before trying again.' });
+          openCanvas({ kind: 'order', orderId });
           return;
         }
       } catch { /* retry */ }
       if (tries < 12 && !cancelled) setTimeout(poll, 1500);
+      else if (!cancelled) dispatch({ type: 'SET_ORDERING', ordering: false, error: 'Payment status is not confirmed. Please check this order before paying again.' });
     };
     poll();
     return () => { cancelled = true; };
-  }, []);
+  }, [cartOwner, cartUser, refreshCart]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -913,6 +803,8 @@ export function JourneyProvider({ children }: { children: React.ReactNode }) {
         requestCheckout,
         handleRestart,
         handleTryRemove,
+        refreshCart,
+        repriceCart,
         addToCart,
         removeFromCart,
         setQuantity,

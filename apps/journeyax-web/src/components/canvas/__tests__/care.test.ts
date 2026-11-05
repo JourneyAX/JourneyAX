@@ -40,11 +40,11 @@ check('every status has a word, an icon and a tone, so colour is never the only 
   for (const s of Object.values(STATUS_WORD)) assert.ok(s.word.length > 2 && s.icon.length > 0 && s.tone.length > 0);
 });
 
-check('the three surfaces are registered, and a ticket cannot open without an id', () => {
-  assert.equal(canvasCanOpen({ kind: 'care-queue' }), true);
-  assert.equal(canvasCanOpen({ kind: 'care-board' }), true);
+check('fixture care surfaces cannot open in the real canvas registry, even when a ticket id is supplied', () => {
+  assert.equal(canvasCanOpen({ kind: 'care-queue' }), false);
+  assert.equal(canvasCanOpen({ kind: 'care-board' }), false);
   assert.equal(canvasCanOpen({ kind: 'care-ticket' }), false);
-  assert.equal(canvasCanOpen({ kind: 'care-ticket', params: { ticketId: 't4312' } }), true);
+  assert.equal(canvasCanOpen({ kind: 'care-ticket', params: { ticketId: 't4312' } }), false);
 });
 
 check('the queue counts what the person decides apart from what the team lead decides, and offers the right ticket next', () => {

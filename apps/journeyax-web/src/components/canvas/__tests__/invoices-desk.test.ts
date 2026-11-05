@@ -110,15 +110,15 @@ async function main() {
     assert.deepEqual(INVOICES_ENTRIES, [{ label: 'Invoice exceptions', kind: 'invoices-queue' }, { label: 'Invoice board', kind: 'invoices-board' }]);
   });
 
-  await check('the portal passes on the invoices desk\'s routes, and the three screens can be opened', () => {
+  await check('fixture routes remain bounded and retired invoice canvases cannot open in the real registry', () => {
     assert.equal(allowedCarePath('GET', ['invoices', 'tickets']), true);
     assert.equal(allowedCarePath('POST', ['invoices', 'tickets', 'i8101', 'approve']), true);
     assert.equal(allowedCarePath('GET', ['invoices']), false);
     assert.equal(allowedCarePath('POST', ['invoices', 'tickets', 'i8101', 'delete']), false);
-    assert.equal(canvasCanOpen({ kind: 'invoices-queue' }), true);
-    assert.equal(canvasCanOpen({ kind: 'invoices-board' }), true);
+    assert.equal(canvasCanOpen({ kind: 'invoices-queue' }), false);
+    assert.equal(canvasCanOpen({ kind: 'invoices-board' }), false);
     assert.equal(canvasCanOpen({ kind: 'invoices-ticket' }), false);
-    assert.equal(canvasCanOpen({ kind: 'invoices-ticket', params: { ticketId: 'i8101' } }), true);
+    assert.equal(canvasCanOpen({ kind: 'invoices-ticket', params: { ticketId: 'i8101' } }), false);
   });
 
   await check('the list and the board use the invoices desk\'s words', () => {

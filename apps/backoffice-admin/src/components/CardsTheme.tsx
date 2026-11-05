@@ -111,6 +111,11 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [productMode, setProductMode] = useState<'model' | 'when_named' | 'after_search'>(
+    project.experience?.cards?.productCardMode ??
+    ((project.extensions?.presentation as any)?.autoProductCards === true ? 'after_search' :
+      (project.extensions?.presentation as any)?.autoProductCards === false ? 'model' : 'when_named'),
+  );
 
   const mergedTokens = useMemo(() => mergeTokens(draftTokens), [draftTokens]);
   const catalog = useMemo<NamedTheme[]>(() => [
@@ -139,6 +144,9 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
     setCardOverlay(nextSaved.find((t) => t.id === nextActive)?.cardTemplates ?? null);
     setNaming(false);
     setNewThemeName("");
+    setProductMode(project.experience?.cards?.productCardMode ??
+      ((project.extensions?.presentation as any)?.autoProductCards === true ? 'after_search' :
+        (project.extensions?.presentation as any)?.autoProductCards === false ? 'model' : 'when_named'));
   }, [project.projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadCards() {
@@ -294,6 +302,19 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
     }
   }
 
+  async function saveProductMode() {
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await projectApi.update(projectId, { experience: {
+        ...project.experience,
+        cards: { ...project.experience?.cards, productCardMode: productMode },
+      } });
+      setNotice("Product card behaviour saved to draft. Publish when ready.");
+      onSaved?.();
+    } catch (e: any) { setError(`Could not save product card behaviour: ${e.message}`); }
+    finally { setBusy(false); }
+  }
+
   const hasUnpublished = (project.version || 0) !== (project.activeVersion || 0);
 
   return (
@@ -330,6 +351,21 @@ export function CardsTheme({ project, onSaved }: { project: Project; onSaved?: (
         dirty={dirty}
         onPick={applyNamedTheme}
       />
+
+      <div className="panel" style={{ padding: 16 }}>
+        <label htmlFor="product-card-mode" style={{ display: "block", fontWeight: 600 }}>When to show product cards</label>
+        <p style={{ margin: "6px 0 12px", color: "var(--text-muted)", fontSize: 13 }}>
+          Cards use catalogue products. The assistant still chooses how to explain them and when to ask a question.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <select id="product-card-mode" value={productMode} disabled={busy} onChange={(event) => setProductMode(event.target.value as typeof productMode)}>
+            <option value="when_named">Alongside products named in the answer</option>
+            <option value="after_search">After a product search</option>
+            <option value="model">Let the assistant choose each card</option>
+          </select>
+          <button type="button" className="btn" disabled={busy} onClick={saveProductMode}>Save card behaviour</button>
+        </div>
+      </div>
 
       <div className="cards-theme-tabs">
         {TABS.map((t) => (

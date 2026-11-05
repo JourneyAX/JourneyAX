@@ -8,6 +8,7 @@
 import { usableImage } from './mappers';
 
 export interface ServerProductDetail {
+  integrity?: { identityConsistent: boolean };
   sku: string;
   title: string;
   brand?: string;
@@ -21,7 +22,7 @@ export interface ServerProductDetail {
   documents?: Array<{ title: string; url: string; kind?: string }>;
   suggested?: Array<{ sku: string; title: string; price?: number | null; currency?: string; imageUrl?: string | null }>;
   related?: Array<{ sku: string; title: string; price?: number | null; currency?: string; imageUrl?: string | null }>;
-  availability?: { label: string; inStock: boolean; branchesWithStock: number; branchCount: number };
+  availability?: { label: string; inStock?: boolean; branchChecked?: boolean; branchesWithStock: number; branchCount: number };
   productUrl?: string;
   rating?: { value: number; count?: number };
 }
@@ -61,15 +62,16 @@ export async function fetchProductDetail(sku: string, projectId?: string, signal
 const list = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
 export function buildDetailProduct(tile: TileProduct | undefined, detail: ServerProductDetail | null, sku: string): Record<string, unknown> {
+  if (detail?.integrity?.identityConsistent === false) return { sku, title: `SKU ${sku}`, price: null, description: 'The catalogue source record needs review before these product details can be confirmed.', specs: {}, specList: [], hasSpecs: false, documents: [], hasDocuments: false, hasFeatures: false, hasSuggested: false, hasRelated: false, stockOk: false, stockWarn: false, hasProductUrl: false, hasRating: false };
   const tileSpecs = list<{ label: string; value: string }>(tile?.specList).length > 0
     ? list<{ label: string; value: string }>(tile?.specList)
     : Object.entries(tile?.specs || {}).map(([label, value]) => ({ label, value: String(value) }));
-  const specList = list(detail?.specs).length > 0 ? list<{ label: string; value: string }>(detail?.specs) : tileSpecs;
-  const features = list<string>(detail?.features).length > 0 ? list<string>(detail?.features) : list<string>(tile?.featuresList);
+  const specList = detail ? list<{ label: string; value: string }>(detail.specs) : tileSpecs;
+  const features = detail ? list<string>(detail.features) : list<string>(tile?.featuresList);
   const title = detail?.title || tile?.name || tile?.title;
   // Each document also carries the line the "Explain it to me" button sends, so the consultant reads that document to the customer.
-  const documents = (list(detail?.documents).length > 0 ? list<{ title: string; url: string }>(detail?.documents) : list<{ title: string; url: string }>(tile?.documents))
-    .map((document) => ({ ...document, ask: title ? `Explain the ${document.title} for ${title}` : `Explain the ${document.title}` }));
+  const documents = (detail ? list<{ title: string; url: string }>(detail.documents) : list<{ title: string; url: string }>(tile?.documents))
+    .map((document) => ({ ...document, ask: title ? `Explain the ${document.title} for ${title} (SKU ${sku})` : `Explain the ${document.title} (SKU ${sku})` }));
   const withPhoto = (items: unknown) => list<NonNullable<ServerProductDetail['related']>[number]>(items).map((r) => ({ ...r, imageUrl: usableImage(r.imageUrl) }));
   const suggested = withPhoto(detail?.suggested);
   const related = withPhoto(detail?.related);
@@ -82,9 +84,9 @@ export function buildDetailProduct(tile: TileProduct | undefined, detail: Server
     category: detail?.category || tile?.category,
     description: detail?.description || tile?.description || tile?.narrative,
     imageUrl: usableImage(detail?.imageUrl) || usableImage(tile?.imageUrl) || tile?.image || null,
-    price: detail?.price ?? tile?.price ?? null,
+    price: detail ? detail.price ?? null : tile?.price ?? null,
     currency: detail?.currency || (tile as { currency?: string } | undefined)?.currency,
-    specs: tile?.specs || {},
+    specs: Object.fromEntries(specList.map(entry => [entry.label, entry.value])),
     specList,
     hasSpecs: specList.length > 0,
     // A markdown bullet list, so the card renders it with the same block it uses for any text.
@@ -96,9 +98,9 @@ export function buildDetailProduct(tile: TileProduct | undefined, detail: Server
     hasSuggested: suggested.length > 0,
     related,
     hasRelated: related.length > 0,
-    stockLabel: availability?.label,
-    stockOk: availability ? availability.inStock : false,
-    stockWarn: availability ? !availability.inStock : false,
+    stockLabel: availability?.branchChecked === true ? availability.label : availability && Number.isFinite(availability.branchesWithStock) && Number.isFinite(availability.branchCount) ? `Catalogue lists ${availability.branchesWithStock} of ${availability.branchCount} branches; current stock not checked` : undefined,
+    stockOk: availability?.branchChecked === true && availability.inStock === true,
+    stockWarn: availability?.branchChecked === true && availability.inStock === false,
     productUrl: detail?.productUrl,
     hasProductUrl: Boolean(detail?.productUrl),
     rating: detail?.rating?.value,

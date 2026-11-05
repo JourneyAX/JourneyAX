@@ -217,6 +217,9 @@ export interface BundleData {
 }
 
 export interface RecommendedProduct {
+  currency?: string;
+  inStock?: boolean;
+  reason?: string;
   name: string;
   sku?: string;
   price?: number;
@@ -333,7 +336,7 @@ export interface ServerQuoteLine {
   quantity: number;
   lineTotal: number;
   sourceOfPrice: 'catalogue' | 'unavailable';
-  inStock: boolean;
+  inStock?: boolean;
   category?: string;
   imageUrl?: string;
   url?: string;
@@ -345,6 +348,9 @@ export interface ServerQuoteLine {
   branchStock?: { status: string; stockQty: number; collectionTimeframe: string; clickAndCollectReady: boolean };
 }
 export interface ServerQuote {
+  cartId?: string;
+  cartVersion?: number;
+  version?: number;
   quoteId: string;
   title: string;
   currency: string;

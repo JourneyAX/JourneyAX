@@ -16,171 +16,31 @@ function specStr(v: unknown): string {
   return String(v);
 }
 
-function formatPrice(n: number | undefined | null, currency: string = 'NZD', symbol: string = '$'): string {
-  if (n === undefined || n === null || isNaN(n) || n === 0) return 'Price on request';
-  const whole = Number.isInteger(n);
-  return `${symbol}${n.toLocaleString('en-US', {
-    minimumFractionDigits: whole ? 0 : 2,
-    maximumFractionDigits: 2,
-  })}`;
+function formatPrice(n: number | undefined | null, currency: string): string {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0 || !/^[A-Z]{3}$/.test(currency)) return 'Price on request';
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n);
 }
-
-function getProductName(p: any): string {
-  return p?.name || p?.title || 'Trade Building Product';
-}
-
-function getProductCategory(p: any): string {
-  if (p?.category) return p.category;
-  if (Array.isArray(p?.categoryPath) && p.categoryPath.length) return p.categoryPath[p.categoryPath.length - 1];
-  return 'Building Products';
-}
-
-function getProductDescription(p: any): string {
-  return p?.description || p?.content || p?.summary || '';
-}
-
+function getProductName(p: any): string { return p?.name || p?.title || 'Product'; }
+function getProductCategory(p: any): string { return p?.category || p?.categoryPath?.at(-1) || ''; }
+function getProductDescription(p: any): string { return p?.description || p?.summary || ''; }
 function getProductFeatures(p: any): string[] {
-  if (Array.isArray(p?.features) && p.features.length) return p.features;
-  const name = getProductName(p);
-  const desc = getProductDescription(p);
-  const text = `${name} ${desc}`.toLowerCase();
-  if (text.includes('aqualine') || text.includes('waterproof') || text.includes('wet area') || text.includes('shower') || text.includes('lining')) {
-    return ['NZS 3604 Verified', 'Moisture Resistant Core', 'Tapered Edge Finish'];
-  }
-  if (text.includes('sg8') || text.includes('timber') || text.includes('framing')) {
-    return ['SG8 Structural Grade', 'H3.2 CCA Treated', 'Kiln Dried & Gauged'];
-  }
-  if (text.includes('decking') || text.includes('kwila')) {
-    return ['Exterior Durability', 'Pre-finished Weather Coating', 'Anti-Slip Profile'];
-  }
-  return ['Trade Grade Material', 'PlaceMakers Branch Stocked', 'NZ Building Code Compliant'];
+  const values = p?.features ?? p?.highlights;
+  return Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string').slice(0, 8) : [];
 }
-
-function getProductSpecs(p: any): Record<string, string> {
-  if (p?.specs && Object.keys(p.specs).length) return p.specs;
-  const name = getProductName(p);
-  const category = getProductCategory(p);
-  const specs: Record<string, string> = {
-    'Building Standard': 'NZS 3604:2011 Compliant',
-    'Trade Category': category,
-  };
-  const dimMatch = name.match(/(\d+\s*x\s*\d+(?:\s*x\s*[\d.]+mm)?)/i);
-  if (dimMatch) specs['Dimensions'] = dimMatch[1];
-  const thickMatch = name.match(/([\d.]+\s*mm)/i);
-  if (thickMatch) specs['Thickness'] = thickMatch[1];
-  specs['Store Pickup'] = '60-Min Click & Collect (Mt Wellington / Cook St)';
-  return specs;
+function getProductSpecs(p: any): Record<string, unknown> {
+  return p?.specs && typeof p.specs === 'object' && !Array.isArray(p.specs) ? p.specs : {};
 }
-
-/** Category visual badge for products without an explicit media image */
+function recommendationReason(p: any): string { return typeof p?.reason === 'string' ? p.reason : ''; }
+function productLink(value: unknown): string | undefined {
+  try { const url = new URL(String(value)); return ['http:', 'https:'].includes(url.protocol) ? url.toString() : undefined; } catch { return undefined; }
+}
+/** Missing catalogue media is a neutral placeholder, never a substitute photograph of a different product. */
 function ProductVisual({ imageUrl, name, category }: { imageUrl?: string; name: string; category?: string }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const cat = (category || name || '').toLowerCase();
-
-  const getCategoryFallbackImage = () => {
-    if (cat.includes('aqualine') || cat.includes('gib') || cat.includes('plasterboard') || cat.includes('wallboard') || cat.includes('lining')) {
-      return 'https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=600&auto=format&fit=crop&q=80';
-    }
-    if (cat.includes('shower') || cat.includes('acrylic') || cat.includes('bath') || cat.includes('enclosure')) {
-      return 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80';
-    }
-    if (cat.includes('hinge') || cat.includes('joinery') || cat.includes('hardware') || cat.includes('handle') || cat.includes('bracket')) {
-      return 'https://images.unsplash.com/photo-1530124566582-a618bc2615dc?w=600&auto=format&fit=crop&q=80';
-    }
-    if (cat.includes('adhesive') || cat.includes('sealant') || cat.includes('silicone') || cat.includes('glue') || cat.includes('sikaflex')) {
-      return 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80';
-    }
-    if (cat.includes('landscap') || cat.includes('retaining') || cat.includes('sleeper') || cat.includes('h4') || cat.includes('h5')) {
-      return 'https://images.unsplash.com/photo-1541888946425-d0fbb186c5f7?w=600&auto=format&fit=crop&q=80';
-    }
-    if (cat.includes('deck') || cat.includes('kwila')) {
-      return 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?w=600&auto=format&fit=crop&q=80';
-    }
-    if (cat.includes('timber') || cat.includes('framing') || cat.includes('stud') || cat.includes('joist') || cat.includes('sg8') || cat.includes('radiata') || cat.includes('pine')) {
-      return 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&auto=format&fit=crop&q=80';
-    }
-    return 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&auto=format&fit=crop&q=80';
-  };
-
-  const getCategoryTheme = () => {
-    if (cat.includes('decking') || cat.includes('kwila') || cat.includes('hardwood')) {
-      return { icon: '🪵', label: 'Hardwood Timber Decking', bg: 'linear-gradient(135deg, #78350f, #451a03)' };
-    }
-    if (cat.includes('landscap') || cat.includes('retaining') || cat.includes('sleeper') || cat.includes('h4') || cat.includes('h5')) {
-      return { icon: '🌿', label: 'Landscaping & Retaining Timber', bg: 'linear-gradient(135deg, #3f6212, #365314)' };
-    }
-    if (cat.includes('timber') || cat.includes('framing') || cat.includes('radiata') || cat.includes('pine') || cat.includes('plywood')) {
-      return { icon: '🌲', label: 'Radiata Pine & Structural Timber', bg: 'linear-gradient(135deg, #065f46, #064e3b)' };
-    }
-    if (cat.includes('hinge') || cat.includes('joinery') || cat.includes('hardware') || cat.includes('drawer') || cat.includes('bracket')) {
-      return { icon: '🚪', label: 'Joinery & Cabinet Hardware', bg: 'linear-gradient(135deg, #374151, #1f2937)' };
-    }
-    if (cat.includes('adhesive') || cat.includes('sealant') || cat.includes('silicone') || cat.includes('glue') || cat.includes('sikaflex')) {
-      return { icon: '🧪', label: 'Adhesives, Sealants & Glues', bg: 'linear-gradient(135deg, #0e7490, #155e75)' };
-    }
-    if (cat.includes('cladding') || cat.includes('weatherboard') || cat.includes('facade')) {
-      return { icon: '🧱', label: 'Exterior Cladding & Facades', bg: 'linear-gradient(135deg, #334155, #1e293b)' };
-    }
-    if (cat.includes('screw') || cat.includes('fastener') || cat.includes('fixing') || cat.includes('nail')) {
-      return { icon: '🔩', label: 'Fasteners & Structural Fixings', bg: 'linear-gradient(135deg, #475569, #334155)' };
-    }
-    if (cat.includes('lining') || cat.includes('gib') || cat.includes('plasterboard') || cat.includes('wall')) {
-      return { icon: '📐', label: 'Wall Linings & Plasterboard', bg: 'linear-gradient(135deg, #1e3a8a, #172554)' };
-    }
-    if (cat.includes('bath') || cat.includes('vanity') || cat.includes('tap') || cat.includes('shower') || cat.includes('basin')) {
-      return { icon: '🚿', label: 'Bathroom & Tapware', bg: 'linear-gradient(135deg, #0284c7, #0369a1)' };
-    }
-    if (cat.includes('tool') || cat.includes('power') || cat.includes('drill') || cat.includes('saw')) {
-      return { icon: '🛠️', label: 'Tools & Trade Equipment', bg: 'linear-gradient(135deg, #d97706, #b45309)' };
-    }
-    return { icon: '📦', label: 'Building Products & Materials', bg: 'linear-gradient(135deg, #002855, #001833)' };
-  };
-
-  const theme = getCategoryTheme();
-  // If imageUrl is blocked by WAF or fails, use high-resolution category photography
-  const isWafUrl = typeof imageUrl === 'string' && imageUrl.includes('placemakers.co.nz/online/medias');
-  const effectiveImageUrl = (isWafUrl || imgFailed || !imageUrl) ? getCategoryFallbackImage() : imageUrl;
-
-  if (effectiveImageUrl) {
-    return (
-      <div className="product-card__image" style={{ background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 180, overflow: 'hidden', position: 'relative' }}>
-        <img
-          src={effectiveImageUrl}
-          alt={name || 'Building Product'}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onError={() => setImgFailed(true)}
-        />
-        <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,40,85,0.85)', backdropFilter: 'blur(4px)', color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {theme.icon} {theme.label.split('&')[0].trim()}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="product-card__image product-card__image--fallback"
-      style={{
-        background: theme.bg,
-        minHeight: 180,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1.25rem',
-        color: '#ffffff',
-        textAlign: 'center',
-        position: 'relative',
-      }}
-    >
-      <span style={{ fontSize: '2.75rem', marginBottom: '0.5rem', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' }}>
-        {theme.icon}
-      </span>
-      <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', opacity: 0.9 }}>
-        {theme.label}
-      </span>
-    </div>
-  );
+  const [failedUrl, setFailedUrl] = useState<string>();
+  const source = productLink(imageUrl);
+  return <div className="product-card__image" style={{ minHeight: 180, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+    {source && failedUrl !== source ? <img src={source} alt={name} style={{ width: '100%', height: 180, objectFit: 'contain' }} onError={() => setFailedUrl(source)} /> : <div style={{ textAlign: 'center', color: 'var(--text-secondary, #64748b)' }}><span aria-hidden="true" style={{ fontSize: 36 }}>□</span><div>{category || 'Image unavailable'}</div></div>}
+  </div>;
 }
 
 export default function ProductsPanel() {
@@ -267,7 +127,7 @@ export default function ProductsPanel() {
     const pDesc = getProductDescription(p);
     const pFeatures = getProductFeatures(p);
     const pSpecs = getProductSpecs(p);
-    const priceFormatted = formatPrice(p.price, (cfg as any)?.pricing?.currency || '', (cfg as any)?.pricing?.symbol || '$');
+    const priceFormatted = formatPrice(p.price, (p as any).currency || (cfg as any)?.pricing?.currency || '');
 
     const addThis = () => {
       // Server-authoritative path for every tenant — see handleBuildQuote above.
@@ -289,7 +149,7 @@ export default function ProductsPanel() {
             <ProductVisual imageUrl={p.imageUrl} name={pName} category={pCategory} />
           </div>
 
-          <div className="product-detail__category" style={{ color: '#002855', fontWeight: 700 }}>
+          <div className="product-detail__category" style={{ color: 'var(--brand-link, var(--brand-primary))', fontWeight: 700 }}>
             {pCategory}
           </div>
 
@@ -303,33 +163,10 @@ export default function ProductsPanel() {
             </div>
           )}
 
-          {/* Real-time Branch Stock Fulfillment Badge */}
-          <div
-            style={{
-              margin: '1rem 0',
-              padding: '0.875rem 1rem',
-              borderRadius: '0.75rem',
-              backgroundColor: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div>
-              <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#065f46', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                <span>✓</span> In Stock · 60-Min Click &amp; Collect Available
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#047857', marginTop: '0.125rem' }}>
-                PlaceMakers Mt Wellington, Cook St Auckland, &amp; Albany branches
-              </div>
-            </div>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.25rem 0.5rem', background: '#059669', color: '#fff', borderRadius: '0.375rem' }}>
-              READY TODAY
-            </span>
-          </div>
+          {(typeof p.inStock === 'boolean') && <p className="product-detail__availability">{p.inStock ? 'Available in the catalogue — confirm branch stock before collection.' : 'Currently unavailable.'}</p>}
+          {recommendationReason(p) && <p className="product-detail__reason"><strong>Why this fits:</strong> {recommendationReason(p)}</p>}
 
-          <div className="product-detail__price" style={{ margin: '0.75rem 0', fontSize: '1.35rem', fontWeight: 800, color: '#002855' }}>
+          <div className="product-detail__price" style={{ margin: '0.75rem 0', fontSize: '1.35rem', fontWeight: 800, color: 'var(--brand-link, var(--brand-primary))' }}>
             {priceFormatted}
           </div>
 
@@ -394,7 +231,7 @@ export default function ProductsPanel() {
           {pFeatures && pFeatures.length > 0 && (
             <div style={{ margin: '1.25rem 0' }}>
               <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.5rem' }}>
-                ⭐ Key Features &amp; Standards
+                ⭐ Catalogue features
               </div>
               <ul className="product-card__features" style={{ paddingLeft: '1.25rem', color: '#334155', fontSize: '0.85rem' }}>
                 {pFeatures.map((f, i) => (
@@ -404,29 +241,12 @@ export default function ProductsPanel() {
             </div>
           )}
 
-          {/* Supporting Technical Documents & Compliance Statement */}
-          <div style={{ margin: '1.5rem 0', padding: '1rem', borderRadius: '0.75rem', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.625rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <span>📄</span> Compliance &amp; Supporting Documents
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.8rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.375rem 0', borderBottom: '1px dashed #cbd5e1' }}>
-                <span style={{ color: '#334155' }}>NZ Building Code NZS 3604 Compliance Pass</span>
-                <span style={{ color: '#059669', fontWeight: 700 }}>VERIFIED</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.375rem 0' }}>
-                <span style={{ color: '#334155' }}>Product Technical Statement (PTS)</span>
-                <span style={{ color: '#002855', fontWeight: 600 }}>PDF Document</span>
-              </div>
-            </div>
-          </div>
-
-          {p.url && (
+          {productLink(p.url) && (
             <a
-              href={p.url}
+              href={productLink(p.url)}
               {...linkProps}
               className="product-card__link"
-              style={{ display: 'inline-block', marginTop: '0.5rem', color: '#002855', fontWeight: 600 }}
+              style={{ display: 'inline-block', marginTop: '0.5rem', color: 'var(--brand-link, var(--brand-primary))', fontWeight: 600 }}
             >
               View on {(() => { try { return new URL(p.url!).hostname.replace(/^www\./, ''); } catch { return 'their site'; } })()} →
             </a>
@@ -453,7 +273,7 @@ export default function ProductsPanel() {
           {labels.items} matched to your brief
         </h2>
         <p className="products-panel__desc">
-          I&apos;ve explained each product in the chat — click any product card for full specifications, documents, and branch availability.
+          Select a product to see the catalogue details. Availability and technical guidance are shown when their sources are available.
         </p>
 
         <div className="products-grid">
@@ -464,11 +284,12 @@ export default function ProductsPanel() {
             const category = getProductCategory(product);
             const desc = getProductDescription(product);
             const features = getProductFeatures(product);
-            const priceFormatted = formatPrice(product.price, (cfg as any)?.pricing?.currency || '', (cfg as any)?.pricing?.symbol || '$');
+            const priceFormatted = formatPrice(product.price, (product as any).currency || (cfg as any)?.pricing?.currency || '');
 
             return (
               <div
                 key={`${product.sku || 'product'}-${idx}`}
+                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setFocusIdx(idx); } }}
                 className={`product-card${isSel ? ' product-card--selected' : ''}`}
                 onClick={() => setFocusIdx(idx)}
                 role="button"
@@ -492,14 +313,14 @@ export default function ProductsPanel() {
                 <ProductVisual imageUrl={product.imageUrl} name={name} category={category} />
 
                 <div className="product-card__content">
-                  <div className="product-card__category" style={{ color: '#002855', fontWeight: 700 }}>
+                  <div className="product-card__category" style={{ color: 'var(--brand-link, var(--brand-primary))', fontWeight: 700 }}>
                     {category}
                   </div>
                   <div className="product-card__name" style={{ fontWeight: 700, color: '#0f172a', lineHeight: '1.3' }}>
                     {name}
                   </div>
 
-                  <div className="product-card__price" style={{ color: '#002855', fontWeight: 800, margin: '0.375rem 0' }}>
+                  <div className="product-card__price" style={{ color: 'var(--brand-link, var(--brand-primary))', fontWeight: 800, margin: '0.375rem 0' }}>
                     {priceFormatted}
                   </div>
 
@@ -509,6 +330,7 @@ export default function ProductsPanel() {
                     </p>
                   )}
 
+                  {recommendationReason(product) && <p className="product-card__reason" style={{ fontSize: '0.8rem' }}><strong>Why this fits:</strong> {recommendationReason(product)}</p>}
                   {/* Highlights / Specs badges */}
                   {features && features.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.5rem' }}>
@@ -537,15 +359,15 @@ export default function ProductsPanel() {
                     </div>
                   )}
 
-                  {product.url && (
+                  {productLink(product.url) && (
                     <a
-                      href={product.url}
+                      href={productLink(product.url)}
                       {...linkProps}
                       className="product-card__link"
                       onClick={(e) => e.stopPropagation()}
-                      style={{ display: 'inline-block', marginTop: '0.35rem', color: '#002855', fontSize: '0.75rem' }}
+                      style={{ display: 'inline-block', marginTop: '0.35rem', color: 'var(--brand-link, var(--brand-primary))', fontSize: '0.75rem' }}
                     >
-                      View on {(() => { try { return new URL(product.url).hostname.replace(/^www\./, ''); } catch { return 'their site'; } })()} →
+                      View on {(() => { try { return new URL(product.url!).hostname.replace(/^www\./, ''); } catch { return 'their site'; } })()} →
                     </a>
                   )}
                 </div>

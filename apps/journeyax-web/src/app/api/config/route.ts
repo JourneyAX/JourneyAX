@@ -13,20 +13,23 @@ const PROJECT_API = process.env.PROJECT_API || 'http://localhost:8082';
 
 export async function GET(req: Request) {
   const PROJECT_ID = await resolveTenant(req);
+  const environment = process.env.COMMERCE_ENVIRONMENT || 'production';
+  if (!['dev', 'test', 'staging', 'production'].includes(environment) || environment !== 'production' && !process.env.INTERNAL_API_KEY) return Response.json({ error: 'ConfigurationUnavailable' }, { status: 503 });
   try {
     // PUBLISHED config, not the live draft (FR-CONFIG-002) — back-office edits reach
     // customers only after Publish. Server falls back to draft pre-first-publish.
-    const res = await fetch(`${PROJECT_API}/api/v1/projects/${encodeURIComponent(PROJECT_ID)}/published`, {
-      headers: { 'X-Tenant-ID': PROJECT_ID },
+    const res = await fetch(`${PROJECT_API}/api/v1/projects/${encodeURIComponent(PROJECT_ID)}/published${environment === 'production' ? '' : `?environmentId=${environment}`}`, {
+      headers: { 'X-Tenant-ID': PROJECT_ID, ...(environment !== 'production' ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY! } : {}) },
       cache: 'no-store',
     });
     if (!res.ok) {
+      if (environment !== 'production') return Response.json({ error: 'ConfigurationUnavailable' }, { status: 503 });
       if (res.status === 404 || res.status === 403) {
         return json({ error: 'ProjectNotFound', message: 'This project is currently disabled or does not exist.' });
       }
       return await handleConfigFailure(PROJECT_ID);
     }
-    const p: any = withPreviewDraft(await res.json());
+    const p: any = await res.json();
     // With a brand overlay on (BRAND_OVERLAY) the config is shown under that brand; with it off the config is returned as it is.
     const overlay = overlayFromEnv();
     const shown = (config: Record<string, any>) => (overlay ? applyBrandOverlay(config, overlay) : config);
@@ -105,6 +108,7 @@ export async function GET(req: Request) {
       } : null,
     }));
   } catch {
+    if (environment !== 'production') return Response.json({ error: 'ConfigurationUnavailable' }, { status: 503 });
     return await handleConfigFailure(PROJECT_ID);
   }
 }
@@ -120,25 +124,4 @@ function withBrandTheme(uiTheme: any, brand: any) {
   if (picked.link) picked.accent = picked.link;
   const tokens = uiTheme?.tokens && typeof uiTheme.tokens === 'object' ? uiTheme.tokens : {};
   return { ...(uiTheme || {}), tokens: { ...tokens, colors: { ...(tokens.colors && typeof tokens.colors === 'object' ? tokens.colors : {}), ...picked } } };
-}
-
-/**
- * Preview only: when the preview launcher names a draft (PREVIEW_DRAFT), its storefront settings (extensions checkoutReview, payment,
- * brandTheme, buyerFeedback) are laid over the project's own, in this response only, so a draft can be tried before it is published. Without that
- * variable (every real deployment) the project is returned as it is.
- */
-function withPreviewDraft(project: any) {
-  const file = process.env.PREVIEW_DRAFT;
-  if (!file) return project;
-  try {
-    const { readFileSync } = require('node:fs');
-    const path = require('node:path');
-    const draft = JSON.parse(readFileSync(path.resolve(process.cwd(), '../..', file), 'utf8'));
-    const keep = ['checkoutReview', 'payment', 'brandTheme', 'buyerFeedback'];
-    const extensions = { ...(project?.extensions || {}) };
-    for (const key of keep) if (draft?.extensions?.[key]) extensions[key] = draft.extensions[key];
-    return { ...project, extensions };
-  } catch {
-    return project;
-  }
 }

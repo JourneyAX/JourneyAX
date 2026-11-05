@@ -11,6 +11,7 @@
  */
 import { useJourney } from '@/context/JourneyContext';
 import { useStorefrontConfig } from '@/context/StorefrontConfigContext';
+import { formatMoney } from './canvas/money';
 
 export default function CartDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { state, bom, totals, requestCheckout, removeFromCart, setQuantity } = useJourney();
@@ -21,16 +22,12 @@ export default function CartDrawer({ open, onClose }: { open: boolean; onClose: 
 
   const symbol = state.serverQuote?.symbol || '$';
   const currencyCode = state.serverQuote?.currency;
-  const money = (n: number | null | undefined): string => {
-    if (n === null || n === undefined || Number.isNaN(n)) return 'Price on request';
-    if (n === 0 && bom.length > 0 && bom.every((l) => l.price === null || l.price === 0)) return 'Price on request';
-    return symbol + Math.round(n).toLocaleString('en-US') + (currencyCode ? ` ${currencyCode}` : '');
-  };
+  const money = (n: number | null | undefined): string => formatMoney(n, symbol, currencyCode, bom.length > 0 && bom.every(line => line.price === null || line.price === 0));
   const itemCount = bom.reduce((sum, l) => sum + (l.quantity ?? 1), 0);
 
   const removeLine = (sku?: string) => {
     if (!sku) return;
-    removeFromCart(sku);
+    void removeFromCart(sku).catch(() => {});
   };
 
   return (
@@ -66,14 +63,14 @@ export default function CartDrawer({ open, onClose }: { open: boolean; onClose: 
                       <button
                         type="button"
                         style={{ padding: '2px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}
-                        onClick={() => line.sku && setQuantity(line.sku, Math.max(0, (line.quantity ?? 1) - 1))}
+                        onClick={() => { if (line.sku) void setQuantity(line.sku, Math.max(0, (line.quantity ?? 1) - 1)).catch(() => {}); }}
                         aria-label="Decrease quantity"
                       >−</button>
                       <span style={{ padding: '2px 6px', fontSize: '13px', minWidth: '20px', textAlign: 'center', fontWeight: 500 }}>{line.quantity ?? 1}</span>
                       <button
                         type="button"
                         style={{ padding: '2px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}
-                        onClick={() => line.sku && setQuantity(line.sku, (line.quantity ?? 1) + 1)}
+                        onClick={() => { if (line.sku) void setQuantity(line.sku, (line.quantity ?? 1) + 1).catch(() => {}); }}
                         aria-label="Increase quantity"
                       >+</button>
                     </div>

@@ -131,11 +131,11 @@ async function main() {
     assert.equal(allowedCarePath('GET', ['other', 'tickets']), false);
   });
 
-  await check('the three quotes screens can be opened', () => {
-    assert.equal(canvasCanOpen({ kind: 'quotes-queue' }), true);
-    assert.equal(canvasCanOpen({ kind: 'quotes-board' }), true);
+  await check('the retired fixture quote screens stay closed in the real registry', () => {
+    assert.equal(canvasCanOpen({ kind: 'quotes-queue' }), false, 'retired fixture surfaces stay unregistered');
+    assert.equal(canvasCanOpen({ kind: 'quotes-board' }), false);
     assert.equal(canvasCanOpen({ kind: 'quotes-ticket' }), false);
-    assert.equal(canvasCanOpen({ kind: 'quotes-ticket', params: { ticketId: 'q501' } }), true);
+    assert.equal(canvasCanOpen({ kind: 'quotes-ticket', params: { ticketId: 'q501' } }), false);
   });
 
   await check('the quote list names the request, the contact and the person, in the quotes desk\'s words', () => {

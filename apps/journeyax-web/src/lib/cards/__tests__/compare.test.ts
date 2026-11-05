@@ -35,7 +35,7 @@ check('a product row says whether it is ticked, where it is held, and what to as
   assert.equal(a.comparing, false);
   assert.equal(a.compareLabel, 'Compare');
   assert.equal(a.highlightsText, 'Water resistant core · Taper edge');
-  assert.equal(a.stockLabel, 'Available at 22 of 87 branches');
+  assert.equal(a.stockLabel, 'Catalogue lists 22 of 87 branches; confirm stock');
   assert.equal(a.priceMissing, false);
   assert.equal(b.comparing, true);
   assert.equal(b.compareLabel, 'Comparing ✓');

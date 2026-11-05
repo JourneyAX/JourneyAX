@@ -12,8 +12,6 @@ import { NextResponse } from 'next/server';
 import { invalidateProject } from '@journeyax/cache';
 import { readCookie, COOKIE_AT, jwtSecondsLeft } from '../../../../lib/bff-auth';
 
-const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
-
 /**
  * Allow-listed domains proxied through this BFF.
  * Every domain points to the API gateway — the gateway owns all routing to
@@ -42,7 +40,7 @@ async function forward(req: Request, path: string[]): Promise<Response> {
   const token = readCookie(req, COOKIE_AT);
   // Auth boundary: require a live session cookie (middleware already refreshed a
   // near-expiry one). The downstream service still verifies the token itself.
-  if (!DEV_BYPASS && jwtSecondsLeft(token) <= 0) {
+  if (jwtSecondsLeft(token) <= 0) {
     return NextResponse.json({ error: 'Not authenticated.' }, { status: 401 });
   }
   const search = new URL(req.url).search;

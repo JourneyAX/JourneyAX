@@ -8,8 +8,6 @@
 import { NextResponse } from 'next/server';
 import { readCookie, COOKIE_AT, jwtSecondsLeft } from '../../../../../../lib/bff-auth';
 
-const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
-
 const GATEWAY = process.env.GATEWAY_URL
   || process.env.PROJECT_SERVICE_URL  // legacy fallback
   || 'http://localhost:3010';
@@ -17,7 +15,7 @@ const GATEWAY = process.env.GATEWAY_URL
 export async function GET(req: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   try {
     const token = readCookie(req, COOKIE_AT);
-    if (!DEV_BYPASS && jwtSecondsLeft(token) <= 0) {
+    if (jwtSecondsLeft(token) <= 0) {
       return NextResponse.json({ error: 'Not authenticated.' }, { status: 401 });
     }
 

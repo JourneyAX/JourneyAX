@@ -56,7 +56,7 @@ check('the table says what it hides: default rows, rows for all staff, and rows 
   const parked = view(ext(), 'sap-commerce');
   assert.deepEqual(parked.notes, { defaultRows: 1, allStaffRows: 2, everyoneRows: 0 }, 'the default row, which counts as an all-staff row too, and one more');
   assert.deepEqual(view(ext(), 'ace-erp').notes, { defaultRows: 0, allStaffRows: 0, everyoneRows: 0 }, 'the ERP has a rule per tool and no default');
-  assert.deepEqual(view(ext(), 'salesforce').notes, { defaultRows: 0, allStaffRows: 0, everyoneRows: 0 });
+  assert.deepEqual(view(ext(), 'salesforce').notes, { defaultRows: 0, allStaffRows: 0, everyoneRows: 5 }, 'five newly registered tools carry explicit everyone-block rows, not an allow default');
 });
 
 check('a system carries the fingerprint of its switch, tools and rows; it changes when any of them does and not otherwise', () => {
@@ -127,16 +127,18 @@ check('a tool that changes data cannot be set to allow, for anyone; ask first an
 
 check('a rule for everyone (shoppers too) is left alone, and a change it would defeat is refused with the reason', () => {
   const e = ext();
+  const existingEveryoneRows = e.policy.filter(row => row.audience === 'shopper').length;
+  const existingSalesforceRows = view(e, 'salesforce').notes.everyoneRows;
   e.policy.push({ connectorId: 'salesforce', tool: 'get_case', audience: 'shopper', groups: [], state: 'ask' });
   const v = view(e, 'salesforce');
-  assert.equal(v.notes.everyoneRows, 1);
+  assert.equal(v.notes.everyoneRows, existingSalesforceRows + 1);
   assert.equal(v.grid.get_case.sales, 'ask', 'the rule for everyone makes the strictest of the rows apply');
   const lessStrict = applyRulesChange(e, { connectorId: 'salesforce', cells: { get_case: { ...v.grid.get_case, sales: 'allow' } } });
   assert.equal(lessStrict.ok, false);
   assert.match((lessStrict as { errors: string[] }).errors.join(' '), /rule that applies to everyone/);
   const stricter = good(applyRulesChange(e, { connectorId: 'salesforce', cells: { get_case: { ...v.grid.get_case, sales: 'blocked' } } }));
   assert.equal(view(stricter.extension, 'salesforce').grid.get_case.sales, 'blocked');
-  assert.equal(stricter.extension.policy.filter((r) => r.audience === 'shopper').length, 1, 'the rule for everyone is still there');
+  assert.equal(stricter.extension.policy.filter((r) => r.audience === 'shopper').length, existingEveryoneRows + 1, 'all prior blocked rows and the added rule remain');
 });
 
 check('a group a tool\'s rows name that the request does not show keeps the state it has', () => {
@@ -148,13 +150,14 @@ check('a group a tool\'s rows name that the request does not show keeps the stat
   assert.equal(view(done.extension, 'salesforce').grid.list_cases['old-team'], 'ask');
 });
 
-check('editing every system of the real draft at random gives exactly the cells asked for on the tools edited and the same everywhere else', () => {
+check('random edits of mutable tool rules preserve globally protected tools and all other systems', () => {
   let seed = 7;
   const next = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed; };
   for (const connector of draft.extensions.connectors.connectors) {
     const e = ext();
     const v = view(e, connector.connectorId);
-    const edited = v.tools.filter((_, i) => i % 2 === 0).map((t) => t.name);
+    const protectedTools = new Set(e.policy.filter(row => row.connectorId === connector.connectorId && row.audience === 'shopper').map(row => row.tool));
+    const edited = v.tools.filter((tool, i) => i % 2 === 0 && !protectedTools.has('*') && !protectedTools.has(tool.name)).map((t) => t.name);
     const cells: Record<string, Record<string, ToolState>> = {};
     for (const name of edited) {
       const write = v.tools.find((t) => t.name === name)!.sideEffect === 'write';

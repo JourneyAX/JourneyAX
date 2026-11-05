@@ -12,6 +12,7 @@ console.log('appendOnly');
 
 check('record cards each keep their own place, so the customer and their cases both show', () => {
   assert.equal(keepsOwnPlace({ cardType: 'records' }), true);
+  assert.equal(keepsOwnPlace({ cardType: 'confirm' }), true, 'distinct source approvals must not replace one another');
 });
 
 check('a card that asks to be appended is, and the product cards still replace the last one as before', () => {

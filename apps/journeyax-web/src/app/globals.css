@@ -1516,7 +1516,7 @@ body {
   flex: 0 0 120px;
   height: 120px;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--jx-color-surface, var(--surface));
   display: flex;
   align-items: center;
   justify-content: center;

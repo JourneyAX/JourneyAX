@@ -54,7 +54,7 @@ export interface StorefrontConfig {
   projectId: string;
   companyName: string;
   theme: { primaryColor?: string; accentColor?: string; fontFamily?: string; logoUrl?: string; sidebarStyle?: 'light' | 'dark'; sidebarColor?: string };
-  labels: { items: string; itemsSingular: string; headerTitle: string };
+  labels: { items: string; itemsSingular: string; headerTitle: string; loginTagline?: string };
   greeting: string;
   systemName: string;
   /** Present only when the app is shown under another brand (BRAND_OVERLAY): what the sign-in screen says, and the names to take out of any text. */

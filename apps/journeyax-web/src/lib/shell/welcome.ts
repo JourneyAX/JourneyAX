@@ -31,7 +31,7 @@ export function parseWelcome(json: unknown): Welcome | undefined {
       }).slice(0, 6)
     : undefined;
   const placeholder = text(raw.placeholder, 100);
-  const welcome: Welcome = { headline: text(raw.headline, 120), subtitle: text(raw.subtitle, 240), ...(placeholder ? { placeholder } : {}), ...(starters?.length ? { starters } : {}) };
+  const welcome: Welcome = { headline: text(raw.headline, 120), subtitle: text(raw.subtitle, 240), ...(placeholder ? { placeholder } : {}), ...(starters !== undefined ? { starters } : {}) };
   return welcome.headline || welcome.subtitle || welcome.placeholder || welcome.starters ? welcome : undefined;
 }
 
@@ -59,6 +59,6 @@ export function welcomeStarters(welcome: Welcome | undefined, connectors: Connec
  * shoppers and are never shown to a team. `undefined` only when the pack gave this person no starters, so the page falls back to its own.
  */
 export function welcomeOffer(welcome: Welcome | undefined, connectors: ConnectorItem[]): Starter[] | undefined {
-  if (!welcome?.starters?.length) return undefined;
+  if (welcome?.starters === undefined) return undefined;
   return welcomeStarters(welcome, connectors) ?? [];
 }
