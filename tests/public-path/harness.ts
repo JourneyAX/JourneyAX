@@ -5,6 +5,7 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ReleaseActivationRepository } from '@journeyax/database';
 import { computePackChecksum } from '@journeyax/business-pack';
+import { privateConversationId } from '../../apps/journey-runtime-service/src/auth/conversation-scope';
 import { buildPlaceMakersStack, FixedGateway, TENANT, type PlaceMakersStack } from '../../apps/journey-runtime-service/test/helpers/placemakers-stack';
 
 /**
@@ -166,7 +167,8 @@ export async function startPublicPath(options: { stack?: PlaceMakersStack; store
     customerHeaders: { Cookie: `jxs_at=${CUSTOMER_TOKEN}` },
     stack, activation, modelRequests, internalStream: [], invalidatePackCache: () => (runtimeService.appService as any).packRepo.invalidate(),
     pinsOf: async (workspaceId: string) => {
-      const workspace = await (runtimeService.appService as any).workspaceRepo.load(TENANT, ENVIRONMENT, workspaceId);
+      const scopedId = privateConversationId(workspaceId, { tenantId: TENANT, environmentId: ENVIRONMENT, principalId: 'canary-customer@example.test' } as any);
+      const workspace = await (runtimeService.appService as any).workspaceRepo.load(TENANT, ENVIRONMENT, scopedId);
       return workspace ? { packChecksum: workspace.pins?.packChecksum, packVersionId: workspace.packVersionId } : undefined;
     },
     stop: async () => { for (const close of closers.reverse()) await close().catch(() => undefined); },

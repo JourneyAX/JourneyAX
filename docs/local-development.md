@@ -18,11 +18,8 @@ On another machine, obtain these settings through the team's secret-sharing proc
 
 The current private configuration keeps the already verified backend ports (gateway 3110, runtime 3112, commerce 3104, sources 4120, auth 8180, projects 8182, products 8183, IQ 8188), with organizations 8195 and analytics 8186. These are local routing settings, not separate applications.
 
-## Helper locations in the local V5 workspace
+## V5 verification tools
 
-- `scripts/verification`: checks, public-path canaries and test helpers.
-- `scripts/integrations`: explicit provisioning/configuration and repair tools; not run by startup.
-- `scripts/architecture`: enterprise-map generation and checks.
-- `scripts/fixtures`: clearly labelled offline/demo ERP utilities; not run by startup.
+The IQ identity contract test imports `scripts/integrations/iq-identity-candidate.ts`. It builds a candidate in memory. The `scripts/fixtures` ERP tools support a synthetic test dataset. Review the fixture plan with `npx tsx scripts/fixtures/seed-demo-erp.ts --input demo-data/v5/erp/placemakers.json`.
 
-Root startup replaces the old `scripts/v5` launcher. The relocation manifest at `docs/evidence/v5/root-dev-helper-relocation.json` maps the preserved local helpers to their new locations. The helper contents are part of the wider V5 work and are reviewed separately from the startup commit. Application code lives in `apps/` and `packages/`.
+Root startup replaces the old `scripts/v5` launcher. The relocation manifest at `docs/evidence/v5/root-dev-helper-relocation.json` maps the 51 local helpers to their new locations. The remaining 48 are local operator tools, diagnostic scripts, or evidence tooling. Application code lives in `apps/` and `packages/`.

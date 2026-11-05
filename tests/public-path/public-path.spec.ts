@@ -58,13 +58,12 @@ async function main() {
       assert.equal(done.trace?.engine, 'agent', 'and which engine answered');
     });
 
-    await suite.test('only the platform\'s key unlocks the full stream: a guess through the gateway still gets the customer view', async () => {
+    await suite.test('the public gateway strips even a correct client-supplied internal key', async () => {
       const viaGateway = (key?: string) => post(`${path_.urls.gateway}/api/v1/${TENANT}/commerce/chat/stream`, turn('vanities'), { Authorization: `Bearer ${CUSTOMER_TOKEN}`, ...(key ? { 'X-Internal-Key': key } : {}) }).then((r) => r.text());
-      for (const guess of [undefined, 'wrong-key', INTERNAL_KEY.toUpperCase(), '']) {
+      for (const guess of [undefined, 'wrong-key', INTERNAL_KEY.toUpperCase(), '', INTERNAL_KEY]) {
         const events = parseSse(await viaGateway(guess)).map((frame) => frame.event);
         assert.ok(!events.includes('trace') && !events.includes('data'), `key ${JSON.stringify(guess)} stays public`);
       }
-      assert.ok(parseSse(await viaGateway(INTERNAL_KEY)).some((frame) => frame.event === 'trace' || frame.event === 'data'), 'the real key is the one thing that unlocks it');
     });
 
     await suite.test('a request with no signed-in customer is refused as JSON, not served and not streamed', async () => {

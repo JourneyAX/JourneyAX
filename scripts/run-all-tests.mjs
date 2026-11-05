@@ -9,7 +9,7 @@
  * summary.md. Exit status is non-zero when any suite fails.
  */
 import { spawn } from 'node:child_process';
-import { createWriteStream, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createWriteStream, mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -47,17 +47,25 @@ function runSuite(id, runDir) {
   const logPath = path.join(runDir, `${safe}.log`);
   const log = createWriteStream(logPath);
   const started = Date.now();
+  const structuredDir = path.join(runDir, 'structured', safe);
   return new Promise((resolve) => {
     const child = spawn(suite.command, {
       cwd: path.join(root, suite.cwd),
       shell: true,
-      env: { ...process.env, JOURNEYAX_TEST_LOG_DIR: path.join(runDir, 'structured'), FORCE_COLOR: '0', NODE_ENV: 'test' },
+      env: { ...process.env, ...(suite.env || {}), JOURNEYAX_TEST_LOG_DIR: structuredDir, FORCE_COLOR: '0', NODE_ENV: 'test' },
     });
     child.stdout.pipe(log, { end: false });
     child.stderr.pipe(log, { end: false });
     child.on('close', (code) => {
       log.end();
-      resolve({ id, cwd: suite.cwd, command: suite.command, exitCode: code ?? 1, durationMs: Date.now() - started, log: path.relative(root, logPath) });
+      const structuredFailures = [];
+      for (const name of existsSync(structuredDir) ? readdirSync(structuredDir).filter(name => name.endsWith('.jsonl')) : []) {
+        for (const line of readFileSync(path.join(structuredDir, name), 'utf8').split('\n').filter(Boolean)) {
+          try { const event = JSON.parse(line); if (event.status === 'failed') structuredFailures.push(event.name || event.suite); }
+          catch { structuredFailures.push(`Unreadable structured test report: ${name}`); }
+        }
+      }
+      resolve({ id, cwd: suite.cwd, command: suite.command, exitCode: structuredFailures.length ? 1 : code ?? 1, ...(structuredFailures.length ? { structuredFailures } : {}), durationMs: Date.now() - started, log: path.relative(root, logPath) });
     });
     child.on('error', (error) => {
       log.end(`spawn error: ${error.message}\n`);

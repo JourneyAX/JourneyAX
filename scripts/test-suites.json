@@ -19,6 +19,28 @@
       "auth-service",
       "backoffice-admin",
       "web-unit",
+      "case-intake-boundaries",
+      "payment-recovery-boundaries",
+      "edge-access-boundaries",
+      "required-evaluation-policy",
+      "customer-payment-link-boundaries",
+      "source-evidence-and-memory",
+      "studio-auth-boundaries",
+      "commerce-money-parity",
+      "sap-source-contracts",
+      "support-source-idempotency",
+      "control-plane-access-boundaries",
+      "catalogue-integrity",
+      "customer-profile-read-boundary",
+      "cart-ui-recovery",
+      "product-measurement-evidence",
+      "retail-and-operational-card-boundaries",
+      "product-service",
+      "product-source-authority",
+      "checkout-source-authority",
+      "warranty-disclaimer-boundaries",
+      "public-image-access-boundaries",
+      "public-config-access-boundaries",
       "dev-startup"
     ],
     "typecheck": [
@@ -41,7 +63,10 @@
       "tsc:backoffice-admin",
       "tsc:canary",
       "tsc:public-path",
-      "tsc:ingestion"
+      "tsc:ingestion",
+      "tsc:organization-service",
+      "tsc:analytics-service",
+      "tsc:product-service"
     ],
     "extended": [
       "agent-commerce-service",
@@ -215,6 +240,137 @@
     "tsc:jax-iq-service": {
       "cwd": "apps/jax-iq-service",
       "command": "npx tsc --noEmit -p test/tsconfig.json"
+    },
+    "case-intake-boundaries": {
+      "cwd": "apps/journey-runtime-service",
+      "command": "npm run test:case-intake"
+    },
+    "payment-recovery-boundaries": {
+      "cwd": "apps/agent-commerce-service",
+      "command": "npm run test:payment-recovery"
+    },
+    "edge-access-boundaries": {
+      "cwd": "apps/api-gateway",
+      "command": "npm run test:edge-boundaries"
+    },
+    "required-evaluation-policy": {
+      "cwd": "apps/project-service",
+      "command": "tsx --tsconfig tsconfig.json --test test/evaluation-policy.spec.ts"
+    },
+    "customer-payment-link-boundaries": {
+      "cwd": ".",
+      "command": "node --import tsx --test packages/connectors-real/test/customer-profile.spec.ts packages/connectors-real/test/commercetools-payment.spec.ts apps/journey-runtime-service/test/customer-profile-provisioning.spec.ts apps/journey-runtime-service/test/paid-order-delivery.spec.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/journey-runtime-service/test/tsconfig.json"
+      }
+    },
+    "source-evidence-and-memory": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/journey-runtime-service/test/product-evidence.spec.ts apps/journey-runtime-service/test/graph-memory.spec.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/journey-runtime-service/test/tsconfig.json"
+      }
+    },
+    "studio-auth-boundaries": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/backoffice-admin/test/auth-fail-closed.spec.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/backoffice-admin/tsconfig.json"
+      }
+    },
+    "commerce-money-parity": {
+      "cwd": ".",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/journey-runtime-service/test/tsconfig.json"
+      },
+      "command": "node --import tsx --test packages/connectors-real/test/commerce-money.spec.ts apps/journey-runtime-service/test/v5-cart-contract.spec.ts apps/journey-runtime-service/test/v5-quote-contract.spec.ts apps/agent-commerce-service/test/quote-authority.spec.ts"
+    },
+    "sap-source-contracts": {
+      "cwd": ".",
+      "command": "node --import tsx --test packages/connectors-real/test/sap-s4hana.spec.ts packages/connectors-real/test/sap-commands.spec.ts packages/connectors-real/test/sap-customer.spec.ts packages/connectors-real/test/sap-product-organisations.spec.ts packages/connectors-real/test/sap-bom.spec.ts packages/connectors-real/test/sap-document-flow.spec.ts"
+    },
+    "support-source-idempotency": {
+      "cwd": ".",
+      "command": "node --import tsx --test packages/connectors-real/test/zendesk-idempotency.spec.ts"
+    },
+    "control-plane-access-boundaries": {
+      "cwd": ".",
+      "command": "node --import tsx --test test/control-plane-access.spec.ts apps/project-service/test/project-list-isolation.spec.ts"
+    },
+    "tsc:organization-service": {
+      "cwd": "apps/organization-service",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "tsc:analytics-service": {
+      "cwd": "apps/analytics-service",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "catalogue-integrity": {
+      "cwd": ".",
+      "command": "node --import tsx --test packages/business-pack/test/catalog-integrity.spec.ts"
+    },
+    "customer-profile-read-boundary": {
+      "cwd": ".",
+      "command": "node --import tsx --test packages/connectors-real/test/customer-profile-read.spec.ts packages/connectors-real/test/customer-profile-self.spec.ts"
+    },
+    "cart-ui-recovery": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/journeyax-web/src/lib/__tests__/cart-recovery.test.ts"
+    },
+    "product-measurement-evidence": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/journey-runtime-service/test/product-measurement-evidence.spec.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/journey-runtime-service/test/tsconfig.json"
+      }
+    },
+    "retail-and-operational-card-boundaries": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/journey-runtime-service/test/iq-retail-identity.spec.ts apps/journey-runtime-service/test/operational-desks.spec.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/journey-runtime-service/test/tsconfig.json"
+      }
+    },
+    "product-service": {
+      "cwd": "apps/product-service",
+      "command": "npm test"
+    },
+    "tsc:product-service": {
+      "cwd": "apps/product-service",
+      "command": "npx tsc --noEmit -p ."
+    },
+    "product-source-authority": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/product-service/test/catalogue-authority.spec.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/product-service/tsconfig.json"
+      }
+    },
+    "checkout-source-authority": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/agent-commerce-service/test/checkout-catalogue-authority.spec.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/journey-runtime-service/test/tsconfig.json"
+      }
+    },
+    "warranty-disclaimer-boundaries": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/journey-runtime-service/test/warranty-disclaimer.spec.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/journey-runtime-service/test/tsconfig.json"
+      }
+    },
+    "public-image-access-boundaries": {
+      "cwd": ".",
+      "command": "node --import tsx --test apps/product-service/test/tryon-boundaries.spec.ts apps/journeyax-web/src/lib/__tests__/tryon-route.test.ts",
+      "env": {
+        "TSX_TSCONFIG_PATH": "apps/product-service/tsconfig.json",
+        "STOREFRONT_ALLOW_ANONYMOUS": "false"
+      }
+    },
+    "public-config-access-boundaries": {
+      "cwd": "apps/project-service",
+      "command": "npx tsx --tsconfig tsconfig.json --test test/published-environment.spec.ts"
     },
     "dev-startup": {
       "cwd": ".",
