@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/main.ts",
+    "dev": "node ../../scripts/dev/watch-service.mjs",
     "start": "node dist/main.js",
     "test": "tsx test/gateway.registry.spec.ts && tsx test/group-directory.spec.ts && tsx test/gateway.assertion.spec.ts && tsx test/open-sign-up.spec.ts"
   },

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config({ path: process.env.JOURNEYAX_ENV_FILE || path.resolve(__dirname, '../../../.env') });
 import { NestFactory } from '@nestjs/core';
 import { RuntimeModule } from './runtime.module';
 import { TurnApplicationService } from './kernel/turn-application.service';

@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { resolve } from 'path';
 import { config } from 'dotenv';
 
-config({ path: resolve(__dirname, '../../../.env') });
+config({ path: process.env.JOURNEYAX_ENV_FILE || resolve(__dirname, '../../../.env') });
 
 import { NestFactory } from '@nestjs/core';
 import { OrganizationModule } from './organization.module';

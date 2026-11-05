@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "build": "tsc",
+    "dev": "node ../../scripts/dev/watch-service.mjs",
+    "start": "node dist/main.js",
     "test": "for f in test/*.spec.ts; do npx tsx --tsconfig test/tsconfig.json \"$f\" || exit 1; done"
   },
   "dependencies": {

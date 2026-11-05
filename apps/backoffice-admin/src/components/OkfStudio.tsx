@@ -25,7 +25,7 @@ function shortChecksum(value?: string) {
 }
 
 export function OkfStudio({ project }: { project: Project }) {
-  const [environmentId, setEnvironmentId] = useState<EnvironmentId>("production");
+  const [environmentId, setEnvironmentId] = useState<EnvironmentId>(process.env.NEXT_PUBLIC_COMMERCE_ENVIRONMENT === 'dev' ? 'dev' : 'production');
   const [analysis, setAnalysis] = useState<OkfAnalysis | null>(null);
   const [revocations, setRevocations] = useState<OkfRevocationSummary[]>([]);
   const [draft, setDraft] = useState<OkfDraft | null>(null);

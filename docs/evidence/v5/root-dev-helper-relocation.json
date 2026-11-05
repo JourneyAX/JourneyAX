@@ -1,0 +1,261 @@
+{
+  "removedLauncher": "scripts/v5/start-real-local.mjs",
+  "moves": [
+    {
+      "from": "scripts/v5/sync-source-inventory.ts",
+      "to": "scripts/integrations/sync-source-inventory.ts",
+      "originalSha256": "c01f80a927eb49b9155604dcdcf87660dea0dfcb527d338029da7285f78dce0d"
+    },
+    {
+      "from": "scripts/v5/inspect-sap-owned-product.ts",
+      "to": "scripts/verification/inspect-sap-owned-product.ts",
+      "originalSha256": "e09118f76300a5d755972917dca36eabde40370169cbce0d8fdabd9e89be9bb8"
+    },
+    {
+      "from": "scripts/v5/extend-sap-reference-product.ts",
+      "to": "scripts/integrations/extend-sap-reference-product.ts",
+      "originalSha256": "41023b0086566e3a3e1c9d0ba51ed9fa5e6fd26ece6988d28ac92bba06ba2cf5"
+    },
+    {
+      "from": "scripts/v5/build-enterprise-map.mjs",
+      "to": "scripts/architecture/build-enterprise-map.mjs",
+      "originalSha256": "fb9e39698b28b5c0d8885098924b1b87de698f5ab3a015065563ac1deba00327"
+    },
+    {
+      "from": "scripts/v5/tsconfig.tools.json",
+      "to": "scripts/verification/tsconfig.tools.json",
+      "originalSha256": "52f69309c85c4b3280027952f8fe54f254e5786878659c9c0113a3b7533aa9a3"
+    },
+    {
+      "from": "scripts/v5/enable-iq-identity.ts",
+      "to": "scripts/integrations/enable-iq-identity.ts",
+      "originalSha256": "3b4eec663cbe76359ef1810394f1a170f3ab37531d61ab9057c3d3f7c7862bd5"
+    },
+    {
+      "from": "scripts/v5/check-owned-order-shipment-state.ts",
+      "to": "scripts/verification/check-owned-order-shipment-state.ts",
+      "originalSha256": "4f53086028a6b1e497d77ae718f235f39e553c2cdd1f7cdb2a369fe7727b2594"
+    },
+    {
+      "from": "scripts/v5/verify-local-three-flows.ts",
+      "to": "scripts/verification/verify-local-three-flows.ts",
+      "originalSha256": "5354ebcd2dbfd5a0308a9ea6c0824db2b12c197bb4dfd3f1030bff4f2fbc3a14"
+    },
+    {
+      "from": "scripts/v5/create-sap-reference-product.ts",
+      "to": "scripts/integrations/create-sap-reference-product.ts",
+      "originalSha256": "6e2f11e5ac817dee32800a224ddaf4facebfe2b6d090d4abfc180cda2bd3226b"
+    },
+    {
+      "from": "scripts/v5/update-local-checkout-origin.ts",
+      "to": "scripts/integrations/update-local-checkout-origin.ts",
+      "originalSha256": "af42a9d70098f78ed2e31fae51d0f862c3f5da52ef30260b696db242cd7e3761"
+    },
+    {
+      "from": "scripts/v5/check-live-iq-ticket.ts",
+      "to": "scripts/verification/check-live-iq-ticket.ts",
+      "originalSha256": "b262fc3049131d66ccb1dbc0a04da029849bff68bde13c1774f7b736e329b315"
+    },
+    {
+      "from": "scripts/v5/check-iq-retail-customer.ts",
+      "to": "scripts/verification/check-iq-retail-customer.ts",
+      "originalSha256": "fb2fed9525f095085add4612a7a8960aac846d4cf0faed191683c404b05aa80e"
+    },
+    {
+      "from": "scripts/v5/prepare-owned-iq-profile.ts",
+      "to": "scripts/integrations/prepare-owned-iq-profile.ts",
+      "originalSha256": "e172f43e3206b5299e8a084399a4f14bfca0d299cedea31cb2f409146bb88292"
+    },
+    {
+      "from": "scripts/v5/enable-payment-linkage.ts",
+      "to": "scripts/integrations/enable-payment-linkage.ts",
+      "originalSha256": "089c55d7c76dae9d3791bb3352f3ba5397428a75ef86e03eb409868141f17a23"
+    },
+    {
+      "from": "scripts/v5/seed-demo-erp.ts",
+      "to": "scripts/fixtures/seed-demo-erp.ts",
+      "originalSha256": "6a8c9f5c76a83e52cec21e5c4dc605ff2738732ee11d7d1e771bd55c3bc681a1"
+    },
+    {
+      "from": "scripts/v5/check-public-customer.ts",
+      "to": "scripts/verification/check-public-customer.ts",
+      "originalSha256": "fe9b59327962354ae0a07603c196854a950ffb6ae4f0613cfb3538490884bbb9"
+    },
+    {
+      "from": "scripts/v5/local-release-evaluation.ts",
+      "to": "scripts/verification/local-release-evaluation.ts",
+      "originalSha256": "d6ec8fe078df4cc5f9f08ddc67a28d125859139708e6cae82c7eccd8abba3be0"
+    },
+    {
+      "from": "scripts/v5/prepare-real-local.ts",
+      "to": "scripts/integrations/prepare-real-local.ts",
+      "originalSha256": "0956e9ef611228a8d447873ed94a7f00f181da728794b9a9888d53664a5b0bd2"
+    },
+    {
+      "from": "scripts/v5/reconcile-owned-payment-link.ts",
+      "to": "scripts/integrations/reconcile-owned-payment-link.ts",
+      "originalSha256": "892d4020fe53ee3ac30ef636d09acc3b1268da15f2e0a72a35c41692ed8066ff"
+    },
+    {
+      "from": "scripts/v5/check-connected-iq.ts",
+      "to": "scripts/verification/check-connected-iq.ts",
+      "originalSha256": "bcd3d4fbb1f230edd82774f58ac5ca0198a9992f92e0daefbf980121b91c01e8"
+    },
+    {
+      "from": "scripts/v5/check-iq-sap-material.ts",
+      "to": "scripts/verification/check-iq-sap-material.ts",
+      "originalSha256": "a78027992473cd1d7d8e8a837a895a63f22ee304287b1eeb8f32dc3457927aeb"
+    },
+    {
+      "from": "scripts/v5/iq-key-origin.ts",
+      "to": "scripts/integrations/iq-key-origin.ts",
+      "originalSha256": "977deee8c841368e0b9d5e9afcb29d4a8c8513594e6608831cd233cb89f3cdb7"
+    },
+    {
+      "from": "scripts/v5/inspect-owned-commerce-chain.ts",
+      "to": "scripts/verification/inspect-owned-commerce-chain.ts",
+      "originalSha256": "3a01a827a6e5a2217f4da8e1f6e6cd0c5c423bcc6f3af784ba4852b75d1d0085"
+    },
+    {
+      "from": "scripts/v5/public-browser.ts",
+      "to": "scripts/verification/public-browser.ts",
+      "originalSha256": "c333cff1f02018396cfee7d664c4d095eab69fedf060e6f5aa73f2c12f108e7d"
+    },
+    {
+      "from": "scripts/v5/check-enterprise-map.mjs",
+      "to": "scripts/architecture/check-enterprise-map.mjs",
+      "originalSha256": "f08525408b168a4ea96b86031fee583706e7eb975d4fd3db8735992172176cdb"
+    },
+    {
+      "from": "scripts/v5/staff-canary.ts",
+      "to": "scripts/verification/staff-canary.ts",
+      "originalSha256": "88b0f79f5648a97cd9b06f4aaafb63173758950b75b46374877fdcd91e24c523"
+    },
+    {
+      "from": "scripts/v5/inspect-sap-records.ts",
+      "to": "scripts/verification/inspect-sap-records.ts",
+      "originalSha256": "63f1930ef2a3d2f737274e2534bfb4ed97688b3d395310617f83d3a02e2734be"
+    },
+    {
+      "from": "scripts/v5/check-commerce-money-parity.ts",
+      "to": "scripts/verification/check-commerce-money-parity.ts",
+      "originalSha256": "dd234a70552009ea8a87cc850bc2725c85bb4f3e2ef32208faeb5245e1395de2"
+    },
+    {
+      "from": "scripts/v5/prepare-iq-sap-material.ts",
+      "to": "scripts/integrations/prepare-iq-sap-material.ts",
+      "originalSha256": "963485ef41ec55a49442e78b7ff5cb273e692e3ffdd8a9479f9c44f6367cf84b"
+    },
+    {
+      "from": "scripts/v5/inspect-sap-api.ts",
+      "to": "scripts/verification/inspect-sap-api.ts",
+      "originalSha256": "7f7c98eb9eec07ca846362f758eeeaaa3e8568305c8e6d291370aa09d1f5c64f"
+    },
+    {
+      "from": "scripts/v5/prepare-iq-identity.ts",
+      "to": "scripts/integrations/prepare-iq-identity.ts",
+      "originalSha256": "074d556f4cb1bbf09ff02e97aaeebd8da30bd1497d79d15244c14f245e22e7c2"
+    },
+    {
+      "from": "scripts/v5/prepare-iq-sap-source-plan.ts",
+      "to": "scripts/integrations/prepare-iq-sap-source-plan.ts",
+      "originalSha256": "09333f0777df7f46b023ff26459e8ac11745e2383a1d984a4e99d137460c3236"
+    },
+    {
+      "from": "scripts/v5/staff-synthetic-systems.ts",
+      "to": "scripts/verification/staff-synthetic-systems.ts",
+      "originalSha256": "8543809b6d71054bbde9dc50148a09fc9f7676974cdb7c8193e556e1575efbbc"
+    },
+    {
+      "from": "scripts/v5/describe-active-model.ts",
+      "to": "scripts/verification/describe-active-model.ts",
+      "originalSha256": "7069bb249dda150e361650fd7525fbfb4dff96c2085ebd362ce1c077017ba655"
+    },
+    {
+      "from": "scripts/v5/inspect-real-local.ts",
+      "to": "scripts/verification/inspect-real-local.ts",
+      "originalSha256": "a15d3b3d881fea7bfd3ec77e896c7dd683b4946ff44620dfca93d80626877846"
+    },
+    {
+      "from": "scripts/v5/tsconfig.json",
+      "to": "scripts/verification/tsconfig.json",
+      "originalSha256": "dc78bdaa70977757f31827afd872bbcc26d3b85f4d6a548a99ff2a268fa4ff51"
+    },
+    {
+      "from": "scripts/v5/iq-retail-candidate.ts",
+      "to": "scripts/integrations/iq-retail-candidate.ts",
+      "originalSha256": "7f0a963feb8ddd589f715b039133dfa906990c4cc93b8b6e57962a687e73cab6"
+    },
+    {
+      "from": "scripts/v5/update-local-personas.ts",
+      "to": "scripts/integrations/update-local-personas.ts",
+      "originalSha256": "9e6370309333b3d8a3190471a2cced45a77874b216218dfb69fda5d973df9b02"
+    },
+    {
+      "from": "scripts/v5/serve-demo-erp.ts",
+      "to": "scripts/fixtures/serve-demo-erp.ts",
+      "originalSha256": "17afa73c0c399176d6f5c567e60cae7de05bececb802ae57037b7a8d4cd4061e"
+    },
+    {
+      "from": "scripts/v5/prove-durable-foundations.ts",
+      "to": "scripts/verification/prove-durable-foundations.ts",
+      "originalSha256": "ab1610dc38e4bedc572f622aaf17eadfd84ff1ced372187bdcf2dc70ed1e0264"
+    },
+    {
+      "from": "scripts/v5/check-live-connections.ts",
+      "to": "scripts/verification/check-live-connections.ts",
+      "originalSha256": "fd4702bc38dc7bacff508b7ff29224d408d1984f44ce37853d8eec63a767ec6d"
+    },
+    {
+      "from": "scripts/v5/inspect-sap-reference-prerequisites.ts",
+      "to": "scripts/verification/inspect-sap-reference-prerequisites.ts",
+      "originalSha256": "457499f81bee4c8cdc9d4c738b860080111b200d2b5295ad8f1da18bdf723c0e"
+    },
+    {
+      "from": "scripts/v5/provision-iq-keys.ts",
+      "to": "scripts/integrations/provision-iq-keys.ts",
+      "originalSha256": "f74f7e060de75dd790042a9627c4a39ef0f553146bc150b8c4298284dd618586"
+    },
+    {
+      "from": "scripts/v5/iq-identity-candidate.ts",
+      "to": "scripts/integrations/iq-identity-candidate.ts",
+      "originalSha256": "0e4d4984ae2dc8e6292592a71a89587389ffc735bfec17c822d2295cfa9e74e1"
+    },
+    {
+      "from": "scripts/v5/prepare-iq-retail.ts",
+      "to": "scripts/integrations/prepare-iq-retail.ts",
+      "originalSha256": "c01e7a4122dc4b77453832ec223988b1cff858e70b6cb36a82f4ddbd53c71d5f"
+    },
+    {
+      "from": "scripts/v5/check-intake-state.ts",
+      "to": "scripts/verification/check-intake-state.ts",
+      "originalSha256": "7257a9ba53fbff8ae6d149288f9aa8c9e455d7f060d1659609957ad00de57b3d"
+    },
+    {
+      "from": "scripts/v5/check-iq-owned-customer.ts",
+      "to": "scripts/verification/check-iq-owned-customer.ts",
+      "originalSha256": "dc918581e40a04d3216cfea6c74f380b601dee86a5c63df4e72b735b4f6880e1"
+    },
+    {
+      "from": "scripts/v5/iq-sap-material-candidate.ts",
+      "to": "scripts/integrations/iq-sap-material-candidate.ts",
+      "originalSha256": "b356504ebb2b719f16352dc44f5feb99b646615efd3c9c733ad4550a3ba80c48"
+    },
+    {
+      "from": "scripts/v5/connected-candidate.ts",
+      "to": "scripts/integrations/connected-candidate.ts",
+      "originalSha256": "295cbe175fe405b50de71bdf84fdc264fd4c966da31a6968dbd0f505443edb56"
+    },
+    {
+      "from": "scripts/v5/provision-owned-customer-profile.ts",
+      "to": "scripts/integrations/provision-owned-customer-profile.ts",
+      "originalSha256": "1c0b493f4a34d82c76edc2cef5f0176d94a7f71dab9fe4002d9c40cd2db33afe"
+    },
+    {
+      "from": "scripts/v5/check-iq-owned-order.ts",
+      "to": "scripts/verification/check-iq-owned-order.ts",
+      "originalSha256": "be3f64f8636591fdc1f200230f8c1e7701b045a916602fa9154dd9e7f6c2f546"
+    }
+  ],
+  "createdAt": "2026-11-04"
+}

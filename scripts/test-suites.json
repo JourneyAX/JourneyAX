@@ -18,7 +18,8 @@
       "api-gateway",
       "auth-service",
       "backoffice-admin",
-      "web-unit"
+      "web-unit",
+      "dev-startup"
     ],
     "typecheck": [
       "tsc:shared-types",
@@ -214,6 +215,10 @@
     "tsc:jax-iq-service": {
       "cwd": "apps/jax-iq-service",
       "command": "npx tsc --noEmit -p test/tsconfig.json"
+    },
+    "dev-startup": {
+      "cwd": ".",
+      "command": "node --test scripts/dev/stack-config.test.mjs"
     }
   }
 }

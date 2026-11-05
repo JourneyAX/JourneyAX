@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "test": "tsx --tsconfig tsconfig.json test/analytics-platform.spec.ts",
-    "dev": "tsx watch src/main.ts",
+    "dev": "node ../../scripts/dev/watch-service.mjs",
     "start": "node dist/main.js"
   },
   "dependencies": {

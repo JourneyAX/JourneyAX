@@ -9,7 +9,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo apps/*/node_modules apps/*/.next apps/*/dist packages/*/node_modules packages/*/dist apps/*/.venv packages/*/.venv",
     "dev:all": "npm run clean && npm install && npm run build && turbo run dev --concurrency=30",
-    "dev": "turbo run dev --concurrency=30",
+    "dev": "node scripts/dev/start.mjs",
     "build": "turbo run build",
     "start": "turbo run start --concurrency=30",
     "lint": "turbo run lint",

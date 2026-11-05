@@ -140,6 +140,9 @@ LEAD_SERVICE_URL=http://localhost:8087
 
 ### Run Everything (Recommended)
 
+Use the private DEV configuration described in [Local development](docs/local-development.md).
+The root command starts Go, back office, the real connectors and all required backend services with source watching. It does not publish or deploy configuration.
+
 ```bash
 # Start all services in dev/watch mode
 npm run dev

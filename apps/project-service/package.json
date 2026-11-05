@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/main.ts",
-    "start": "node dist/main.js",
+    "dev": "node ../../scripts/dev/watch-service.mjs",
+    "start": "node dist/apps/project-service/src/main.js",
     "test": "tsx test/project-publishing.spec.ts && tsx test/journey-configuration.spec.ts && tsx test/access-preview.spec.ts && tsx test/connectors-extension.spec.ts && tsx test/demo-staff.spec.ts && tsx test/demo-logins.spec.ts && tsx test/persona-access.spec.ts && tsx test/personas-library.spec.ts && tsx test/personas-cases.spec.ts && tsx test/persona-library-store.spec.ts && tsx test/company-links.spec.ts && tsx test/capability-registry-release.spec.ts && tsx test/permission-guard.spec.ts && tsx test/okf-authoring.spec.ts && tsx test/environment-publication.spec.ts && tsx test/okf-revocation-api.spec.ts && tsx test/okf-draft-limits.spec.ts && tsx test/seed-loader.spec.ts && tsx test/pack-settings.spec.ts && tsx test/placemakers-okf-draft.spec.ts && tsx test/placemakers-coverage-draft.spec.ts && tsx test/knowledge-insight.spec.ts && tsx test/publication-gate.spec.ts"
   },
   "dependencies": {

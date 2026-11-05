@@ -10,7 +10,8 @@ import { config } from 'dotenv';
  * child still carries the supervisor's stale value — which is how embeddings
  * stayed broken through a key rotation and every search silently degraded to
  * regex. In this stack .env IS the configuration of record, so it overrides. */
-config({ path: resolve(__dirname, '../../../.env'), override: true });
+const devEnvFile = process.env.JOURNEYAX_ENV_FILE;
+config({ path: devEnvFile || resolve(__dirname, '../../../.env'), override: !devEnvFile });
 
 import { NestFactory } from '@nestjs/core';
 import * as bodyParser from 'body-parser';

@@ -13,7 +13,7 @@
  * - Durable event collection through outbox/streaming—never blocking runtime execution
  * - No fabricated business metrics; every result traceable to grounded events
  */
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger, ForbiddenException } from '@nestjs/common';
+import { Injectable, Inject, Optional, OnModuleInit, OnModuleDestroy, Logger, ForbiddenException } from '@nestjs/common';
 import { MongoClient, Db } from 'mongodb';
 import {
   COLLECTION_ANALYTICS_EVENTS,
@@ -61,7 +61,7 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
   private client: MongoClient | null = null;
   private db: Db | null = null;
 
-  constructor(db?: Db) {
+  constructor(@Optional() @Inject('ANALYTICS_DB') db?: Db) {
     if (db) {
       this.db = db;
     }
