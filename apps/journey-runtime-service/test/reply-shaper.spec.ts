@@ -76,6 +76,13 @@ async function main() {
     assert.equal(shapeReply('The cleaners-and-cleaning-equipment section has these items.', ordinary).text, '');
   });
 
+  await suite.test('staff can discuss source references without exposing platform concept identifiers', () => {
+    const staff = context({ allowCodeFormatting: true, internalIds: ['internal-stage-7'] });
+    assert.equal(shapeReply('Order `DEMO-1001` has not been checked.', staff).text, 'Order `DEMO-1001` has not been checked.');
+    assert.equal(shapeReply('Use `internal-stage-7` now.', staff).text, '');
+    assert.equal(shapeReply('Use concept://tenant/private.', staff).text, '');
+  });
+
   await suite.test('the reply is short: at most the configured number of sentences, kept in order', () => {
     const shaped = shapeReply('One here. Two here. Three here. Four here.', context());
     assert.equal(shaped.text, 'One here. Two here.');
@@ -232,7 +239,7 @@ async function main() {
     assert.equal(dropping.getStreamedText(), 'Here is what to do.\n\nThen call us.');
   });
 
-  process.exitCode = suite.finish() ? 0 : 1;
+  suite.finish();
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

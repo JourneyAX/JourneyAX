@@ -49,6 +49,7 @@ async function runGatewayAssertionTests() {
         {
           'x-tenant-id': 'workweargroup',
           'x-user-id': 'usr_gw_test',
+          'x-user-email': 'verified-runtime-user@example.test',
           'x-user-role': 'operator',
         },
         { message: 'ping' }
@@ -67,7 +68,7 @@ async function runGatewayAssertionTests() {
       assert.equal(payload.aud, 'journeyax-runtime');
       assert.equal(payload.tenantId, 'workweargroup');
       assert.equal(payload.environmentId, 'production');
-      assert.equal(payload.sub, 'usr_gw_test');
+      assert.equal(payload.sub, 'verified-runtime-user@example.test');
       assert.equal(payload.role, 'operator');
     } finally {
       global.fetch = originalFetch;
@@ -135,6 +136,20 @@ async function runGatewayAssertionTests() {
   };
   const turnPath = '/api/v1/placemakers/production/runtime/turn';
   const verifyFor = (headers: any) => verifyGatewayAssertion(headers['X-Gateway-Assertion'], secret, { expectedTenantId: 'placemakers', expectedEnvironmentId: 'production' });
+
+  await test('the same commerce URL carries the server deployment environment on ordinary and streaming requests', async () => {
+    const before = process.env.COMMERCE_ENVIRONMENT; process.env.COMMERCE_ENVIRONMENT = 'test';
+    const headers = { 'x-tenant-id': 'placemakers', 'x-user-role': 'buyer', 'x-user-email': 'buyer@example.test' };
+    try {
+      await withFetch(() => ({ body: {} }), async seen => {
+        await service.proxyRequest('GET', '/api/v1/placemakers/commerce/desks', headers);
+        assert.equal(verifyGatewayAssertion(seen.downstream['X-Gateway-Assertion'], secret, { expectedTenantId: 'placemakers', expectedEnvironmentId: 'test' }).environmentId, 'test');
+        const response: any = { setHeader() {}, write() {}, end() {}, on() {}, off() {}, flushHeaders() {} };
+        await service.proxyStream('POST', '/api/v1/placemakers/commerce/chat/stream', headers, { message: 'Hello' }, response);
+        assert.equal(verifyGatewayAssertion(seen.downstream['X-Gateway-Assertion'], secret, { expectedTenantId: 'placemakers', expectedEnvironmentId: 'test' }).environmentId, 'test');
+      });
+    } finally { if (before === undefined) delete process.env.COMMERCE_ENVIRONMENT; else process.env.COMMERCE_ENVIRONMENT = before; }
+  });
 
   await test('a member of staff gets their teams signed into the assertion, looked up with the internal key', async () => {
     await withFetch(() => ({ body: { isMember: true, teams: ['Customer Service', 'sales'] } }), async (seen) => {
@@ -217,9 +232,13 @@ async function runGatewayAssertionTests() {
       '/api/v1/commerce/chat',
       '/api/v1/agent/anything',
       '/auth/me',
+      '/api/v1/projects/placemakers/members',
+      '/api/v1/projects/placemakers/versions',
+      '/api/v1/placemakers/analytics/summary',
+      '/api/v1/placemakers/knowledge/stats',
     ]) assert.equal(isCacheable('GET', path), false, path);
     assert.equal(isCacheable('POST', '/api/v1/placemakers/products/search'), false, 'only GET is ever cached');
-    for (const path of ['/api/v1/placemakers/products/search', '/api/v1/placemakers/analytics/summary']) assert.equal(isCacheable('GET', path), true, path);
+    assert.equal(isCacheable('GET', '/api/v1/placemakers/products/search'), true);
   });
 
   await test('the platform admin carries the reserved administrators group by role; a team called Administrators puts nobody in it', async () => {
@@ -257,9 +276,9 @@ async function runGatewayAssertionTests() {
     assert.equal(signedSubject({ 'x-user-email': 'GUEST@anonymous', 'x-user-id': 'hemi@talbot.example' }), 'anonymous');
   });
 
-  await test('a guest may still carry a plain session id, and nobody at all is anonymous', () => {
-    assert.equal(signedSubject({ 'x-user-email': 'guest@anonymous', 'x-user-id': 'sess_123' }), 'sess_123');
-    assert.equal(signedSubject({ 'x-user-id': 'usr_gw_test' }), 'usr_gw_test');
+  await test('an unverified session id never becomes a signed person', () => {
+    assert.equal(signedSubject({ 'x-user-email': 'guest@anonymous', 'x-user-id': 'sess_123' }), 'anonymous');
+    assert.equal(signedSubject({ 'x-user-id': 'usr_gw_test' }), 'anonymous');
     assert.equal(signedSubject({}), 'anonymous');
   });
 

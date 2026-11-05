@@ -155,7 +155,7 @@ export class TurnInterpreter {
     workspace: WorkspaceState,
     options: { model?: boolean } = {}
   ): Promise<InterpretationResult> {
-    const rawMessage = command.message || (command as any).userInput || '';
+    const rawMessage: string = command.message || (command as any).userInput || '';
     const policy = resolveInterpretationPolicy(release);
     const expressions = compileExpressions(policy);
     const lowerMsg = rawMessage.toLowerCase();

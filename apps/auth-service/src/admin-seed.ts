@@ -13,11 +13,17 @@ interface UsersDbLike {
   collection(name: string): { updateOne(filter: any, update: any, options?: any): Promise<any> };
 }
 
-/** Credentials (dev): admin / admin in the `platform` tenant. Override with ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_TENANT. */
+/** Real seeds require explicit credentials. The insecure fixture is an opt-in for local development/test only. */
 export function planAdminSeed(env: Record<string, string | undefined>): AdminSeedPlan {
+  const localFixture = ['development', 'test'].includes(env.NODE_ENV || '') && env.ALLOW_INSECURE_DEV_ADMIN === 'true';
+  const email = env.ADMIN_EMAIL?.trim();
+  const password = env.ADMIN_PASSWORD;
+  if (!localFixture && (!email || !password || password.length < 8 || password.trim().toLowerCase() === 'admin')) {
+    throw new Error('Set ADMIN_EMAIL and an ADMIN_PASSWORD of at least eight characters. Default admin credentials are not permitted.');
+  }
   return {
-    email: (env.ADMIN_EMAIL || 'admin').toLowerCase(),
-    password: env.ADMIN_PASSWORD || 'admin',
+    email: (email || 'admin').toLowerCase(),
+    password: password || 'admin',
     tenantId: (env.ADMIN_TENANT || 'platform').toLowerCase(),
   };
 }

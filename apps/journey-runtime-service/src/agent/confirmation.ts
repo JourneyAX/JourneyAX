@@ -23,6 +23,9 @@ export interface PendingConfirmation {
   argsHash: string;
   summary: string;
   details: ConfirmationDetail[];
+  /** Full server-kept payload, shown before approval; summaries never replace it. */
+  reviewPayload: string;
+  reviewSource?: { name: string; environment: string; sample: boolean };
   principalId: string;
   createdAt: string;
   expiresAt: string;
@@ -71,29 +74,34 @@ function writePending(workspace: { facts?: Record<string, any> }, list: PendingC
 /** Keeps a call to be confirmed. The same call asked twice (a model that repeats itself) reuses the one confirmation. */
 export function createPendingConfirmation(
   workspace: { facts?: Record<string, any> },
-  input: { toolId: string; args: Record<string, unknown>; summary: string; principalId: string; /** What the card lists, when the arguments themselves are not what the person should read. */ detailsFrom?: Record<string, unknown> },
+  input: { toolId: string; args: Record<string, unknown>; summary: string; principalId: string; reviewSource?: PendingConfirmation['reviewSource']; /** What the card lists, when the arguments themselves are not what the person should read. */ detailsFrom?: Record<string, unknown> },
   now: Date = new Date(),
 ): { pending: PendingConfirmation; reused: boolean } {
   const live = readPending(workspace).filter((entry) => Date.parse(entry.expiresAt) > now.getTime());
   const argsHash = hashArgs(input.args);
-  const same = live.find((entry) => entry.toolId === input.toolId && entry.argsHash === argsHash && entry.principalId === input.principalId);
+  const reviewPayload = JSON.stringify(input.args ?? {}, null, 2);
+  if (reviewPayload.length > 64_000) throw new Error('This action is too large to review here. Split it into smaller, separately approved actions.');
+  const same = live.find((entry) => entry.toolId === input.toolId && entry.argsHash === argsHash && entry.principalId === input.principalId && entry.reviewPayload === reviewPayload);
   if (same) return { pending: same, reused: true };
+  if (live.length >= MAX_PENDING) throw new Error('Resolve the outstanding review cards before preparing more actions. No existing review was replaced.');
   const pending: PendingConfirmation = {
     id: `cf_${randomBytes(9).toString('hex')}`,
     toolId: input.toolId,
     args: JSON.parse(JSON.stringify(input.args ?? {})),
     argsHash,
+    reviewPayload,
+    ...(input.reviewSource ? { reviewSource: structuredClone(input.reviewSource) } : {}),
     summary: clip(input.summary, 300),
     details: input.detailsFrom ? detailsOf(input.detailsFrom).slice(0, 7) : [{ label: defaults.action, value: humanise(input.toolId) }, ...detailsOf(input.args)].slice(0, 7),
     principalId: input.principalId,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + CONFIRMATION_TTL_MS).toISOString(),
   };
-  writePending(workspace, [...live, pending].slice(-MAX_PENDING));
+  writePending(workspace, [...live, pending]);
   return { pending, reused: false };
 }
 
-export type TakeResult = { ok: true; pending: PendingConfirmation } | { ok: false; reason: 'unknown' | 'expired' | 'someone_else' };
+export type TakeResult = { ok: true; pending: PendingConfirmation } | { ok: false; reason: 'unknown' | 'expired' | 'someone_else' | 'changed' };
 
 /** Takes a confirmation out of the list, once. Someone else's confirmation is left where it is. */
 export function takePendingConfirmation(workspace: { facts?: Record<string, any> }, id: string, principalId: string, now: Date = new Date()): TakeResult {
@@ -103,6 +111,7 @@ export function takePendingConfirmation(workspace: { facts?: Record<string, any>
   if (found.principalId !== principalId) return { ok: false, reason: 'someone_else' };
   writePending(workspace, all.filter((entry) => entry.id !== id));
   if (Date.parse(found.expiresAt) <= now.getTime()) return { ok: false, reason: 'expired' };
+  if (!found.reviewPayload || found.argsHash !== hashArgs(found.args) || found.reviewPayload !== JSON.stringify(found.args, null, 2)) return { ok: false, reason: 'changed' };
   return { ok: true, pending: found };
 }
 
@@ -112,6 +121,8 @@ export function confirmCardState(pending: PendingConfirmation, wording: Confirma
     confirmationId: pending.id,
     heading: wording.heading || defaults.heading,
     summary: pending.summary,
+    reviewPayload: pending.reviewPayload,
+    ...(pending.reviewSource ? { reviewSource: pending.reviewSource } : {}),
     ...(pending.details.length > 0 ? { details: pending.details } : {}),
     allowLabel: wording.allow || defaults.allow,
     denyLabel: wording.deny || defaults.deny,

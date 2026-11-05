@@ -74,6 +74,7 @@ export interface ChatRequest {
   verifiedIdentity?: { sub: string; role: string; groups: string[] };
   /** Connectors the person switched off for this chat; they can only narrow what the pack allows. */
   disabledConnectors?: string[];
+  readOnly?: boolean;
   imageBase64?: string;
   imageUrl?: string;
   idempotencyKey?: string;

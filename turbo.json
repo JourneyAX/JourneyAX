@@ -26,6 +26,20 @@
     "WHATSAPP_VERIFY_TOKEN",
     "WHATSAPP_APP_SECRET",
     "NODE_ENV",
+    "MONGODB_DB_NAME",
+    "JOURNEYAX_ENV_FILE",
+    "GATEWAY_ASSERTION_SECRET",
+    "JAX_IQ_ENABLED",
+    "JAX_IQ_PORT",
+    "JAX_IQ_SERVICE_URL",
+    "JAX_IQ_SIGNING_SECRET",
+    "JAX_IQ_CONNECTOR_SIGNING_SECRET",
+    "JAX_IQ_MONGODB_URI",
+    "JAX_IQ_MONGODB_DB",
+    "CONNECTOR_MCP_SERVERS",
+    "CONNECTOR_MCP_BASE_URL",
+    "CONNECTOR_SECRET_*",
+    "ERP_DEMO_*",
     "COMMERCE_ENVIRONMENT",
     "STOREFRONT_URL",
     "STOREFRONT_PUBLIC_ORIGIN",
@@ -44,10 +58,17 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ]
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },

@@ -432,8 +432,8 @@ async function runContractAndStreamingSuite() {
   assert.equal(runtimeCalledForUnmigrated, false, 'The canonical runtime must not be called for an unmigrated tenant');
   console.log('   ✅ PASS: Activation failure and an unmigrated tenant return an explicit 503; no other engine is used');
 
-  // ── TEST 7: Negative Tests: Transactional Handlers Fail Closed Without Adapters ─
-  console.log('7. Testing transactional handlers cannot manufacture success without authoritative adapters...');
+  // ── TEST 7: Transactional handlers require verified authority ─
+  console.log('7. Testing transactional handlers refuse unverified owners and missing adapters...');
 
   const tradeQuoteHandler = new TradeQuoteCreateHandler();
   const quoteUpdateHandler = new QuoteUpdateHandler();
@@ -443,29 +443,10 @@ async function runContractAndStreamingSuite() {
 
   const ctx: any = { tenantId: 'placemakers', environmentId: 'production', workspaceId: 'ws_test' };
 
-  // 7a. trade.quote_create fails closed
-  try {
-    await tradeQuoteHandler.execute({ items: [{ sku: '2801884', quantity: 3, unitPrice: 32.5 }] }, ctx);
-    assert.fail('trade.quote_create without adapter/db must fail closed');
-  } catch (err: any) {
-    assert.ok(err.message.includes('Missing configured connector adapter') || err.message.includes('failing closed'));
-  }
-
-  // 7b. quote.update fails closed
-  try {
-    await quoteUpdateHandler.execute({ quoteId: 'QUO-001', totalAmountCents: 125000 }, ctx);
-    assert.fail('quote.update without adapter/db must fail closed');
-  } catch (err: any) {
-    assert.ok(err.message.includes('Missing authoritative quote') || err.message.includes('failing closed'));
-  }
-
-  // 7c. cart.update fails closed
-  try {
-    await cartUpdateHandler.execute({ cartId: 'CART-001', items: [{ sku: 'SKU-001', quantity: 2 }] }, ctx);
-    assert.fail('cart.update without adapter/db must fail closed');
-  } catch (err: any) {
-    assert.ok(err.message.includes('Missing authoritative cart') || err.message.includes('failing closed'));
-  }
+  const items = [{ sku: '2801884', quantity: 3 }];
+  await assert.rejects(() => tradeQuoteHandler.execute({ items }, ctx), /verified owner/);
+  await assert.rejects(() => quoteUpdateHandler.execute({ quoteId: 'QUO-001', items }, ctx), /verified commerce owner/);
+  await assert.rejects(() => cartUpdateHandler.execute({ cartId: 'CART-001', items }, ctx), /verified commerce owner/);
 
   // 7d. item.configure fails closed
   try {
@@ -483,7 +464,7 @@ async function runContractAndStreamingSuite() {
     assert.ok(err.message.includes('Missing authoritative specification') || err.message.includes('failing closed'));
   }
 
-  console.log('   ✅ PASS: All 5 transactional handlers strictly fail closed without authoritative adapters (0 manufactured state)');
+  console.log('   ✅ PASS: All 5 transactional handlers fail closed without verified authority');
 
   console.log('\n🎉 ALL RUNTIME CLOSURE CONTRACT & STREAMING TESTS PASSED!\n');
 }

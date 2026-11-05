@@ -55,6 +55,7 @@ export class ApprovalStore {
 
   private async getCol(environmentId?: string): Promise<Collection<ToolApprovalRecord> | null> {
     if (this.col) return this.col;
+    if (this.explicitMemory) return null;
     if (this.isMemoryPermitted(environmentId)) {
       const uri = process.env.MONGODB_URI;
       if (!uri) return null;

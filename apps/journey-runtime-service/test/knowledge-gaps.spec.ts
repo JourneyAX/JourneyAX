@@ -8,6 +8,8 @@ import { KnowledgeGapRepository } from '../src/kernel/knowledge-gap.repository';
 import { executeAgentTool, type AgentToolContext } from '../src/agent/agent-tools';
 import { GENERIC_PLATFORM_OPERATING_PROMPT } from '../src/agent/agent-loop';
 import { AnalyticsService } from '../../analytics-service/src/analytics.service';
+import { ProductGuideRepository } from '../src/kernel/product-guide.repository';
+import { ModelGateway } from '../src/kernel/model.gateway';
 
 test('P5: Knowledge Gaps - recording, strict unverified answers, and back office analytics', async (t) => {
   await t.test('1. Platform Rules: Generic instructions enforce strict unverified topic handling', () => {
@@ -95,14 +97,15 @@ test('P5: Knowledge Gaps - recording, strict unverified answers, and back office
         relationships: [],
         verifications: [],
       } as any,
-      catalogSearchHandler: { search: async () => ({ items: [], total: 0 }) } as any,
+      catalogSearchHandler: { execute: async () => ({ products: [], total: 0 }) } as any,
       turnProductSkus: new Set(),
-      catalogProductCache: new Map(),
+      catalogProductCache: new Map([['fixture-unverified-warranty', { sku: 'fixture-unverified-warranty', title: 'Fixture product with no warranty on file' }]]),
       readSourceIds: new Set(),
       allowedClaimClasses: new Set(),
       presentedCards: [],
       isHumanHandoffRequested: false,
       knowledgeGapRepo: repo,
+      productGuideRepo: ProductGuideRepository.forTest(),
     };
 
     // 1. consult_business_knowledge on uncovered topic
@@ -114,9 +117,12 @@ test('P5: Knowledge Gaps - recording, strict unverified answers, and back office
     assert.equal(guideRes.found, false);
     assert.equal(guideRes.count, 0);
 
-    // 3. get_warranty on unverified brand/product
-    const warrRes = await executeAgentTool('get_warranty', { productOrBrand: 'NonExistentAeroBrand' }, baseCtx);
+    // A known product and an available empty guide store prove missing terms.
+    // An unidentified product or an unreachable store is not that proof.
+    const warrRes = await executeAgentTool('get_warranty', { productOrBrand: 'fixture-unverified-warranty' }, baseCtx);
     assert.equal(warrRes.found, false);
+    assert.equal(warrRes.sourceStatus, 'available');
+    assert.equal(warrRes.warranty.status, 'terms_not_on_file');
 
     // Verify all 3 gaps were recorded in DB
     const recorded = await db.collection<KnowledgeGapRecord>(COLLECTION_KNOWLEDGE_GAPS).find({ tenantId: PM_TENANT }).toArray();
@@ -125,7 +131,19 @@ test('P5: Knowledge Gaps - recording, strict unverified answers, and back office
     const topics = recorded.map((r) => r.topic);
     assert.ok(topics.includes('carbon fiber joist spans'));
     assert.ok(topics.includes('submarine timber piling installation'));
-    assert.ok(topics.includes('NonExistentAeroBrand'));
+    assert.ok(topics.includes('fixture-unverified-warranty'));
+  });
+
+  await t.test('Source failures and partial guide reads are not recorded as missing warranty knowledge', async () => {
+    const db = new MemoryDb(); const repo = new KnowledgeGapRepository(db);
+    const product = { sku: 'fixture-outage-product', title: 'Fixture product' };
+    for (const productGuideRepo of [new ProductGuideRepository(async () => { throw new Error('Explicit isolated source unavailable'); }), { readForProducts: async () => ({ guides: [], status: 'partial' }) }]) {
+      const ctx: any = { tenantId: PM_TENANT, environmentId: PM_ENV, workspaceId: 'ws-source-outage', correlationId: 'source-outage', release: { extensions: {} }, okfContent: { concepts: [], sources: [], evidenceChunks: [], relationships: [], verifications: [] }, catalogSearchHandler: { execute: async () => { throw new Error('No source fallback may run for a cached product'); } }, catalogProductCache: new Map([[product.sku, product]]), turnProductSkus: new Set(), readSourceIds: new Set(), allowedClaimClasses: new Set(), productGuideRepo, knowledgeGapRepo: repo };
+      const response = await executeAgentTool('get_warranty', { productOrBrand: product.sku }, ctx);
+      assert.ok(['partial', 'unavailable'].includes(response.sourceStatus));
+      assert.equal(response.warranty.status, 'source_unavailable');
+      assert.equal(await repo.countGaps(PM_TENANT), 0, 'a failed source check must not become missing-terms evidence');
+    }
   });
 
   await t.test('4. Tenant 1 (PlaceMakers): Agent answers unverified topic with strict honesty and records gap', async () => {
@@ -171,7 +189,16 @@ test('P5: Knowledge Gaps - recording, strict unverified answers, and back office
 
   await t.test('5. Tenant 2 (Abercrombie): Agent answers unverified warranty with strict honesty and records gap', async () => {
     const stack = await buildAbercrombieStack();
-    const service = stack.serviceFor();
+    const model = new ModelGateway();
+    model.mockAgentExecutor = async request => {
+      const result = request.messages.find(message => message.role === 'tool' && message.name === 'get_warranty');
+      if (!result) return { content: '', toolCalls: [{ id: 'isolated-warranty-read', name: 'get_warranty', arguments: { productOrBrand: 'ANF-HOODIE-BLK' } }] };
+      const evidence = JSON.parse(String(result.content));
+      assert.equal(evidence.sourceStatus, 'available');
+      assert.equal(evidence.warranty.status, 'terms_not_on_file');
+      return { content: 'I have no verified information on the warranty terms for that hoodie. Would you like me to connect you with our store team to check?', toolCalls: [] };
+    };
+    const service = stack.serviceFor({ modelGateway: model });
 
     const command = {
       tenantId: ABERCROMBIE_TENANT,
@@ -179,7 +206,7 @@ test('P5: Knowledge Gaps - recording, strict unverified answers, and back office
       workspaceId: 'ws-anf-gap-turn-2',
       sessionId: 'sess-anf-gap-2',
       turnId: 'turn-anf-gap-2',
-      message: 'What is the lifetime warranty coverage on bulletproof titanium mesh jackets?',
+      message: 'What is the lifetime warranty coverage on ANF-HOODIE-BLK?',
       correlationId: 'corr-anf-gap-2',
       principalId: 'shopper-alex',
       timestamps: { receivedAt: new Date().toISOString() },

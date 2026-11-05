@@ -12,6 +12,7 @@ import { OutboxRepository } from '../../src/kernel/outbox.repository';
 import { PresentationPort } from '../../src/kernel/presentation.port';
 import { OkfKnowledgeControlPlane } from '../../src/kernel/knowledge-control-plane';
 import { KnowledgeGapRepository } from '../../src/kernel/knowledge-gap.repository';
+import { ProductGuideRepository } from '../../src/kernel/product-guide.repository';
 import { publishBusinessPack, type BusinessPackRelease } from '@journeyax/business-pack';
 import { FixedGateway } from './placemakers-stack';
 
@@ -585,7 +586,8 @@ export async function buildAbercrombieStack() {
       new PresentationPort(modelGateway),
       new OkfKnowledgeControlPlane(async () => db as any),
       undefined,
-      new KnowledgeGapRepository(db)
+      new KnowledgeGapRepository(db),
+      new ProductGuideRepository(db)
     );
   };
 

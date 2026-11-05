@@ -91,6 +91,7 @@ const mockModelEnginePack: BusinessPackRelease = {
   agents: [
     {
       agentId: 'agent_route_planner',
+      isDefault: true,
       name: 'Airspace Route Architect',
       purpose: 'Optimizes flight paths and verifies airspace clearance.',
       systemPromptTemplate: 'You are the primary flight path architect. Prioritize civil aviation regulations.',
@@ -491,6 +492,10 @@ async function runTests() {
 
     const resolved = agentRouter.resolveAgent(mockModelEnginePack, mockWs);
     assert.equal(resolved.agent.agentId, 'agent_route_planner');
+    const ambiguous = structuredClone(mockModelEnginePack);
+    for (const agent of ambiguous.agents) delete agent.isDefault;
+    assert.throws(() => agentRouter.resolveAgent(ambiguous, mockWs), /unambiguous default/);
+    assert.equal(agentRouter.resolveAgent(ambiguous, mockWs, 'agent_safety_officer').agent.agentId, 'agent_safety_officer');
 
     const { systemPrompt, userPrompt } = agentRouter.composePrompt(resolved, mockWs, 'Verify clearance');
     assert.match(systemPrompt, /Airspace Route Architect/);
@@ -523,9 +528,12 @@ async function runTests() {
     process.env.OPENAI_DATA_RESIDENCY = 'au';
     delete process.env.OPENAI_API_KEY;
 
+    const auditPack = structuredClone(mockModelEnginePack);
+    for (const agent of auditPack.agents) delete agent.isDefault;
+    auditPack.defaultAgentId = 'agent_safety_officer';
     await assert.rejects(
       async () => {
-        await gateway.executeWithAgent(mockModelEnginePack, mockWs, 'Audit sortie #109');
+        await gateway.executeWithAgent(auditPack, mockWs, 'Audit sortie #109');
       },
       (err: any) => {
         assert(err instanceof ModelMissingCredentialsError);

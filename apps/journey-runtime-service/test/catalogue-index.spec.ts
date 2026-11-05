@@ -72,7 +72,7 @@ const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 10));
 async function main() {
   await suite.test('the field list comes from the mapping, and a projection never lists a path and one of its parents', async () => {
     const paths = mappedFieldPaths(mapping);
-    for (const expected of ['projectId', 'sku', 'name', 'description', 'categoryPath', 'attributes', 'stock.inStock', 'stock.availableBranchCount', 'discontinued', 'images.0']) {
+    for (const expected of ['projectId', 'sku', 'name', 'description', 'categoryPath', 'attributes', 'stock.inStock', 'stock.availableBranchCount', 'discontinued', 'images.0', 'web.productUrl', 'documents']) {
       assert.ok(paths.includes(expected), `${expected} is read by the catalogue code`);
     }
     const projection = buildSlimProjection(paths);
@@ -83,6 +83,14 @@ async function main() {
     assert.deepEqual(Object.keys((projection.images as any).$cond[1]), ['$slice'], 'a photo path keeps only the first photo');
     assert.equal((projection.images as any).$cond[1].$slice[1], 1);
     assert.equal(projection.categoryPath, 1);
+  });
+
+  await suite.test('the slim copy retains nested product identity and document provenance required by the normalizer', () => {
+    const custom = resolveCatalogMapping({ sourceUrlPaths: ['canonical.href', 'origin.href'], documentPaths: ['evidence.attachments'] });
+    const projection = buildSlimProjection(mappedFieldPaths(custom));
+    assert.equal(projection['canonical.href'], 1); assert.equal(projection['origin.href'], 1);
+    assert.equal(projection['evidence.attachments'], 1);
+    assert.equal(projection['web.productUrl'], undefined, 'only this merchant’s declared identity paths are loaded');
   });
 
   await suite.test('a list position larger than one keeps that many entries, and a whole path wins over a list position', () => {

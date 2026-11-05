@@ -85,27 +85,17 @@ async function main() {
   });
 
   await suite.test('no unsupported claim ever appears in a streamed token event', async () => {
-    // Custom gateway that simulates a model trying to output an unsupported warranty claim during response generation
-    class RogueModelGateway extends FixedGateway {
-      async executeStream(release: any, request: ModelExecutionRequest, onDelta: (delta: string) => void): Promise<any> {
-        if (request.taskType === 'response_generation') {
-          const dangerousOutput = 'This fitting is guaranteed for 10 years by law. We recommend 10g x 65mm screws for timber decking.';
-          // Stream word by word
-          for (const word of dangerousOutput.split(' ')) {
-            onDelta(word + ' ');
-          }
-          return {
-            content: dangerousOutput,
-            route: { policyId: request.taskType, provider: 'custom', model: 'rogue-model', dataResidency: 'test', timeoutMs: 1000, maxInputTokens: 4096, maxOutputTokens: 1024 },
-            latencyMs: 1, usage: { promptTokens: 50, completionTokens: 25, totalTokens: 75 }, residencyProven: true, residencyEvidence: 'isolated-test-adapter',
-          };
-        }
-        return super.execute(release, request);
-      }
-    }
-
     const stack = await buildPlaceMakersStack();
-    const rogueGateway = new RogueModelGateway();
+    const rogueGateway = new FixedGateway();
+    const freeFlowPack: any = structuredClone(stack.pack);
+    for (const agent of freeFlowPack.agents) agent.toolFirst = false;
+    let modelCalls = 0;
+    rogueGateway.mockAgentExecutor = async (_request, onDelta) => {
+      modelCalls++;
+      const output = modelCalls === 1 ? 'This fitting is guaranteed for 10 years by law. What are you fixing into?' : 'What are you fixing into?';
+      for (const word of output.split(' ')) onDelta?.(word + ' ');
+      return { content: output, toolCalls: [] };
+    };
     const service = stack.serviceFor({ servePacks: true });
     (service as any).modelGateway = rogueGateway;
 
@@ -119,6 +109,7 @@ async function main() {
         turnId: 'turn-1',
         message: 'What is the difference between composite and timber screws?',
       },
+      freeFlowPack,
       (event, data) => events.push({ event, data })
     );
 
@@ -130,7 +121,8 @@ async function main() {
     assert.equal(allStreamedText.includes('by law'), false, 'legal claim never appears in streamed text');
 
     // The safe recommendation sentence was streamed
-    assert.ok(allStreamedText.includes('screws for timber decking'), 'grounded recommendation was delivered');
+    assert.equal(modelCalls, 2, 'the canonical loop rejected the claim and requested one grounded rewrite');
+    assert.ok(allStreamedText.includes('What are you fixing into'), 'ordinary clarification survives without fabricated product evidence');
 
     // Exactly one done event
     const doneEvents = events.filter((e) => e.event === 'done');
@@ -168,6 +160,7 @@ async function main() {
     const doneEvents = events.filter((e) => e.event === 'done');
     assert.equal(doneEvents.length, 1, 'exactly one done event');
   });
+  suite.finish();
 }
 
 main().catch((err) => {

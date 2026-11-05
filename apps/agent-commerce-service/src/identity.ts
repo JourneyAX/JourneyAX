@@ -1,5 +1,11 @@
 import { verifyGatewayAssertion } from '@journeyax/database';
 
+function deploymentEnvironment(): string {
+  const environment = process.env.COMMERCE_ENVIRONMENT || 'production';
+  if (!['dev', 'test', 'staging', 'production'].includes(environment)) throw new Error('Unsupported commerce deployment environment.');
+  return environment;
+}
+
 /**
  * Who is asking, as the gateway signed it. The browser never says which role or groups a person has: the gateway verifies the login
  * and signs the role and (for staff) the groups into an assertion on every call it passes on. This service reads that assertion so the
@@ -15,7 +21,7 @@ export interface VerifiedIdentity {
 export function verifiedIdentity(assertion: string | undefined, tenantId: string, secret: string | undefined = process.env.GATEWAY_ASSERTION_SECRET): VerifiedIdentity | undefined {
   if (!assertion || !secret || !tenantId) return undefined;
   try {
-    const payload = verifyGatewayAssertion(assertion, secret, { expectedTenantId: tenantId });
+    const payload = verifyGatewayAssertion(assertion, secret, { expectedTenantId: tenantId, expectedEnvironmentId: deploymentEnvironment() });
     return { sub: payload.sub, role: payload.role, groups: payload.groups ?? [] };
   } catch {
     return undefined;
@@ -29,14 +35,33 @@ export function cleanDisabledConnectors(value: unknown): string[] | undefined {
   return ids.length ? ids : undefined;
 }
 
-/**
- * Who the runtime is told is asking. A login the gateway verified wins: its signed subject is the login itself. Anyone else may still name
- * themselves with the id the page sends (`demoPrincipalId` or `customerId`, a session or demo id), but never with something shaped like a
- * login: services look a customer's company up by login, so a guest who sends someone's address must not become that person.
- */
-export function principalIdFor(identity: VerifiedIdentity | undefined, claimed: unknown): string {
+/** Only the gateway-verified subject is an identity. A browser's customer/session ID is never re-signed as one. */
+export function principalIdFor(identity: VerifiedIdentity | undefined, _claimed: unknown): string {
   const verified = String(identity?.sub ?? '').trim();
-  if (verified.includes('@') && verified.toLowerCase() !== 'guest@anonymous') return verified;
-  const id = typeof claimed === 'string' ? claimed.trim() : '';
-  return id && !id.includes('@') ? id : 'anonymous';
+  return verified && !['anonymous', 'guest', 'guest@anonymous'].includes(verified.toLowerCase()) ? verified : 'anonymous';
+}
+
+/** The page cannot change deployment environment while the gateway signs another one. */
+export function chatEnvironment(assertion: string | undefined, tenantId: string, claimed?: string, internalKey?: string): string {
+  const allowed = ['dev', 'test', 'staging', 'production'];
+  const workload = !!process.env.INTERNAL_API_KEY && internalKey === process.env.INTERNAL_API_KEY;
+  if (workload && claimed && allowed.includes(claimed)) return claimed;
+  let environment = 'production';
+  if (assertion && process.env.GATEWAY_ASSERTION_SECRET) {
+    const identity = verifyGatewayAssertion(assertion, process.env.GATEWAY_ASSERTION_SECRET, { expectedTenantId: tenantId, expectedEnvironmentId: deploymentEnvironment() });
+    environment = identity.environmentId;
+  }
+  if (!allowed.includes(environment) || claimed && claimed !== environment) throw Object.assign(new Error('The requested environment does not match the verified deployment scope.'), { status: 403 });
+  return environment;
+}
+
+export interface CommerceIdentity { principalId: string; environmentId: string; role: string; groups: string[] }
+export function commerceIdentity(assertion: string | undefined, tenantId: string): CommerceIdentity | undefined {
+  const secret = process.env.GATEWAY_ASSERTION_SECRET;
+  if (!assertion || !secret) return undefined;
+  try {
+    const value = verifyGatewayAssertion(assertion, secret, { expectedTenantId: tenantId, expectedEnvironmentId: deploymentEnvironment() });
+    if (!value.sub || ['anonymous', 'guest', 'guest@anonymous'].includes(value.sub.toLowerCase())) return undefined;
+    return { principalId: value.sub, environmentId: value.environmentId, role: value.role, groups: value.groups ?? [] };
+  } catch { return undefined; }
 }

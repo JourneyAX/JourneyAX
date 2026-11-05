@@ -244,7 +244,7 @@ async function runProjectPublishingSuite() {
 
   // ── TEST 3: Strict Compilation & Publication ───────────────────────────
   await test('publishConfig strictly compiles Studio journeys, AI config, agents, capabilities, and publishes pack', async () => {
-    const { service, memoryReleases, memoryPointers, memoryOutbox } = createMockProjectService({
+    const { service, memoryProjects, memoryReleases, memoryPointers, memoryOutbox } = createMockProjectService({
       'caroma-studio': {
         projectId: 'caroma-studio',
         name: 'Caroma Studio Pro',
@@ -303,6 +303,8 @@ async function runProjectPublishingSuite() {
           accentColor: '#0A0A0A',
           fontFamily: 'Space Grotesk, sans-serif',
         },
+        experience: { cards: { productCardMode: 'when_named', allowedCardTypes: ['products', 'quote'] } },
+        uiTheme: { cards: { products: { enabled: false } } },
         cardTemplates: {
           quote: {
             cardType: 'quote',
@@ -384,6 +386,8 @@ async function runProjectPublishingSuite() {
     assert.equal(release.experience.theme.primaryColor, '#FFD600');
     assert.equal(release.experience.theme.accentColor, '#0A0A0A');
     assert.ok(release.experience.cards.allowedCardTypes.includes('quote'));
+    assert.equal(release.experience.cards.productCardMode, 'when_named');
+    assert.equal(release.experience.cards.allowedCardTypes.includes('products'), false, 'Studio disabled cards remain disabled in the release');
 
     // Verify Pointer updated
     const pointerKey = 'caroma-studio:production';
@@ -397,6 +401,26 @@ async function runProjectPublishingSuite() {
     assert.equal(memoryOutbox[0].eventType, 'business_pack.published');
     assert.equal(memoryOutbox[0].payload.tenantId, 'caroma-studio');
     assert.equal(memoryOutbox[0].payload.version, '1.0.1');
+
+    const draft: any = memoryProjects.get('caroma-studio');
+    draft.evaluationGate = { required: true, passed: true };
+    const noSuite = await service.publishConfig('caroma-studio');
+    assert.equal(noSuite.success, false, 'a mutable passed flag cannot replace configured evaluation evidence');
+    draft.evaluations = [{ suiteId: 'merchant-quality', name: 'Merchant quality', tenantId: 'caroma-studio', version: '1.0.0', blockingOnPublish: true, scenarios: [{ scenarioId: 'grounded-products', name: 'Grounded product answers', prompt: 'Show an available product and explain the source.', budgetCurrency: 'NZD', assertions: [{ type: 'no_hallucinated_skus' }] }] }];
+    assert.equal((await service.publishConfig('caroma-studio')).success, false, 'blocking suites require an actual validator port');
+    service.setReleaseValidator({ validateRelease: async () => ({ passed: false, error: 'fixture evaluation failure' }) });
+    assert.equal((await service.publishConfig('caroma-studio')).success, false);
+    assert.equal(memoryPointers.get(pointerKey).activeVersion, '1.0.1', 'a failed gate never promotes');
+    assert.equal(memoryOutbox.length, 1, 'a failed gate never announces publication');
+    let evaluated = false;
+    service.setReleaseValidator({ validateRelease: async (_tenant, candidate) => {
+      evaluated = true; assert.equal(candidate.evaluations[0].suiteId, 'merchant-quality');
+      return { passed: true, latestEvalSuiteResult: { suiteId: 'merchant-quality', passed: true } };
+    } });
+    const checked = await service.publishConfig('caroma-studio');
+    assert.equal(checked.success, true, checked.message); assert.equal(evaluated, true);
+    const checkedRelease = memoryReleases.get('caroma-studio:production:1.0.2');
+    assert.equal(checkedRelease.evaluations[0].suiteId, 'merchant-quality', 'the release retains the suite that passed the gate');
   });
 
   // ── TEST 4: Visual JourneyGraph Compilation ─────────────────────────────

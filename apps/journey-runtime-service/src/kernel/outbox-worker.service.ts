@@ -16,7 +16,12 @@ import {
   ToolBinding,
   ExecutionContext,
   ExecutionRequest,
+  McpClientPool,
+  EnvMcpServerDirectory,
 } from '@journeyax/capability-sdk';
+import { MongoActionLedger } from '../infrastructure/mongo-action-ledger';
+import { PaidOrderDelivery } from '../commerce/paid-order-delivery';
+import { projectCaseProgress } from '../desks/case-progress';
 import { tryVerifyPersistedBusinessPackRelease, BusinessPackLoader, PackRepository } from '@journeyax/business-pack';
 import { COLLECTION_OKF_RELEASES, GcsOkfArtifactStore, processOkfExport, type OkfArtifactStore } from '@journeyax/knowledge';
 import { hashToolInput } from '../approval/approval.store';
@@ -34,6 +39,7 @@ export interface ProductionHandlersOptions {
   ownershipRepository?: IConnectionOwnershipRepository;
   packRepo?: PackRepository;
   okfArtifactStore?: OkfArtifactStore;
+  paymentPackLoader?: Pick<BusinessPackLoader, 'loadPinned'>;
 }
 
 export interface WorkerHealthResponse {
@@ -93,6 +99,11 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
   registerProductionHandlers(options: ProductionHandlersOptions = {}): void {
     const { db, capabilityDispatcher, notificationDispatcher, ownershipRepository } = options;
     this.handlers.clear();
+
+    this.registerHandler('commerce.order_paid', async (event) => {
+      if (!db || !capabilityDispatcher) throw new Error('Durable paid order delivery is not configured.');
+      await new PaidOrderDelivery(db, capabilityDispatcher, options.paymentPackLoader).deliver(event);
+    });
 
     this.registerHandler('okf.release.export_requested', async (event) => {
       if (!db) throw new Error('OKF export requires durable database storage');
@@ -504,6 +515,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
       const capDispatcher = isCustomMock
         ? capabilityDispatcher
         : new CapabilityDispatcher({
+            actionLedger: new MongoActionLedger(async () => db),
             activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL,
             activepiecesApiKey: apApiKeyDoc.value,
             activepiecesWebhookSecret: apWebhookDoc.value,
@@ -762,6 +774,7 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
         `[OutboxWorker] Handling journey.turn_completed for tenant '${event.tenantId}' workspace '${event.payload?.workspaceId}'`
       );
       if (db) {
+        await projectCaseProgress(db, event);
         await this.recordAnalyticsEvent(db, {
           eventId: event.eventId,
           tenantId: event.tenantId,
@@ -872,6 +885,8 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
+      const environmentId = process.env.COMMERCE_ENVIRONMENT || 'production';
+      if (!['dev', 'test', 'staging', 'production'].includes(environmentId)) throw new Error('Unsupported worker environment.');
       const dbName = process.env.MONGODB_DB_NAME || 'journeyx';
       const { db } = await connectToDatabase(uri, dbName);
       const dbRepo = new DbOutboxRepository(db);
@@ -879,6 +894,8 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
 
       const ownershipRepo = new DurableConnectionOwnershipRepository(() => db);
       const capabilityDispatcher = new CapabilityDispatcher({
+        mcpClients: new McpClientPool({ directory: new EnvMcpServerDirectory() }),
+        actionLedger: new MongoActionLedger(async () => db),
         activepiecesApiUrl: process.env.ACTIVEPIECES_API_URL,
         validateConnectionOwnership: (tenantId, environmentId, connectionRef) =>
           ownershipRepo.validateOwnership(tenantId, environmentId, connectionRef),
@@ -907,6 +924,14 @@ export class OutboxWorkerService implements OnModuleInit, OnModuleDestroy {
           pollIntervalMs: Number(process.env.OUTBOX_POLL_INTERVAL_MS) || 2000,
           leaseDurationMs: Number(process.env.OUTBOX_LEASE_DURATION_MS) || 30000,
           batchSize: Number(process.env.OUTBOX_BATCH_SIZE) || 10,
+          maxAttempts: Number(process.env.OUTBOX_MAX_ATTEMPTS) || 24,
+          backoffBaseMs: Number(process.env.OUTBOX_BACKOFF_BASE_MS) || 5000,
+          maxBackoffMs: Number(process.env.OUTBOX_MAX_BACKOFF_MS) || 15 * 60 * 1000,
+          onDeadLetterAlert: async event => {
+            await db.collection('operational_alerts').updateOne({ tenantId: event.tenantId, environmentId: event.environmentId, eventId: event.eventId },
+              { $setOnInsert: { tenantId: event.tenantId, environmentId: event.environmentId, eventId: event.eventId, eventType: event.eventType, status: 'open', severity: 'error', reason: 'delivery_retries_exhausted', createdAt: new Date() } }, { upsert: true });
+          },
+          scope: { environmentId, ...(process.env.RUNTIME_TENANT_ID ? { tenantId: process.env.RUNTIME_TENANT_ID } : {}) },
         }
       );
 

@@ -1,6 +1,6 @@
 import { test, describe, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { McpClientPool, StaticMcpServerDirectory } from '@journeyax/capability-sdk';
+import { McpClientPool, StaticMcpServerDirectory, MemoryActionLedger } from '@journeyax/capability-sdk';
 import { ModelGateway, type AgentExecutionRequest } from '../src/kernel/model.gateway';
 import { AgentTurnLoop } from '../src/agent/agent-loop';
 import { CapabilityGateway } from '../src/kernel/capability.gateway';
@@ -35,7 +35,7 @@ async function setup(options: { registry?: unknown; tools?: Record<string, any> 
     secrets: { resolve: async () => SECRET_VALUE },
     nodeEnv: 'test',
   });
-  const gateway = new CapabilityGateway({ mcpClients: pool, connectorAudit: (event) => audit.push(event) });
+  const gateway = new CapabilityGateway({ mcpClients: pool, actionLedger: new MemoryActionLedger(), connectorAudit: (event) => audit.push(event) });
   const approvals = new FakeApprovals();
   const release = connectorPack(options.registry === undefined ? REGISTRY : options.registry || undefined);
   return { server, audit, gateway, approvals, release };

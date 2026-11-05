@@ -6,6 +6,7 @@ import {
   Body,
   Param,
   Headers,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -24,6 +25,8 @@ import { RuntimeService } from './runtime.service';
 import { TurnCommand, TurnResult, WorkspaceState, FactSource, DuplicateTurnError, ChannelEvent, projectPublicTurnResult, publicEmitter } from '@journeyax/journey-core';
 import { DurableCutoverRecord, ReleaseActivationRecord } from '@journeyax/database';
 import { RuntimeAuthGuard, InternalOnly, Public } from './auth/auth.guard';
+import { privateConversationId } from './auth/conversation-scope';
+import { CartRequestSchema, CartSessionSchema } from './commerce/cart-request';
 import {
   TurnCommandRequestSchema,
   DecideApprovalRequestSchema,
@@ -61,13 +64,14 @@ export class RuntimeController {
     const command: TurnCommand = {
       tenantId: authContext.tenantId,
       environmentId: env,
-      workspaceId: dto.workspaceId || dto.sessionId,
-      sessionId: dto.sessionId,
+      workspaceId: privateConversationId(dto.workspaceId || dto.sessionId, authContext),
+      sessionId: privateConversationId(dto.sessionId, authContext),
       turnId: dto.turnId,
       principalId: authContext.principalId,
       principalRole: authContext.principalRole,
       principalGroups: authContext.principalGroups,
       disabledConnectors: dto.disabledConnectors,
+      readOnly: dto.readOnly,
       correlationId: dto.correlationId,
       message: dto.message,
       event: dto.event as ChannelEvent | undefined,
@@ -138,6 +142,41 @@ export class RuntimeController {
     });
   }
 
+  @Get('cart')
+  async cart(@Query('sessionId') sessionId: string, @Req() req: any) {
+    const parsed = CartSessionSchema.safeParse(sessionId);
+    if (!parsed.success) throw new BadRequestException('A conversation is required.');
+    return this.runtimeService.commerceCart(req.authContext, privateConversationId(parsed.data, req.authContext));
+  }
+
+  @Post('cart')
+  @HttpCode(200)
+  async updateCart(@Body() body: unknown, @Req() req: any) {
+    const parsed = CartRequestSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException('A valid cart, revision and request key are required.');
+    return this.runtimeService.commerceCart(req.authContext, privateConversationId(parsed.data.sessionId, req.authContext), parsed.data as { items: Array<{ sku: string; quantity: number }>; expectedVersion: number; idempotencyKey: string });
+  }
+
+  @Get('desks')
+  async desks(@Param('environmentId') environmentId: string | undefined, @Req() req: any) {
+    const auth = req.authContext;
+    return this.runtimeService.getOperationalDesks(auth.tenantId, (environmentId || auth.environmentId) as any, { userId: auth.principalId, role: auth.principalRole, groups: auth.principalGroups });
+  }
+
+  @Get('desks/:deskId')
+  async desk(@Param('environmentId') environmentId: string | undefined, @Param('deskId') deskId: string, @Query('recordId') recordId: string | undefined, @Req() req: any, @Query('cursor') cursor?: string) {
+    const auth = req.authContext;
+    return this.runtimeService.getOperationalDesks(auth.tenantId, (environmentId || auth.environmentId) as any, { userId: auth.principalId, role: auth.principalRole, groups: auth.principalGroups }, deskId, recordId, cursor);
+  }
+
+  @Post('desks/:deskId/prepare')
+  @HttpCode(200)
+  async prepareDesk(@Param('deskId') deskId: string, @Body() body: any, @Req() req: any) {
+    if (!body || typeof body.recordId !== 'string' || !body.recordId || body.recordId.length > 200 || /[\u0000-\u001f\u007f]/.test(body.recordId)) throw new BadRequestException('A selected record is required.');
+    if (body.workId !== undefined && (typeof body.workId !== 'string' || !/^[a-f0-9]{64}$/.test(body.workId))) throw new BadRequestException('Invalid investigation.');
+    return this.runtimeService.prepareDeskRecord(req.authContext, deskId, body.recordId, body.workId);
+  }
+
   @InternalOnly()
   @Get('engine-mode')
   async getEngineMode(
@@ -181,13 +220,14 @@ export class RuntimeController {
     const command: TurnCommand = {
       tenantId: authContext.tenantId,
       environmentId: env,
-      workspaceId: dto.workspaceId || dto.sessionId,
-      sessionId: dto.sessionId,
+      workspaceId: privateConversationId(dto.workspaceId || dto.sessionId, authContext),
+      sessionId: privateConversationId(dto.sessionId, authContext),
       turnId: dto.turnId,
       principalId: authContext.principalId,
       principalRole: authContext.principalRole,
       principalGroups: authContext.principalGroups,
       disabledConnectors: dto.disabledConnectors,
+      readOnly: dto.readOnly,
       correlationId: dto.correlationId,
       message: dto.message,
       event: dto.event as ChannelEvent | undefined,
@@ -254,7 +294,7 @@ export class RuntimeController {
     @Req() req: any
   ): Promise<WorkspaceState> {
     const env = (environmentId || req.authContext?.environmentId || 'production') as any;
-    const workspace = await this.runtimeService.getWorkspace(req.authContext.tenantId, env, workspaceId);
+    const workspace = await this.runtimeService.getWorkspace(req.authContext.tenantId, env, privateConversationId(workspaceId, req.authContext));
     if (!workspace) {
       throw new NotFoundException(`Workspace '${workspaceId}' not found for tenant '${tenantId}'`);
     }
@@ -269,7 +309,7 @@ export class RuntimeController {
     @Req() req: any
   ) {
     const env = (environmentId || req.authContext?.environmentId || 'production') as any;
-    return this.runtimeService.getTranscript(req.authContext.tenantId, env, workspaceId);
+    return this.runtimeService.getTranscript(req.authContext.tenantId, env, privateConversationId(workspaceId, req.authContext));
   }
 
   @Post('workspaces/:workspaceId/facts')

@@ -21,7 +21,7 @@ const pavers = (extensions: Record<string, any> = {}): AgentToolContext => {
   ];
   return {
     tenantId: 'test-tenant', environmentId: 'test', correlationId: 'c', catalogSearchHandler: new CatalogSearchHandler(products as any),
-    release: { profile: { primaryCurrency: 'NZD' }, extensions } as any,
+    release: { profile: { primaryCurrency: 'NZD' }, extensions: { ...extensions, quantityHelper: { pieceAreaCategories: ['Paving'], ...extensions.quantityHelper } } } as any,
     turnProductSkus: new Set(), catalogProductCache: new Map(), readSourceIds: new Set(), allowedClaimClasses: new Set(), presentedCards: [], isHumanHandoffRequested: false,
   };
 };
@@ -47,13 +47,19 @@ async function main() {
   });
 
   await suite.test('pieces for an area: area over one piece, rounded up, plus the tenant\'s allowance when it has one', () => {
-    const product = { title: 'Forum Paver 400 x 400 x 50mm Glacier' };
-    const plain = estimateQuantity(product, { areaM2: 10 });
+    const product = { title: 'Forum Paver 400 x 400 x 50mm Glacier', category: 'Paving' };
+    const plain = estimateQuantity(product, { areaM2: 10 }, { pieceAreaCategories: ['Paving'] });
     assert.equal(plain.ok && plain.units, 63, '10 m2 / 0.16 m2 = 62.5 -> 63');
-    const withAllowance = estimateQuantity(product, { areaM2: 10 }, { allowancePercent: 10 });
+    const withAllowance = estimateQuantity(product, { areaM2: 10 }, { allowancePercent: 10, pieceAreaCategories: ['Paving'] });
     assert.ok(withAllowance.ok && withAllowance.units === 69 && withAllowance.exactUnits === 63, JSON.stringify(withAllowance));
-    const customerAllowance = estimateQuantity(product, { areaM2: 10, allowancePercent: 0 }, { allowancePercent: 10 });
+    const customerAllowance = estimateQuantity(product, { areaM2: 10, allowancePercent: 0 }, { allowancePercent: 10, pieceAreaCategories: ['Paving'] });
     assert.equal(customerAllowance.ok && customerAllowance.units, 63, 'what the customer asks for beats the shop default');
+  });
+
+  await suite.test('dimensions do not imply coverage without an authored category binding', () => {
+    const cabinet = { title: 'Laundry Cabinet with Sink 400 x 400mm', category: 'Cabinetry' };
+    assert.equal(estimateQuantity(cabinet, { areaM2: 10 }, { pieceAreaCategories: ['Paving'] }).ok, false);
+    assert.equal(estimateQuantity({ title: 'Paver 400 x 400mm', category: 'Paving' }, { areaM2: 10 }).ok, false);
   });
 
   await suite.test('packs for an area use a stated coverage and the coats, and never a guessed one', () => {

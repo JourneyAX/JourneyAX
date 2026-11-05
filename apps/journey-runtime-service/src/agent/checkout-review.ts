@@ -5,7 +5,7 @@
  * knowledge, for warranty) says about that product. A fact the record does not carry is left out, never filled in. The words on the card
  * are the tenant's own (pack `extensions.checkoutReview.labels`); the platform's plain wording is only the fallback.
  */
-import { pieceSizeFromName, statedCoverage } from './quantity-estimate';
+import { pieceSizeFromName, permitsPieceArea, statedCoverage } from './quantity-estimate';
 
 export const DEFAULT_REVIEW_LABELS: Record<string, string> = {
   heading: 'Before you pay',
@@ -30,7 +30,8 @@ export const DEFAULT_REVIEW_LABELS: Record<string, string> = {
   fulfilmentOk: 'Every item can be collected or delivered',
   fulfilmentLook: 'Worth knowing before you pay',
   pickupOnly: 'Pick-up only',
-  stockAt: 'In stock at {available} of {total} branches',
+  stockAt: 'Catalogue lists {available} of {total} branches',
+  stockUnconfirmed: 'Branch stock has not been checked',
   yourBranch: 'At {branch}: {status}',
   noBranch: 'No branch chosen yet',
   chooseBranch: 'Choose my branch',
@@ -39,6 +40,7 @@ export const DEFAULT_REVIEW_LABELS: Record<string, string> = {
   warrantyOk: 'Warranty and guides are on file',
   warrantyLook: 'Some warranty details are not on file yet',
   warrantyOn: 'Warranty on file',
+  catalogueWarrantyOn: 'Catalogue warranty duration',
   warrantyNone: 'No warranty details on file yet; we will confirm with the maker',
   askWarranty: 'Ask about the warranty',
   askWarrantyText: 'What warranty does {title} have, and what does it cover?',
@@ -52,6 +54,8 @@ export const DEFAULT_REVIEW_LABELS: Record<string, string> = {
 export interface ReviewLine {
   sku: string;
   title: string;
+  category?: string;
+  categoryPath?: string[];
   quantity: number;
   imageUrl?: string;
   discontinued?: boolean;
@@ -66,6 +70,7 @@ export interface ReviewLine {
   branchStatus?: string;
   /** The first words of the warranty the knowledge has verified for this product, or undefined. */
   warranty?: string;
+  catalogueWarranty?: string;
   /** Titles of the guides kept with this product. */
   guides?: string[];
 }
@@ -80,6 +85,7 @@ export interface ReviewInput {
   deliveryLabels?: Record<string, string>;
   coveragePatterns?: string[];
   minPieceSideMm?: number;
+  pieceAreaCategories?: string[];
   maxAccessories?: number;
 }
 
@@ -118,7 +124,7 @@ export function buildReview(input: ReviewInput): ReviewState {
   // 1. Quantities: what the number covers, so the customer can tell whether it is the area they have.
   const quantityRows = input.lines.map((line) => {
     if (line.discontinued) return row({ key: `q-${line.sku}`, title: `${line.quantity} × ${line.title}`, detail: L.discontinued, ok: false, warn: true });
-    const piece = pieceSizeFromName(line.title, input.minPieceSideMm);
+    const piece = permitsPieceArea(line, input) ? pieceSizeFromName(line.title, input.minPieceSideMm) : undefined;
     const pack = piece ? undefined : statedCoverage(line.coverageTexts || [], input.coveragePatterns);
     const each = piece ? (piece.length * piece.width) / 1e6 : pack;
     if (each && each > 0) {
@@ -154,6 +160,9 @@ export function buildReview(input: ReviewInput): ReviewState {
     if (branchName && line.branchStatus) {
       parts.push(fill(L.yourBranch, { branch: branchName, status: line.branchStatus }));
       if (!/in stock/i.test(line.branchStatus)) warn = true;
+    } else {
+      parts.push(L.stockUnconfirmed);
+      warn = true;
     }
     const needsBranch = !branchName;
     return row({
@@ -166,7 +175,7 @@ export function buildReview(input: ReviewInput): ReviewState {
   const warrantyRows = input.lines.map((line) => {
     const parts: string[] = [];
     if (line.warranty) parts.push(`${L.warrantyOn}: ${clip(line.warranty, 140)}`);
-    else parts.push(L.warrantyNone);
+    else { if (line.catalogueWarranty) parts.push(`${L.catalogueWarrantyOn}: ${line.catalogueWarranty}`); parts.push(L.warrantyNone); }
     if (line.guides && line.guides.length > 0) parts.push(`${L.guideOn}: ${line.guides.slice(0, 2).join(', ')}`);
     const missing = !line.warranty;
     return row({

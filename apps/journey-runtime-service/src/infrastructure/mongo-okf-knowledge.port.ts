@@ -94,7 +94,7 @@ export class MongoOkfKnowledgeRetrievalPort implements KnowledgeRetrievalPort {
     }).limit(Math.min(canonical.size, 500)).toArray();
 
     const queryTokens = tokens(req.query);
-    const verified = stored.flatMap((raw: any) => {
+    const verified: Array<{ chunk: OkfEvidenceChunk; score: number }> = stored.flatMap((raw: any) => {
       const expected = canonical.get(raw.chunkId);
       if (!expected || raw.sourceRef !== expected.sourceRef) return [];
       const normalized = Object.fromEntries(

@@ -1,9 +1,10 @@
 import { resolveServiceUrl } from '@journeyax/shared-types';
-import { Controller, Post, Get, Body, Headers, Param, Req, Res, Inject, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, Headers, Param, Req, Res, Inject, Optional, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AgentService } from './agent.service';
 import { ChatThrottleGuard } from './common/chat-throttle.guard';
 import { QuoteService } from './commerce/quote.service';
+import { stripePaymentSettings, checkoutReturnUrl } from './commerce/payment-settings';
 import { OrderService } from './commerce/order.service';
 import { RosterService } from './commerce/roster.service';
 import { SchoolResearchService } from './commerce/school-research.service';
@@ -13,12 +14,17 @@ import { ConfigLoader } from './pipeline/config-loader';
 import { SessionStore } from './pipeline/session-store';
 import { BusinessPackLoader } from '@journeyax/business-pack';
 import { publicEmitter, publicErrorMessage } from '@journeyax/journey-core';
-import { cleanDisabledConnectors, verifiedIdentity } from './identity';
+import { cleanDisabledConnectors, verifiedIdentity, commerceIdentity, chatEnvironment } from './identity';
 
 @Controller('api/v1/:projectId/commerce')
 export class JourneyAXController {
   private readonly configLoader = new ConfigLoader();
   private readonly sessions = new SessionStore();
+  private commerceOwner(assertion: string, tenantId: string) {
+    const owner = commerceIdentity(assertion, tenantId);
+    if (!owner) throw new HttpException('A verified customer session is required.', HttpStatus.UNAUTHORIZED);
+    return owner;
+  }
   constructor(
     @Inject(AgentService) private readonly agentService: AgentService,
     @Inject(QuoteService) private readonly quoteService: QuoteService,
@@ -26,6 +32,7 @@ export class JourneyAXController {
     @Inject(RosterService) private readonly rosterService: RosterService,
     @Inject(SchoolResearchService) private readonly schoolResearch: SchoolResearchService,
     @Inject(WhatsAppService) private readonly whatsappService: WhatsAppService,
+    @Optional() @Inject('COMMERCE_PACK_LOADER') private readonly paymentPackLoader: BusinessPackLoader = new BusinessPackLoader(),
   ) {}
 
   /**
@@ -90,18 +97,19 @@ export class JourneyAXController {
         .filter((it) => it?.sku)
         .map(async (it) => {
           const r = await BranchStockService.getStockForSku(tenantId, String(it.sku), it.productTitle || 'Item', branch);
-          const top = r.branches[0];
+          const top = r.ok ? r.branches[0] : undefined;
           if (top?.branchName) branchName = top.branchName;
           return {
             sku: String(it.sku),
-            status: top?.status || (r.ok ? 'Order on Request' : 'Unavailable'),
-            stockQty: top?.stockQty ?? 0,
+            ok: r.ok && !!top,
+            status: top?.status || 'Stock not checked',
+            stockQty: top?.stockQty ?? null,
             clickAndCollectReady: !!top?.clickAndCollectReady,
-            collectionTimeframe: top?.collectionTimeframe || 'Contact store for fulfilment',
+            collectionTimeframe: top?.collectionTimeframe || '',
           };
         })
     );
-    return { ok: true, branch, branchName, results };
+    return { ok: results.length > 0 && results.every(row => row.ok), branch, branchName, results };
   }
 
   /**
@@ -146,6 +154,7 @@ export class JourneyAXController {
   @Post('roster/quote')
   async quoteRoster(
     @Param('projectId') projectId: string,
+    @Headers('x-gateway-assertion') assertion: string,
     @Headers('x-idempotency-key') headerIdempotencyKey: string,
     @Body() body: { rows?: any[]; skuByGarment?: Record<string, string>; sessionId?: string; title?: string; idempotencyKey?: string },
   ) {
@@ -157,18 +166,20 @@ export class JourneyAXController {
     }
 
     const tenantId = (projectId || '').toLowerCase();
+    const owner = this.commerceOwner(assertion, tenantId);
     const idempotencyKey =
       (headerIdempotencyKey && typeof headerIdempotencyKey === 'string' ? headerIdempotencyKey.trim() : '') ||
       (body?.idempotencyKey && typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : undefined);
     const items = this.rosterService.toQuoteLines(rows, skuByGarment);
     // Pricing comes from PROJECT CONFIG or authoritative BUSINESS PACK and the quote engine does the arithmetic
     // — the roster only ever says which SKU and how many.
-    const pricing = await this.resolvePricingPolicy(tenantId);
+    const pricing = await this.resolvePricingPolicy(tenantId, owner.environmentId);
     if (!pricing?.currency) {
       throw new HttpException(`Pricing configuration is required for tenant "${tenantId}" - failing closed`, HttpStatus.BAD_REQUEST);
     }
     const quote = await this.quoteService.build({
       tenantId,
+      ...owner,
       sessionId: body?.sessionId,
       idempotencyKey,
       title: body?.title || 'Team order',
@@ -192,35 +203,27 @@ export class JourneyAXController {
   @Post('kit/quote')
   async quoteKit(
     @Param('projectId') projectId: string,
+    @Headers('x-gateway-assertion') assertion: string,
     @Headers('x-idempotency-key') headerIdempotencyKey: string,
     @Body() body: { items?: Array<{ sku: string; quantity?: number; reason?: string; required?: boolean }>; sessionId?: string; title?: string; idempotencyKey?: string; roomType?: string; plannerContext?: any },
   ) {
     const tenantId = (projectId || '').toLowerCase();
+    const owner = this.commerceOwner(assertion, tenantId);
     const idempotencyKey =
       (headerIdempotencyKey && typeof headerIdempotencyKey === 'string' ? headerIdempotencyKey.trim() : '') ||
       (body?.idempotencyKey && typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : undefined);
-
-    /* How many of each — from the roster the customer already gave.
-     * The browser doesn't know the team size (it lives in the session), so a
-     * 14-player order priced from the rack would otherwise come back as one of
-     * each and understate the order by an order of magnitude. */
-    let teamSize = 0;
-    if (body?.sessionId) {
-      const stored = await this.sessions.load(body.sessionId, tenantId).catch(() => null);
-      teamSize = Number(stored?.journeyState?.teamSize) || 0;
-    }
 
     const items = (body?.items || [])
       .filter((i) => i && typeof i.sku === 'string' && i.sku.trim())
       .map((i: any) => ({
         sku: i.sku.trim(),
-        quantity: Number(i.quantity) > 0 ? Number(i.quantity) : teamSize || 1,
+        quantity: i.quantity ?? 1,
         reason: typeof i.reason === 'string' ? i.reason : undefined,
         required: typeof i.required === 'boolean' ? i.required : undefined,
       }));
     if (!items.length) return { error: 'Nothing on the rack to price yet.' };
 
-    const pricing = await this.resolvePricingPolicy(tenantId);
+    const pricing = await this.resolvePricingPolicy(tenantId, owner.environmentId);
     if (!pricing?.currency) {
       throw new HttpException(`Pricing configuration is required for tenant "${tenantId}" - failing closed`, HttpStatus.BAD_REQUEST);
     }
@@ -229,6 +232,7 @@ export class JourneyAXController {
     const shopName = String(shop?.companyName || '').replace(/\(.*?\)/g, '').trim();
     const quote = await this.quoteService.build({
       tenantId,
+      ...owner,
       sessionId: body?.sessionId,
       idempotencyKey,
       title: body?.title || (shopName ? `${shopName} order` : 'Your order'),
@@ -240,29 +244,9 @@ export class JourneyAXController {
     return { quote, lines: items.length };
   }
 
-  private async resolvePricingPolicy(tenantId: string): Promise<{ currency: string; symbol: string; taxRate: number; discountRate: number } | null> {
-    const project: any = await this.configLoader.loadProjectConfig(tenantId).catch(() => null);
-    if (project?.pricing?.currency) {
-      return {
-        currency: project.pricing.currency,
-        symbol: project.pricing.symbol || '$',
-        taxRate: typeof project.pricing.taxRate === 'number' ? project.pricing.taxRate : 0,
-        discountRate: typeof project.pricing.discountRate === 'number' ? project.pricing.discountRate : 0,
-      };
-    }
-    const loader = new BusinessPackLoader();
-    const pack = await loader.loadPublished(tenantId, 'production').catch(() => null);
-    if (pack?.profile?.primaryCurrency) {
-      const curr = pack.profile.primaryCurrency;
-      const isNz = curr === 'NZD';
-      return {
-        currency: curr,
-        symbol: '$',
-        taxRate: typeof (pack as any).pricing?.taxRate === 'number' ? (pack as any).pricing.taxRate : (isNz ? 0.15 : 0),
-        discountRate: typeof (pack as any).pricing?.discountRate === 'number' ? (pack as any).pricing.discountRate : 0,
-      };
-    }
-    return null;
+  private async resolvePricingPolicy(tenantId: string, environmentId: string): Promise<{ currency: string; symbol: string; taxRate: number; discountRate: number } | null> {
+    const pack = await new BusinessPackLoader().loadPublished(tenantId, environmentId as any).catch(() => null);
+    return pack?.extensions?.commerce?.pricing ?? null;
   }
 
   /**
@@ -364,14 +348,15 @@ export class JourneyAXController {
         idempotencyKey: body.idempotencyKey,
         projectId: body.projectId || projectId,
         journeyId: body.journeyId,
-        environment: body.environment || body.environmentId,
-        environmentId: body.environmentId || body.environment,
+        environment: chatEnvironment(gatewayAssertion, tenantId, body.environmentId || body.environment),
+        environmentId: chatEnvironment(gatewayAssertion, tenantId, body.environmentId || body.environment),
         customerEvent: body.customerEvent,
         customer_event: body.customer_event,
         agentId: body.agentId,
           parentMessageId: body.parentMessageId,
         verifiedIdentity: verifiedIdentity(gatewayAssertion, tenantId),
         disabledConnectors: cleanDisabledConnectors(body.disabledConnectors),
+        readOnly: (body as any).readOnly === true,
       });
 
       return result;
@@ -510,14 +495,15 @@ export class JourneyAXController {
           idempotencyKey: body.idempotencyKey,
           projectId: body.projectId || projectId,
           journeyId: body.journeyId,
-          environment: body.environment || body.environmentId,
-          environmentId: body.environmentId || body.environment,
+          environment: chatEnvironment(gatewayAssertion, tenantId, body.environmentId || body.environment, internalKey),
+          environmentId: chatEnvironment(gatewayAssertion, tenantId, body.environmentId || body.environment, internalKey),
           customerEvent: body.customerEvent,
           customer_event: body.customer_event,
           agentId: body.agentId,
           parentMessageId: body.parentMessageId,
         verifiedIdentity: verifiedIdentity(gatewayAssertion, tenantId),
         disabledConnectors: cleanDisabledConnectors(body.disabledConnectors),
+        readOnly: (body as any).readOnly === true,
         },
         emit,
       );
@@ -562,21 +548,11 @@ export class JourneyAXController {
    * authoritative quote here rather than trusting any client-held totals.
    */
   @Get('quote/:quoteId')
-  async getQuote(@Param('projectId') projectId: string, @Param('quoteId') quoteId: string) {
+  async getQuote(@Param('projectId') projectId: string, @Param('quoteId') quoteId: string, @Headers('x-gateway-assertion') assertion: string) {
     const tenantId = (projectId || '').toLowerCase().trim();
-    if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
-    const quote = await this.quoteService.get(quoteId, tenantId);
-    if (!quote) {
-      const quoteAnyTenant = await this.quoteService.get(quoteId);
-      if (quoteAnyTenant && quoteAnyTenant.tenantId !== tenantId) {
-        throw new HttpException(
-          `Cross-tenant access forbidden: Quote '${quoteId}' belongs to '${quoteAnyTenant.tenantId}', not '${tenantId}'`,
-          HttpStatus.FORBIDDEN
-        );
-      }
-      return { found: false };
-    }
-    return { found: true, quote };
+    const owner = this.commerceOwner(assertion, tenantId);
+    const quote = await this.quoteService.get(quoteId, tenantId, owner);
+    return quote ? { found: true, quote } : { found: false };
   }
 
   /**
@@ -589,41 +565,46 @@ export class JourneyAXController {
   @UseGuards(ChatThrottleGuard)
   async createOrder(
     @Param('projectId') projectId: string,
+    @Headers('x-gateway-assertion') assertion: string,
     @Body() body: { quoteId: string; idempotencyKey?: string; customer?: { email?: string; name?: string }; successUrl?: string; cancelUrl?: string; embedded?: boolean; collect?: { shipping?: boolean; countries?: string[] } },
   ) {
     const tenantId = (projectId || '').toLowerCase().trim();
     if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
-    const quote = await this.quoteService.get(body.quoteId, tenantId);
+    const owner = this.commerceOwner(assertion, tenantId);
+    const quote = await this.quoteService.get(body.quoteId, tenantId, owner);
     if (!quote) return { success: false, error: 'Quote not found or expired.' };
 
-    const cfg = await this.configLoader.loadProjectConfig(tenantId);
-    if (!cfg) throw new HttpException(`Configuration not found for tenant: ${tenantId}`, HttpStatus.NOT_FOUND);
+    if (!quote.release) return { success: false, error: 'Refresh this quote from the current shop configuration before checkout.' };
+    const pack = await this.paymentPackLoader.loadPinned(tenantId, owner.environmentId as any, quote.release.version, quote.release.checksum);
+    const payments = await stripePaymentSettings(pack, { tenantId, environmentId: owner.environmentId });
     const base = resolveServiceUrl('STOREFRONT_URL', process.env.STOREFRONT_URL, 'http://localhost:3008');
+    const origins = payments.payment.returnOrigins ?? [new URL(base).origin];
     const result = await this.orderService.create({
       tenantId,
+      ...owner,
       quote,
       idempotencyKey: body.idempotencyKey || `${quote.quoteId}`,
       customer: body.customer,
-      successUrl: body.successUrl || `${base}/?project=${tenantId}&order={ORDER_ID}&status=success`,
-      cancelUrl: body.cancelUrl || `${base}/?project=${tenantId}&status=cancelled`,
-      stripe: { secretKey: cfg.stripe?.secretKey },
-      embedded: body.embedded === true,
+      successUrl: checkoutReturnUrl(body.successUrl, `${base}/?project=${tenantId}&order={ORDER_ID}&status=success`, origins),
+      cancelUrl: checkoutReturnUrl(body.cancelUrl, `${base}/?project=${tenantId}&status=cancelled`, origins),
+      stripe: payments.stripe,
+      embedded: payments.payment.embedded === true,
       collect: {
-        shipping: body.collect?.shipping === true,
-        countries: (Array.isArray(body.collect?.countries) ? body.collect!.countries! : []).map((code) => String(code).trim().toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)).slice(0, 20),
+        shipping: payments.payment.collectShipping === true,
+        countries: (payments.payment.shippingCountries ?? []).map(code => code.toUpperCase()),
       },
     });
-    if (result.status === 'failed') return { success: false, ...result };
-    if (result.status === 'paid') await this.quoteService.markStatus(quote.quoteId, 'ordered');
+    if (result.status === 'failed' || result.error) return { success: false, ...result };
     return { success: true, ...result };
   }
 
   /** Order status — the storefront polls this after returning from Stripe. */
   @Get('order/:orderId')
-  async getOrder(@Param('projectId') projectId: string, @Param('orderId') orderId: string) {
+  async getOrder(@Param('projectId') projectId: string, @Param('orderId') orderId: string, @Headers('x-gateway-assertion') assertion: string) {
     const tenantId = (projectId || '').toLowerCase().trim();
     if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
-    const order = await this.orderService.get(orderId, tenantId);
+    const owner = this.commerceOwner(assertion, tenantId);
+    const order = await this.orderService.get(orderId, tenantId, owner);
     if (!order) return { found: false };
     /* A confirmation has to show WHAT was bought, not just a number.
      *
@@ -636,7 +617,7 @@ export class JourneyAXController {
      * at the quote for the detail — the lines live there, priced by the quote
      * engine. Read them back so the confirmation can show the customer the
      * items they just bought rather than a bare number. */
-    const quote: any = o.quoteId ? await this.quoteService.get(o.quoteId, tenantId).catch(() => null) : null;
+    const quote: any = o.quoteId ? await this.quoteService.get(o.quoteId, tenantId, owner).catch(() => null) : null;
     const lines = (o.lines || quote?.lines || []).map((l: any) => ({
       sku: l.sku, name: l.name, quantity: l.quantity,
       unitPrice: l.unitPrice, lineTotal: l.lineTotal, imageUrl: l.imageUrl,
@@ -662,27 +643,44 @@ export class JourneyAXController {
     };
   }
 
+  @Post('order/:orderId/cancel')
+  async cancelOrder(@Param('projectId') projectId: string, @Param('orderId') orderId: string, @Headers('x-gateway-assertion') assertion: string) {
+    const tenantId = (projectId || '').toLowerCase().trim();
+    const owner = this.commerceOwner(assertion, tenantId);
+    try {
+      const order = await this.orderService.cancel(orderId, tenantId, owner);
+      return order ? { found: true, orderId: order.orderId, status: order.status } : { found: false };
+    } catch { throw new HttpException('Could not confirm cancellation. The cart stays locked while payment is uncertain.', HttpStatus.CONFLICT); }
+  }
+
   /**
    * Stripe webhook — flips orders to paid/failed on Stripe's signed events.
    * Uses the RAW body (signature is computed over exact bytes). Mounted with a
    * raw body parser in main.ts for this path only.
    */
-  @Post('stripe/webhook')
+  @Post(['stripe/webhook', 'stripe/:environmentId/webhook'])
   async stripeWebhook(
     @Param('projectId') projectId: string,
     @Req() req: Request,
     @Headers('stripe-signature') signature: string,
+    @Param('environmentId') environmentId?: string,
   ) {
     const tenantId = (projectId || '').toLowerCase().trim();
     if (!tenantId) throw new HttpException('Tenant identifier is required', HttpStatus.BAD_REQUEST);
-    const cfg = await this.configLoader.loadProjectConfig(tenantId);
-    const raw = (req as any).rawBody instanceof Buffer ? (req as any).rawBody.toString('utf8') : JSON.stringify(req.body || {});
-    const out = await this.orderService.handleWebhook(raw, signature || '', cfg?.stripe?.secretKey);
-    if (out.handled?.startsWith('paid:')) {
-      const order = await this.orderService.get(out.handled.slice('paid:'.length), tenantId);
-      if (order) await this.quoteService.markStatus(order.quoteId, 'ordered');
-    }
-    return out.ok ? { received: true } : { received: false };
+    const env = environmentId || process.env.PAYMENT_WEBHOOK_ENVIRONMENT;
+    if (!env || !['dev', 'test', 'staging', 'production'].includes(env)) throw new HttpException('A payment environment is required.', HttpStatus.BAD_REQUEST);
+    if (!((req as any).rawBody instanceof Buffer)) throw new HttpException('An exact signed webhook body is required.', HttpStatus.BAD_REQUEST);
+    const raw = (req as any).rawBody.toString('utf8');
+    let orderId: unknown;
+    try { const hint = JSON.parse(raw); orderId = hint?.data?.object?.metadata?.orderId; } catch { throw new HttpException('Invalid payment event.', HttpStatus.BAD_REQUEST); }
+    if (typeof orderId !== 'string' || orderId.length > 200) throw new HttpException('A scoped payment event is required.', HttpStatus.BAD_REQUEST);
+    const release = await this.orderService.webhookRelease(orderId, tenantId, env);
+    if (!release) throw new HttpException('The payment reservation is unavailable.', HttpStatus.BAD_REQUEST);
+    const pack = await this.paymentPackLoader.loadPinned(tenantId, env as any, release.version, release.checksum);
+    const payments = await stripePaymentSettings(pack, { tenantId, environmentId: env });
+    const out = await this.orderService.handleWebhook(raw, signature || '', payments.stripe.secretKey, tenantId, { environmentId: env, secret: await payments.webhookSecret() });
+    if (!out.ok) throw new HttpException('The payment event was not accepted.', HttpStatus.BAD_REQUEST);
+    return { received: true };
   }
 
   /**

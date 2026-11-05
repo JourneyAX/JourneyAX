@@ -46,6 +46,7 @@ export class FormSubmissionRepository {
 
   private async getCol(): Promise<Collection<FormSubmissionRecord> | null> {
     if (this.col) return this.col;
+    if (this.dbOrProvider?.explicitMemory === true) return null;
     if (typeof this.dbOrProvider === 'function') {
       try {
         const resolved = await this.dbOrProvider();

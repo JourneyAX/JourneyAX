@@ -15,6 +15,30 @@ import { planDemoStaff } from '../../../scripts/placemakers/demo-staff';
  */
 const COLUMNS = ['admin', 'csr', 'sales', 'sales.manager', 'marketing', 'insights', 'exec', 'branch', 'finance', 'shopper'] as const;
 const TABLE: Record<string, string> = {
+  'commercetools.get_my_customer_profile': '- - - - - - - - - -',
+  'commercetools.get_my_orders': '- - - - - - - - - -',
+  'commercetools.get_my_order': '- - - - - - - - - -',
+  // Newly registered source tools stay blocked in this template until an evaluated release grants scoped access.
+  'commercetools.get_customer_profile': '- - - - - - - - - -',
+  'commercetools.find_customer_profile': '- - - - - - - - - -',
+  'commercetools.create_customer_profile': '- - - - - - - - - -',
+  'commercetools.get_order_customer_link': '- - - - - - - - - -',
+  'commercetools.link_order_customer': '- - - - - - - - - -',
+  'commercetools.get_order_payment_receipt': '- - - - - - - - - -',
+  'commercetools.record_order_payment': '- - - - - - - - - -',
+  'commercetools.get_account_contact': '- - - - - - - - - -',
+  'commercetools.correct_account_address_contact': '- - - - - - - - - -',
+  'commercetools.correct_order_contact': '- - - - - - - - - -',
+  'commercetools.get_order_receipt': '- - - - - - - - - -',
+  'salesforce.get_customer_profile': '- - - - - - - - - -',
+  'salesforce.find_customer_profile': '- - - - - - - - - -',
+  'salesforce.create_customer_profile': '- - - - - - - - - -',
+  'salesforce.get_account_contact': '- - - - - - - - - -',
+  'salesforce.correct_account_phone': '- - - - - - - - - -',
+  'zendesk.count_tickets': '- - - - - - - - - -',
+  'zendesk.get_customer_ticket': '- - - - - - - - - -',
+  'zendesk.reply_to_ticket': '- - - - - - - - - -',
+  'zendesk.update_ticket': '- - - - - - - - - -',
   //                                  admin csr sales sm mkt ins exec branch finance shopper
   'commercetools.find_product':       'A A A A A - A A A -',
   'commercetools.get_product':        'A A A A A - A A A -',

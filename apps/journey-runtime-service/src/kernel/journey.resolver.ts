@@ -35,7 +35,7 @@ export class JourneyResolver {
       return { status: 'no_match', reason: 'Release contains no journeys' };
     }
 
-    const rawMessage = (command?.message || (command as any)?.userInput || '').trim().toLowerCase();
+    const rawMessage: string = (command?.message || (command as any)?.userInput || '').trim().toLowerCase();
     const targetIntent = (interpretation?.intent || (command as any)?.intent || '').trim();
 
     // Check if user answered selected_journey fact

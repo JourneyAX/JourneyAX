@@ -10,6 +10,8 @@ import { TurnApplicationService } from './kernel/turn-application.service';
 import { CapabilityGateway } from './kernel/capability.gateway';
 import { createMongoOkfKnowledgePortResolver } from './infrastructure/mongo-okf-knowledge.port';
 import { createLegacyKnowledgePortResolver } from './infrastructure/legacy-knowledge.port';
+import { createProductSemanticSearcher } from './infrastructure/product-semantic-search';
+import { DeskIntakeWorkerService } from './desks/desk-intake-worker.service';
 
 @Module({
   imports: [],
@@ -24,6 +26,7 @@ import { createLegacyKnowledgePortResolver } from './infrastructure/legacy-knowl
         undefined,
         undefined,
         new CapabilityGateway({
+          vectorSearcher: createProductSemanticSearcher(),
           knowledgePortResolver: createMongoOkfKnowledgePortResolver(),
           legacyKnowledgePortResolver: createLegacyKnowledgePortResolver(),
         })
@@ -31,6 +34,7 @@ import { createLegacyKnowledgePortResolver } from './infrastructure/legacy-knowl
     },
     RuntimeService,
     OutboxWorkerService,
+    DeskIntakeWorkerService,
     Reflector,
     RuntimeAuthGuard,
     {

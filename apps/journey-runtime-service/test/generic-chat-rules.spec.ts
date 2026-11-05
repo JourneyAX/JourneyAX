@@ -5,6 +5,31 @@ import { buildAbercrombieStack, ABERCROMBIE_TENANT, ABERCROMBIE_ENV } from './he
 import { GENERIC_PLATFORM_OPERATING_PROMPT } from '../src/agent/agent-loop';
 import { shapeSentence, compileShapeContext } from '../src/kernel/reply-shaper';
 import { validateOkfGeneratedClaims } from '../src/kernel/okf-claim-validator';
+import { executeAgentTool, type AgentToolContext } from '../src/agent/agent-tools';
+import { QuoteCreateHandler } from '../src/capabilities/handlers/quote-create.handler';
+
+/** Explicit isolated source receipt, rather than the catalogue's historical inStock boolean. */
+function sourceStockContext(pack: any, sku: string, available: number) {
+  const release = structuredClone(pack);
+  release.extensions.branchStock = { connector: 'fixture-inventory', tool: 'stock_by_branch', inputs: { sku: 'sku' } };
+  release.extensions.connectors = { connectors: [{ connectorId: 'fixture-inventory', displayName: 'Isolated inventory', sample: false, tools: [{ name: 'stock_by_branch', sideEffect: 'read', claimClasses: ['stock'] }] }] };
+  const calls: any[] = [];
+  const rows = { records: [{ branchName: 'Auckland Central', sku, onHand: available, reserved: 0, available }] };
+  const ctx = {
+    tenantId: release.manifest.tenantId, environmentId: 'test', correlationId: `fixture-stock-${sku}`, release,
+    catalogSearchHandler: { execute: async () => { throw new Error('Catalogue flags are not the inventory source.'); } },
+    turnProductSkus: new Set(), catalogProductCache: new Map(), readSourceIds: new Set(), allowedClaimClasses: new Set(), presentedCards: [], isHumanHandoffRequested: false,
+    principal: { audience: 'shopper', groups: [] },
+    connectorRuntime: {
+      summaries: () => [{ connector: 'fixture-inventory', name: 'Isolated inventory' }],
+      call: async (_release: unknown, _person: unknown, _ctx: unknown, connector: string, tool: string, args: unknown) => {
+        calls.push({ connector, tool, args });
+        return { ok: true, connector, tool, result: rows };
+      },
+    },
+  } as unknown as AgentToolContext;
+  return { ctx, calls, rows };
+}
 
 test('P6: Generic Chat Rules across Five Scenario Fixtures for Both Tenants', async (t) => {
   // ── Rule 1: Tool Narration Suppression (Platform prompt & shaper unit check) ──
@@ -265,7 +290,8 @@ test('P6: Generic Chat Rules across Five Scenario Fixtures for Both Tenants', as
     } as any);
 
     const replyInStock = inStockRes.assistantMessage || '';
-    assert.match(replyInStock, /in stock/i, 'Agent must confirm in-stock when check_stock succeeds');
+    assert.match(replyInStock, /not been confirmed/i, 'A catalogue inStock flag is not a live inventory receipt');
+    assert.doesNotMatch(replyInStock, /verified in stock|is in stock|out of stock/i);
 
     // Step C: Stock check for out-of-stock SKU (OOS-1)
     const oosRes = await service.executeTurn({
@@ -281,8 +307,18 @@ test('P6: Generic Chat Rules across Five Scenario Fixtures for Both Tenants', as
     } as any);
 
     const replyOos = oosRes.assistantMessage || '';
-    assert.match(replyOos, /out of stock/i, 'Agent must declare out of stock when check_stock returns inStock: false');
-    assert.doesNotMatch(replyOos, /verified in stock/i, 'Agent must never claim out-of-stock item is in stock');
+    assert.match(replyOos, /not been confirmed/i, 'A catalogue false flag cannot establish current out-of-stock status either');
+    assert.doesNotMatch(replyOos, /verified in stock|is in stock|out of stock/i);
+
+    for (const available of [7, 0]) {
+      const { ctx, rows, calls } = sourceStockContext(stack.pack, '1000100', available);
+      const receipt = await executeAgentTool('check_stock', { sku: '1000100', branch: 'Auckland Central' }, ctx);
+      assert.equal(receipt.source, 'business_system');
+      assert.deepEqual(receipt.branchStock, rows);
+      assert.equal(calls.length, 1, 'the declared inventory source actually answered');
+      assert.equal(ctx.allowedClaimClasses.has('stock'), true);
+      assert.equal(validateOkfGeneratedClaims(available ? 'The source lists this item in stock.' : 'The source lists this item out of stock.', [...ctx.allowedClaimClasses]).valid, true);
+    }
   });
 
   await t.test('Scenario Fixture 4 (Abercrombie): In-stock claims are only made if check_stock verified them', async () => {
@@ -303,7 +339,8 @@ test('P6: Generic Chat Rules across Five Scenario Fixtures for Both Tenants', as
     } as any);
 
     const replyInStock = inStockRes.assistantMessage || '';
-    assert.match(replyInStock, /in stock/i, 'Agent must confirm in-stock for available item');
+    assert.match(replyInStock, /not been confirmed/i, 'Apparel catalogue availability is not an authoritative inventory read');
+    assert.doesNotMatch(replyInStock, /verified in stock|is in stock|out of stock/i);
 
     // Step B: Out-of-stock SKU (ANF-TEE-OOS)
     const oosRes = await service.executeTurn({
@@ -319,8 +356,16 @@ test('P6: Generic Chat Rules across Five Scenario Fixtures for Both Tenants', as
     } as any);
 
     const replyOos = oosRes.assistantMessage || '';
-    assert.match(replyOos, /out of stock/i, 'Agent must state item is out of stock');
-    assert.doesNotMatch(replyOos, /verified in stock/i, 'Agent must not claim out-of-stock item is in stock');
+    assert.match(replyOos, /not been confirmed/i);
+    assert.doesNotMatch(replyOos, /verified in stock|is in stock|out of stock/i);
+    for (const available of [4, 0]) {
+      const { ctx, rows, calls } = sourceStockContext(stack.release, 'ANF-HOODIE-BLK', available);
+      const receipt = await executeAgentTool('check_stock', { sku: 'ANF-HOODIE-BLK', branch: 'Auckland Central' }, ctx);
+      assert.equal(receipt.source, 'business_system');
+      assert.deepEqual(receipt.branchStock, rows);
+      assert.equal(calls.length, 1);
+      assert.equal(ctx.allowedClaimClasses.has('stock'), true);
+    }
   });
 
   // ── Scenario Fixture 5: End-to-End Customer Consultation & Action Scenario ──
@@ -366,6 +411,23 @@ test('P6: Generic Chat Rules across Five Scenario Fixtures for Both Tenants', as
     assert.doesNotMatch(msg2, /I will now search|calling the/i, 'Turn 2 must not contain tool narration');
     assert.match(msg2, /quote/i, 'Turn 2 must acknowledge the quote action');
     assert.match(msg2, /now|next step|proceed|review/i, 'Turn 2 must provide actionable next step');
+    assert.doesNotMatch(msg2, /I(?:'ve| have) added|quote has been created|successfully created/i, 'A browser action does not prove a saved quote');
+    assert.equal(stack.db.dump('quotes').length, 0, 'the browser event alone creates no quote');
+
+    // The quote capability itself must execute against the authoritative isolated catalogue/store before a commit can be claimed.
+    // The product-advisor fixture does not grant create_quote, so do not silently expand its permissions just for this positive.
+    const handler = new QuoteCreateHandler(undefined, undefined, undefined, async () => stack.db as any);
+    const quote = await handler.execute({ items: [{ sku: '1000100', quantity: 10 }] }, {
+      tenantId: 'placemakers', environmentId: 'test', workspaceId: 'ws-e2e-pm', sessionId: 'sess-e2e-pm',
+      correlationId: 'corr-e2e-pm-3', idempotencyKey: 'quote-e2e-pm-3', principalId: 'builder-dan',
+      release: stack.pack, packSettings: { catalogMapping: stack.pack.catalogMapping },
+    } as any);
+    const quotes = stack.db.dump('quotes');
+    assert.equal(quotes.length, 1, 'a successful quote claim requires the actual handler to persist a quote');
+    assert.equal(quotes[0].lines[0].sku, '1000100');
+    assert.equal(quotes[0].lines[0].unitPrice, 12.5, 'the price comes from the mapped catalogue rather than the event or model');
+    assert.equal(quotes[0].principalId, 'builder-dan');
+    assert.equal(quote.quoteId, quotes[0].quoteId);
   });
 
   await t.test('Scenario Fixture 5 (Abercrombie): End-to-end customer shopping adheres to all rules', async () => {

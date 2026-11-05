@@ -11,6 +11,7 @@ const mockContext: ExecutionContext = {
   tenantId: 'tenant-test-grounded',
   environmentId: 'test',
   workspaceId: 'ws-grounded-01',
+  principalId: 'customer-fixture',
   sessionId: 'sess-grounded-01',
   stageId: 'stage-selection',
   packVersionId: '1.0.0',

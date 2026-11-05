@@ -87,6 +87,7 @@ export class OutboxRepository {
   }
 
   private async getDbRepo(): Promise<DbOutboxRepository | null> {
+    if (this.explicitMemory) return null;
     if (this.customDb) {
       return new DbOutboxRepository(this.customDb);
     }
@@ -182,11 +183,12 @@ export class OutboxRepository {
   async claimLeases(
     workerId: string,
     leaseDurationMs = 30000,
-    batchSize = 10
+    batchSize = 10,
+    scope?: { environmentId: string; tenantId?: string }
   ): Promise<OutboxEventRecord[]> {
     const dbRepo = await this.getDbRepo();
     if (dbRepo) {
-      return dbRepo.claimLeases(workerId, leaseDurationMs, batchSize);
+      return dbRepo.claimLeases(workerId, leaseDurationMs, batchSize, scope);
     }
     if (this.isProductionOrStaging()) {
       throw new Error('[OutboxRepository] Cannot claim leases from in-memory queue in production/staging; durable MongoDB storage required');
@@ -198,6 +200,7 @@ export class OutboxRepository {
 
     for (const record of this.inMemoryQueue) {
       if (claimed.length >= batchSize) break;
+      if (scope && (record.environmentId !== scope.environmentId || scope.tenantId && record.tenantId !== scope.tenantId)) continue;
       const isPending =
         record.status === 'pending' &&
         (!record.nextAttemptAt || record.nextAttemptAt <= now);
@@ -240,11 +243,12 @@ export class OutboxRepository {
     eventId: string,
     error: string,
     maxAttempts = 5,
-    backoffBaseMs = 1000
+    backoffBaseMs = 1000,
+    maxBackoffMs = 15 * 60 * 1000
   ): Promise<'retry_scheduled' | 'dead_letter'> {
     const dbRepo = await this.getDbRepo();
     if (dbRepo) {
-      return dbRepo.recordFailure(eventId, error, maxAttempts, backoffBaseMs);
+      return dbRepo.recordFailure(eventId, error, maxAttempts, backoffBaseMs, maxBackoffMs);
     }
     if (this.isProductionOrStaging()) {
       throw new Error('[OutboxRepository] Cannot record failure in in-memory queue in production/staging; durable MongoDB storage required');
@@ -264,7 +268,7 @@ export class OutboxRepository {
       return 'dead_letter';
     }
 
-    const delay = backoffBaseMs * Math.pow(2, item.attempts - 1);
+    const delay = Math.min(maxBackoffMs, backoffBaseMs * Math.pow(2, item.attempts - 1));
     item.status = 'pending';
     item.error = error;
     item.nextAttemptAt = new Date(Date.now() + delay);

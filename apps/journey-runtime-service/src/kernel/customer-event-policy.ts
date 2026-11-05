@@ -56,6 +56,8 @@ export function resolveCustomerEventAction(
     'reviewcart',
     // The customer opened a product's details or asked to see products side by side: a consultant would explain it.
     'viewproduct',
+    // A product question carries the selected SKU as well as the customer's words.
+    'askproduct',
     'compareproducts',
     // The person's answer on an ask-first card (Allow or Not now) and a form they sent: each is an answer someone is waiting for, so each runs a turn.
     'confirmtool',

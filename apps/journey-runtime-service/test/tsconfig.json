@@ -9,6 +9,7 @@
   "include": [
     "./**/*",
     "../src/**/*",
+    "../../agent-commerce-service/src/**/*",
     "../../project-service/src/**/*",
     "../../analytics-service/src/**/*"
   ]

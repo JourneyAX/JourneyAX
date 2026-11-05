@@ -147,7 +147,7 @@ async function main() {
     }
   });
 
-  process.exitCode = suite.finish() ? 0 : 1;
+  suite.finish();
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

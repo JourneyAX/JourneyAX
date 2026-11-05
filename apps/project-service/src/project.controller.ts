@@ -1,13 +1,13 @@
 import {
   Controller, Get, Post, Put, Patch, Delete,
-  Body, Param, Query, Headers,
-  NotFoundException, BadRequestException, UnauthorizedException,
+  Body, Param, Query, Headers, Req,
+  NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException,
   Inject, Optional, UseGuards, UseInterceptors, UploadedFile,
   ConflictException,
   StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { PermissionGuard, RequirePermission } from './permission.guard';
+import { PermissionGuard, RequirePermission, PublicProjectRoute } from './permission.guard';
 import { UNATTRIBUTED_PRINCIPAL, normaliseGroups } from '@journeyax/shared-types';
 import { ProjectService, redactSecrets, isCardType, validateCardSpec, STANDARD_TOOL_SCHEMAS } from './project.service';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
@@ -71,6 +71,7 @@ export class ProjectController {
   // ── Health ────────────────────────────────────────────────────
 
   @Get('health')
+  @PublicProjectRoute()
   health() {
     return {
       status: 'ok',
@@ -83,14 +84,20 @@ export class ProjectController {
   // ── Project CRUD ──────────────────────────────────────────────
 
   @Get()
+  @RequirePermission('project.list')
   async listProjects(
     @Query('orgId') orgId?: string,
     @Query('status') status?: string,
+    @Req() request?: { projectAccess?: { tenantId: string; platformAdmin: boolean; internal: boolean } },
   ) {
-    return this.projectService.listProjects(
+    const scope = request?.projectAccess;
+    if (!scope || !scope.platformAdmin && !scope.tenantId) throw new ForbiddenException('Verified project list scope is required.');
+    const records = await this.projectService.listProjects(
       orgId,
       status as any,
+      scope.platformAdmin ? undefined : scope.tenantId,
     );
+    return scope.internal ? records : records.map(redactSecrets);
   }
 
   @Post()
@@ -114,6 +121,7 @@ export class ProjectController {
    * harvested by an anonymous caller (P0-01).
    */
   @Get('resolve/whatsapp/:phoneNumberId')
+  @RequirePermission('project.read')
   async resolveWhatsapp(
     @Param('phoneNumberId') phoneNumberId: string,
     @Headers('x-internal-key') internalKey?: string,
@@ -128,6 +136,7 @@ export class ProjectController {
 
   /** Resolve the project serving a storefront domain (multi-storefront routing). */
   @Get('resolve/domain/:domain')
+  @PublicProjectRoute()
   async resolveDomain(@Param('domain') domain: string) {
     const r = await this.projectService.resolveByDomain(domain);
     if (!r) throw new NotFoundException(`No project registered for domain '${domain}'.`);
@@ -135,6 +144,7 @@ export class ProjectController {
   }
 
   @Get(':projectId')
+  @RequirePermission('project.read')
   async getProject(
     @Param('projectId') projectId: string,
     @Headers('x-internal-key') internalKey?: string,
@@ -185,17 +195,22 @@ export class ProjectController {
 
   /** The immutable published config the runtime consumes (falls back to draft pre-first-publish). */
   @Get(':projectId/published')
+  @PublicProjectRoute()
   async getPublished(
     @Param('projectId') projectId: string,
     @Headers('x-internal-key') internalKey?: string,
+    @Query('environmentId') environmentId = 'production',
   ) {
-    const config = await this.projectService.getPublishedConfig(projectId);
+    if (!['dev', 'test', 'staging', 'production'].includes(environmentId)) throw new BadRequestException('Unsupported publication environment.');
+    if (environmentId !== 'production' && !isInternal(internalKey)) throw new ForbiddenException('A verified deployment is required to read this environment.');
+    const config = await this.projectService.getPublishedConfig(projectId, environmentId);
     if (!config) throw new NotFoundException(`Project '${projectId}' not found.`);
-    return isInternal(internalKey) ? config : redactSecrets(config);
+    return environmentId === 'production' && isInternal(internalKey) ? config : redactSecrets(config);
   }
 
   /** Version history — the audit trail (metadata only). */
   @Get(':projectId/versions')
+  @RequirePermission('project.read')
   async listVersions(@Param('projectId') projectId: string) {
     return this.projectService.listVersions(projectId);
   }
@@ -545,6 +560,7 @@ export class ProjectController {
    *   persona: { systemName, systemPromptOverrides }
    */
   @Get(':projectId/context')
+  @RequirePermission('project.read')
   async getIsolationContext(@Param('projectId') projectId: string) {
     const ctx = await this.projectService.getIsolationContext(projectId);
     if (!ctx) {
@@ -556,6 +572,7 @@ export class ProjectController {
   // ── Members ───────────────────────────────────────────────────
 
   @Get(':projectId/members')
+  @RequirePermission('user.read')
   async listMembers(@Param('projectId') projectId: string) {
     const project = await this.projectService.getProject(projectId);
     if (!project) throw new NotFoundException(`Project '${projectId}' not found.`);
@@ -657,6 +674,7 @@ export class ProjectController {
   }
 
   @Post(':projectId/members/accept')
+  @PublicProjectRoute()
   async acceptInvitation(
     @Param('projectId') projectId: string,
     @Body() body: { email: string; token: string }
@@ -848,11 +866,13 @@ export class ProjectController {
   //   DELETE /api/v1/projects/:projectId/rules/:ruleId  delete
 
   @Get(':projectId/rules')
+  @RequirePermission('project.read')
   async listRules(@Param('projectId') projectId: string) {
     return this.projectService.listRules(projectId);
   }
 
   @Get(':projectId/rules/active')
+  @RequirePermission('project.read')
   async listActiveRules(@Param('projectId') projectId: string) {
     return this.projectService.getActiveRules(projectId);
   }
@@ -917,6 +937,7 @@ export class ProjectController {
   //   DELETE /api/v1/projects/:projectId/cards/:cardType     remove the override (falls back to default)
 
   @Get(':projectId/cards')
+  @RequirePermission('project.read')
   async listCards(@Param('projectId') projectId: string) {
     const result = await this.projectService.listCardTemplates(projectId);
     if (!result) throw new NotFoundException(`Project '${projectId}' not found.`);

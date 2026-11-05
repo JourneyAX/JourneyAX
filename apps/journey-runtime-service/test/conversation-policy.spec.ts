@@ -389,7 +389,7 @@ async function main() {
     assert.match(line(catalogOutcome([search({ output: { items: [], error: 'Database connection required' } })])), /catalogue search: failed \(Database connection required\) \|/);
   });
 
-  process.exitCode = suite.finish() ? 0 : 1;
+  suite.finish();
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import OpenAI, { toFile } from 'openai';
+import { fetchTryOnGarment } from './tryon-image';
 
 export interface TryOnInput {
   personDataUrl: string;      // data:image/...;base64,  (the shopper's uploaded photo)
@@ -28,16 +29,12 @@ function normImage(mime: string): { type: string; ext: string } {
 }
 
 function dataUrlToBuffer(dataUrl: string): { buf: Buffer; mime: string } {
-  const m = dataUrl.match(/^data:([^;]+);base64,([\s\S]*)$/);
+  if (typeof dataUrl !== 'string' || dataUrl.length > 12 * 1024 * 1024) throw new BadRequestException('A photo under 8MB is required.');
+  const m = dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
   if (!m) throw new BadRequestException('personImage must be a base64 data URL');
-  return { buf: Buffer.from(m[2], 'base64'), mime: m[1] };
-}
-
-async function fetchGarment(url: string): Promise<{ buf: Buffer; mime: string }> {
-  const r = await fetch(url);
-  if (!r.ok) throw new BadRequestException(`garment image fetch failed: ${r.status}`);
-  const mime = r.headers.get('content-type') || 'image/jpeg';
-  return { buf: Buffer.from(await r.arrayBuffer()), mime };
+  const buf = Buffer.from(m[2], 'base64');
+  if (!buf.length || buf.length > 8 * 1024 * 1024) throw new BadRequestException('A photo under 8MB is required.');
+  return { buf, mime: m[1] };
 }
 
 @Injectable()
@@ -52,7 +49,7 @@ export class TryOnService {
     const provider = this.tryOnProvider();
     if (!provider) throw new InternalServerErrorException('No image model key configured (set GEMINI_API_KEY or OPENAI_API_KEY).');
     const person = dataUrlToBuffer(input.personDataUrl);
-    const garment = await fetchGarment(input.garmentImageUrl);
+    const garment = await fetchTryOnGarment(input.garmentImageUrl);
     const prompt = INSTRUCTION(input.garmentName, input.garmentColor);
 
     if (provider === 'gemini') return this.geminiTryOn(person, garment, prompt);

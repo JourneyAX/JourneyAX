@@ -1,3 +1,5 @@
+import { HttpException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { TurnCommand, TurnResult } from '@journeyax/journey-core';
 import { signGatewayAssertion } from '@journeyax/database';
@@ -146,7 +148,7 @@ export class CanonicalRuntimeAdapter {
   async listConnectors(
     tenantId: string,
     person: { sub?: string; role?: string; groups?: string[] } | undefined,
-    environmentId: string = 'production'
+    environmentId: string = process.env.COMMERCE_ENVIRONMENT || 'production'
   ): Promise<{ connectors: any[]; packVersion?: string; welcome?: any }> {
     const url = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/connectors`;
     const headers = await this.buildAuthenticatedHeaders({
@@ -174,7 +176,7 @@ export class CanonicalRuntimeAdapter {
   async getDashboard(
     tenantId: string,
     person: { sub?: string; role?: string; groups?: string[] } | undefined,
-    environmentId: string = 'production'
+    environmentId: string = process.env.COMMERCE_ENVIRONMENT || 'production'
   ): Promise<{ dashboard?: any }> {
     const url = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/dashboard`;
     const headers = await this.buildAuthenticatedHeaders({
@@ -189,6 +191,32 @@ export class CanonicalRuntimeAdapter {
     if (!res.ok) throw new Error(`Runtime /dashboard returned status ${res.status}`);
     const body: any = await res.json();
     return body?.dashboard && typeof body.dashboard === 'object' ? { dashboard: body.dashboard } : {};
+  }
+
+  async commerceCart(tenantId: string, environmentId: string, person: { sub: string; role: string; groups: string[] }, sessionId: string, mutation?: Record<string, unknown>) {
+    const headers = await this.buildAuthenticatedHeaders({ tenantId, environmentId, principalId: person.sub, principalRole: person.role, principalGroups: person.groups, correlationId: `cart_${randomUUID()}` } as any);
+    const url = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/cart${mutation ? '' : `?sessionId=${encodeURIComponent(sessionId)}`}`;
+    const response = await fetch(url, { method: mutation ? 'POST' : 'GET', headers: { ...headers, 'Content-Type': 'application/json' }, ...(mutation ? { body: JSON.stringify({ ...mutation, sessionId }) } : {}), signal: AbortSignal.timeout(30_000), redirect: 'error' });
+    if (!response.ok) throw new HttpException('The cart could not be updated or read.', response.status);
+    return response.json();
+  }
+
+  async getOperationalDesks(tenantId: string, environmentId: string, person: { sub: string; role: string; groups: string[] }, deskId?: string, recordId?: string, cursor?: string) {
+    const base = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/desks`;
+    const query = new URLSearchParams({ ...(recordId !== undefined ? { recordId } : {}), ...(cursor !== undefined ? { cursor } : {}) }).toString();
+    const url = deskId ? `${base}/${encodeURIComponent(deskId)}${query ? `?${query}` : ''}` : base;
+    const headers = await this.buildAuthenticatedHeaders({ tenantId, environmentId, principalId: person.sub, principalRole: person.role, principalGroups: person.groups, correlationId: `desks_${Date.now()}` } as any);
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(30_000), redirect: 'error' });
+    if (!response.ok) throw new Error('The operational desk is unavailable.');
+    return response.json();
+  }
+
+  async prepareDeskRecord(tenantId: string, environmentId: string, person: { sub: string; role: string; groups: string[] }, deskId: string, recordId: string, workId?: string) {
+    const url = `${this.runtimeUrl}/api/v1/${encodeURIComponent(tenantId)}/${encodeURIComponent(environmentId)}/runtime/desks/${encodeURIComponent(deskId)}/prepare`;
+    const headers = await this.buildAuthenticatedHeaders({ tenantId, environmentId, principalId: person.sub, principalRole: person.role, principalGroups: person.groups, correlationId: `desk_prepare_${Date.now()}` } as any);
+    const response = await fetch(url, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ recordId, workId }), signal: AbortSignal.timeout(90_000), redirect: 'error' });
+    if (!response.ok) throw new HttpException('The selected record could not be prepared.', response.status);
+    return response.json();
   }
 
   /**
@@ -226,6 +254,7 @@ export class CanonicalRuntimeAdapter {
         // The earlier message this one continues from (try again, edit): without it the runtime follows the newest message.
         parentMessageId: (command as any).parentMessageId,
         disabledConnectors: (command as any).disabledConnectors,
+        readOnly: (command as any).readOnly,
         inputFacts: command.inputFacts,
         approvalRequestId: command.approvalRequestId,
       }),
@@ -333,6 +362,7 @@ export class CanonicalRuntimeAdapter {
         // The earlier message this one continues from (try again, edit): without it the runtime follows the newest message.
         parentMessageId: (command as any).parentMessageId,
         disabledConnectors: (command as any).disabledConnectors,
+        readOnly: (command as any).readOnly,
         inputFacts: command.inputFacts,
         approvalRequestId: command.approvalRequestId,
       }),

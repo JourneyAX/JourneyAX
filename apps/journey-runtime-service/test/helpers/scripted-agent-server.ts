@@ -325,9 +325,9 @@ export function createScriptedAgentExecutor() {
         }
         const title = payload?.title || payload?.name || payload?.sku || 'item';
         if (eventType.toLowerCase().includes('quote')) {
-          finalAnswer = `I've added ${title} to your quote. ${summary} Now ${nextStep.toLowerCase()}`;
+          finalAnswer = `I see the quote action for ${title}. Review the saved quote before proceeding. ${summary}`;
         } else {
-          finalAnswer = `I've added ${title} to your cart. ${summary} Now ${nextStep.toLowerCase()}`;
+          finalAnswer = `I see the cart action for ${title}. Review the saved cart before proceeding. ${summary}`;
         }
       } else {
         finalAnswer = `Here is your current journey progress: ${summary} Now ${nextStep.toLowerCase()}`;
@@ -379,10 +379,14 @@ export function createScriptedAgentExecutor() {
       try {
         parsedStock = JSON.parse(stockResult.content || '{}');
       } catch {}
-      if (parsedStock.inStock === true) {
-        finalAnswer = `Item SKU ${parsedStock.sku} is verified in stock at ${parsedStock.branch}. Would you like to proceed with ordering or quoting?`;
+      const rows = parsedStock.branchStock?.records;
+      const row = Array.isArray(rows) && rows.find((entry: any) => entry.branchName === parsedStock.branch);
+      if (parsedStock.source === 'business_system' && row && typeof row.available === 'number') {
+        finalAnswer = row.available > 0
+          ? `The source lists SKU ${parsedStock.sku} in stock at ${row.branchName}: ${row.available} available. Would you like a quote?`
+          : `The source lists SKU ${parsedStock.sku} out of stock at ${row.branchName}. Would you like to check another branch?`;
       } else {
-        finalAnswer = `Item SKU ${parsedStock.sku} is currently out of stock at ${parsedStock.branch}. Would you like to check alternative branches or special order this item?`;
+        finalAnswer = 'Current stock has not been confirmed. Would you like the branch team to check availability?';
       }
     } else if (quoteResult) {
       let parsedQuote: any = {};

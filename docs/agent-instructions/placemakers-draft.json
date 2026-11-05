@@ -564,6 +564,76 @@
               "claimClasses": [
                 "catalog_fact"
               ]
+            },
+            {
+              "name": "get_customer_profile",
+              "sideEffect": "read",
+              "summary": "Read one exact commerce customer ID and its previously registered canonical customer reference. Does not return email, address or other profile details."
+            },
+            {
+              "name": "find_customer_profile",
+              "sideEffect": "read",
+              "summary": "Find the exact commerce customer by verified email."
+            },
+            {
+              "name": "create_customer_profile",
+              "sideEffect": "write",
+              "summary": "Create a commerce customer record for an existing verified external-login profile after approval. No password or customer message is created."
+            },
+            {
+              "name": "get_order_customer_link",
+              "sideEffect": "read",
+              "summary": "Read the exact order and payment customer references without returning customer profile details."
+            },
+            {
+              "name": "link_order_customer",
+              "sideEffect": "write",
+              "summary": "Attach one existing owned order and its payment references to its exact registered customer. Refuses conflicting identities and changes no prices, addresses or charges."
+            },
+            {
+              "name": "get_order_payment_receipt",
+              "sideEffect": "read",
+              "summary": "Read the exact external payment reference linked to one commerce order. Never returns payment credentials."
+            },
+            {
+              "name": "record_order_payment",
+              "sideEffect": "write",
+              "summary": "Link an independently confirmed provider transaction to its exact paid commerce order. Records a receipt only; never creates a charge."
+            },
+            {
+              "name": "get_account_contact",
+              "sideEffect": "read",
+              "summary": "Read the exact commerce business-unit key, current version and all recorded addresses/contact fields. Select the intended address explicitly; do not assume the first address or that an address mobile "
+            },
+            {
+              "name": "correct_account_address_contact",
+              "sideEffect": "write",
+              "summary": "Correct one explicitly selected business-unit address phone or mobile after exact human approval. Requires the current unit version and address ID. Preserves address, tax, custom data and other contac"
+            },
+            {
+              "name": "correct_order_contact",
+              "sideEffect": "write",
+              "summary": "Correct an unshipped order’s street details or international phone number after exact human approval. Requires the current source version. Does not change country, state, city, postcode, items, tax, p"
+            },
+            {
+              "name": "get_order_receipt",
+              "sideEffect": "read",
+              "summary": "Read a paid order delivery receipt by its stable order number. Returns record null only when the commerce system confirms it does not exist."
+            },
+            {
+              "name": "get_my_customer_profile",
+              "sideEffect": "read",
+              "summary": "Read only the signed-in registered customer canonical reference and revision. The source checks the requester against the signed caller; no arbitrary customer ID is accepted."
+            },
+            {
+              "name": "get_my_orders",
+              "sideEffect": "read",
+              "summary": "Read a bounded page of orders belonging to the signed-in registered customer. Confirms the source customer on every order and returns an opaque continuation offset."
+            },
+            {
+              "name": "get_my_order",
+              "sideEffect": "read",
+              "summary": "Read one order only after the source confirms it belongs to the signed-in registered customer. Requires its exact order number, not an arbitrary vendor UUID."
             }
           ]
         },
@@ -703,6 +773,31 @@
               "name": "create_case",
               "sideEffect": "write",
               "summary": "Open a new support case for an account."
+            },
+            {
+              "name": "get_customer_profile",
+              "sideEffect": "read",
+              "summary": "Read one exact CRM contact ID and its previously registered canonical customer reference. Returns source IDs only, with no email/address or name-based matching."
+            },
+            {
+              "name": "find_customer_profile",
+              "sideEffect": "read",
+              "summary": "Find one exact customer contact and its CRM account. Ambiguous email identities are refused."
+            },
+            {
+              "name": "create_customer_profile",
+              "sideEffect": "write",
+              "summary": "Create CRM account/contact records from an existing verified customer profile after explicit approval. No login, password, invitation or customer communication is created."
+            },
+            {
+              "name": "get_account_contact",
+              "sideEffect": "read",
+              "summary": "Read the exact Salesforce business account phone and its current ETag before proposing an approved correction. This is the business account phone, not an individual Contact mobile. Never infer an acco"
+            },
+            {
+              "name": "correct_account_phone",
+              "sideEffect": "write",
+              "summary": "Correct the phone on one exact Salesforce business Account after human approval, using its current ETag. Does not update individual Contact mobiles, commerce accounts, addresses, tickets or send a cus"
             }
           ]
         },
@@ -740,6 +835,26 @@
               "name": "add_ticket_note",
               "sideEffect": "write",
               "summary": "Add an internal note to a ticket (never a public reply)."
+            },
+            {
+              "name": "count_tickets",
+              "sideEffect": "read",
+              "summary": "Read the source-reported number of support tickets, optionally by status. Unsolved includes new, open, pending and hold. This is a search-index count, not the size of a returned ticket page."
+            },
+            {
+              "name": "get_customer_ticket",
+              "sideEffect": "read",
+              "summary": "Read a ticket owned by the verified requester, with public comments only. Paged; use nextCursor for remaining comments."
+            },
+            {
+              "name": "reply_to_ticket",
+              "sideEffect": "write",
+              "summary": "Send the exact approved public reply to a ticket, optionally changing its status. Requires the last observed updated timestamp and returns a vendor audit receipt. May notify the requester; ask first."
+            },
+            {
+              "name": "update_ticket",
+              "sideEffect": "write",
+              "summary": "Apply an approved ticket status, priority, assignment or internal note. Requires the last observed updated timestamp. Never sends a public reply. Returns a vendor audit receipt; ask first."
             }
           ]
         },
@@ -1071,6 +1186,113 @@
               "name": "drive_time",
               "sideEffect": "read",
               "summary": "An estimate of the drive from an address or point to a branch: distance and minutes."
+            }
+          ]
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "displayName": "SAP S/4HANA",
+          "description": "Real SAP ERP product, order, stock, BOM and finance APIs. Source identifiers and status codes stay explicit; writes require exact governed approval.",
+          "owner": "Configured integration owner",
+          "secretRef": "tenant-secret://placemakers/production/real-connectors-key",
+          "connectionScope": "shop",
+          "sample": false,
+          "enabled": false,
+          "tools": [
+            {
+              "name": "get_product",
+              "sideEffect": "read",
+              "summary": "Read one exact SAP material/product master. SAP product IDs are resolved by verified mappings; a commerce SKU is not assumed to be an SAP material."
+            },
+            {
+              "name": "get_order",
+              "sideEffect": "read",
+              "summary": "Read an exact SAP sales order, its own currency/net amount and source status codes. An absent shipment/payment fact stays absent."
+            },
+            {
+              "name": "find_orders",
+              "sideEffect": "read",
+              "summary": "Find SAP sales orders by exact commerce/customer reference or verified SAP sold-to ID. Returns candidates, never selects the first look-alike customer."
+            },
+            {
+              "name": "get_order_items",
+              "sideEffect": "read",
+              "summary": "Read a bounded page of line items for the exact SAP order, with native units and amounts."
+            },
+            {
+              "name": "get_stock",
+              "sideEffect": "read",
+              "summary": "Read stock quantities for one exact SAP material and optional plant. Preserve stock type, plant, storage location and unit; this is not an availability-to-promise or reservation."
+            },
+            {
+              "name": "get_bills_of_material",
+              "sideEffect": "read",
+              "summary": "Read source BOM headers for an exact material and plant. BOM alternatives remain distinct and are not product-compatibility claims."
+            },
+            {
+              "name": "get_billing_documents",
+              "sideEffect": "read",
+              "summary": "Read SAP billing/invoice headers for a verified SAP sold-to party. Currency, accounting reference and cancellation remain source facts; no payment/clearing is inferred."
+            },
+            {
+              "name": "get_journal_items",
+              "sideEffect": "read",
+              "summary": "Read bounded journal lines by exact company, fiscal year and accounting document. No journal posting, clearing, refund or automatic currency conversion."
+            },
+            {
+              "name": "create_product",
+              "sideEffect": "write",
+              "summary": "Create an explicitly reviewed SAP material master with an exact external product ID, SAP product type, industry sector, base unit and source description. Never guesses classification or updates an exi"
+            },
+            {
+              "name": "create_sales_order",
+              "sideEffect": "write",
+              "summary": "Create one explicitly approved SAP sales order with exact source sold-to, sales area, document type, currency, external customer reference and material quantities. ERP calculates its own price. Return"
+            },
+            {
+              "name": "get_accounting_items",
+              "sideEffect": "read",
+              "summary": "Read operational accounting lines through the SAP_COM_0303 API, scoped to the exact company, fiscal year and accounting document. Returns source currency, clearing, billing and sales references. This "
+            },
+            {
+              "name": "create_bill_of_material",
+              "sideEffect": "write",
+              "summary": "Create one exactly reviewed native SAP material BOM. Requires source material, plant, BOM usage/alternative/status, validity date and explicit component numbers/quantities/units/categories. Never inve"
+            },
+            {
+              "name": "get_customer",
+              "sideEffect": "read",
+              "summary": "Read an exact SAP business partner/customer link by native BP ID or unique owned integration reference. Returns the Customer ID from the native to_Customer relation, never assumes BP/customer IDs or m"
+            },
+            {
+              "name": "create_customer",
+              "sideEffect": "write",
+              "summary": "Create one exactly approved owned SAP business partner/customer master using explicit grouping, account group, source sales-area settings and address. Requires a stable JAX-owned reference. Reconcile "
+            },
+            {
+              "name": "get_product_organisations",
+              "sideEffect": "read",
+              "summary": "Read bounded native SAP plant, plant-sales, sales-delivery and tax views for one exact source product. An empty view remains empty; no plant, supplier, stock or operational readiness is inferred."
+            },
+            {
+              "name": "extend_product_organisations",
+              "sideEffect": "write",
+              "summary": "Add exactly approved SAP plant, shipping/sales-area and tax views to an existing source material using explicit source organisational settings. No weight/dimension/volume, inventory, price, valuation,"
+            },
+            {
+              "name": "get_order_document_flow",
+              "sideEffect": "read",
+              "summary": "Read bounded native subsequent-document relationships for one exact SAP sales order. Preserves document IDs/categories and source process status. An empty result means no exposed source relationship; "
+            },
+            {
+              "name": "get_delivery",
+              "sideEffect": "read",
+              "summary": "Read one exact native SAP outbound delivery and source status codes, dates and bill-of-lading reference. Does not turn missing/empty status into delivered, payment, consignment tracking or invoice suc"
+            },
+            {
+              "name": "get_delivery_items",
+              "sideEffect": "read",
+              "summary": "Read bounded native lines for one exact SAP outbound delivery, retaining source reference order/item, material, quantity, unit and movement/picking/proof status. No simulated consignment or installati"
             }
           ]
         }
@@ -1717,6 +1939,300 @@
             "administrators"
           ],
           "state": "allow"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_customer_profile",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "find_customer_profile",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "create_customer_profile",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_order_customer_link",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "link_order_customer",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_order_payment_receipt",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "record_order_payment",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_account_contact",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "correct_account_address_contact",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "correct_order_contact",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_order_receipt",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "get_customer_profile",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "find_customer_profile",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "create_customer_profile",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "get_account_contact",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "salesforce",
+          "tool": "correct_account_phone",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "zendesk",
+          "tool": "count_tickets",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "zendesk",
+          "tool": "get_customer_ticket",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "zendesk",
+          "tool": "reply_to_ticket",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "zendesk",
+          "tool": "update_ticket",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_product",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_order",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "find_orders",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_order_items",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_stock",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_bills_of_material",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_billing_documents",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_journal_items",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "create_product",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "create_sales_order",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_my_customer_profile",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_my_orders",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "commercetools",
+          "tool": "get_my_order",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_accounting_items",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "create_bill_of_material",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_customer",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "create_customer",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_product_organisations",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "extend_product_organisations",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_order_document_flow",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_delivery",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
+        },
+        {
+          "connectorId": "sap-s4hana",
+          "tool": "get_delivery_items",
+          "audience": "shopper",
+          "groups": [],
+          "state": "blocked"
         }
       ],
       "announceSample": false

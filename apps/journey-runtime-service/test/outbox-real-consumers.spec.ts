@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { MemoryDb } from '@journeyax/test-support';
 import { NestFactory } from '@nestjs/core';
 import { publishBusinessPack } from '@journeyax/business-pack';
 import { buildCanonicalPackContent, buildStoredRelease } from './fixtures/canonical-release.fixture';
@@ -116,11 +117,12 @@ function createMockOutboxDb(overrides: {
     },
   ];
 
+  const actionStorage = new MemoryDb();
   return {
     approvals,
     executions,
     auditLogs,
-    collection: (name: string) => ({
+    collection: (name: string) => name === 'action_receipts' ? actionStorage.collection(name) : ({
       findOne: async (query: any) => {
         if (name === 'workspaces') {
           if (overrides.workspaces === null) return null;

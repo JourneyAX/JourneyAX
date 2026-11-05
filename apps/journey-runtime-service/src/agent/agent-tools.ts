@@ -1,3 +1,4 @@
+import { rememberContext, type MemoryNote } from '../conversation/graph-memory';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { CARD_TYPES, type CardType, CARD_TYPE_NAMES } from '@journeyax/ui-cards';
@@ -20,6 +21,7 @@ import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-searc
 import { QuoteCreateHandler } from '../capabilities/handlers/quote-create.handler';
 import { QuoteUpdateHandler } from '../capabilities/handlers/quote-update.handler';
 import { CartUpdateHandler } from '../capabilities/handlers/cart-update.handler';
+import { commerceItems, scopedCommerceId } from '../capabilities/handlers/catalogue-commerce';
 import {
   executeCalculator,
   findMatchingCalculator,
@@ -52,8 +54,24 @@ import { CUSTOMER_ACCOUNT_TOOL_DEFINITIONS, customerAccountRecords, customerAcco
 import { cardsShownNote, showRecordCards } from './record-cards';
 import type { PersonCompany } from '../kernel/company-directory';
 import type { ConnectorPerson, ConnectorRuntime } from '../kernel/connector.runtime';
+import { IQ_TOOL_DEFINITIONS, executeIqTool, iqEnabled, isIqTool, specializeIqTool } from './iq-tools';
+import type { IqClient } from '@journeyax/jax-iq';
+import { supportRequestArgs } from './support-handoff';
+import { deskSummaries, readOperationalDesk, deskToolResult, deskRecordCard } from '../desks/operational-desks';
+import { humanizeMeasure, metricLengthEquivalents } from '@journeyax/shared-types';
+import type { CatalogueWarrantyFact } from '../kernel/okf-claim-validator';
+import { validateOkfGeneratedClaims } from '../kernel/okf-claim-validator';
+import { addNumericEvidence } from '../kernel/numeric-evidence';
+import { catalogueWarranty, readProductWarranty, productDocumentUrls } from './product-warranty';
+import { applicableProductGuides } from './product-guide-applicability';
+import { ProductMeasurementEvidence } from '../kernel/product-measurement-evidence';
 
 export interface AgentToolContext {
+  readOnly?: boolean;
+  proposalTools?: Array<{ connector: string; tool: string }>;
+  researchSubject?: { thing: string; canonicalId: string; sourceSystem: string };
+  memoryNotes?: MemoryNote[];
+  sourceTurnId?: string;
   tenantId: string;
   environmentId: 'dev' | 'test' | 'staging' | 'production';
   workspaceId?: string;
@@ -85,6 +103,7 @@ export interface AgentToolContext {
   formSubmissionRepo?: FormSubmissionRepository;
   inMemoryQuotes?: Map<string, any> | Record<string, any>;
   inMemoryCarts?: Map<string, any> | Record<string, any>;
+  inMemoryCommerceProducts?: readonly unknown[];
   /** What each tool may do for this person (pack `extensions.toolStates`). Absent: every tool runs, as before the table existed. */
   toolStateOf?: (toolId: string) => { state: 'allow' | 'ask' | 'blocked'; prompt?: string };
   /** The shop's words on the ask-first card (pack `extensions.toolStates.wording`). */
@@ -101,6 +120,11 @@ export interface AgentToolContext {
   rangeShelves?: Shelf[];
   readSourceIds: Set<string>;
   allowedClaimClasses: Set<ClaimClass>;
+  exactClaimStatements?: Map<ClaimClass, Set<string>>;
+  catalogueWarrantyFacts?: CatalogueWarrantyFact[];
+  catalogueMisses?: Set<string>;
+  lastWarranty?: any;
+  lastOperationalView?: any;
   presentedCards: Array<{ cardType: string; state: any }>;
   isHumanHandoffRequested: boolean;
   handoffReason?: string;
@@ -114,6 +138,8 @@ export interface AgentToolContext {
   usedSkillIds?: Set<string>;
   /** Reaches connectors (other systems over MCP). Absent: the connector tools are not offered. */
   connectorRuntime?: ConnectorRuntime;
+  iqClient?: IqClient;
+  retailIqIdentity?: import('./iq-customer-identity').RetailIqIdentityPort;
   /** Connectors the agent loaded or called this turn, for the trace. */
   usedConnectorIds?: Set<string>;
   /** Connectors the person switched off for this chat: the three connector tools refuse them. */
@@ -129,6 +155,8 @@ export interface AgentToolContext {
   visualStoreDir?: string;
   /** The review of the order made this turn: a review card shows only this. */
   lastReview?: ReviewState;
+  /** The authenticated owner's committed receipt, never client/model state. */
+  lastCheckoutReceipt?: any;
   /** Products already suggested as accessories earlier in this conversation: the same suggestions are not shown again. */
   shownAccessories?: Set<string>;
   customerEvent?: any;
@@ -195,7 +223,7 @@ async function findProductByTitle(ctx: AgentToolContext, asked: string): Promise
   if (wanted.length < 4) return undefined;
   const cached = [...ctx.catalogProductCache.values()].filter((p) => String(p.title || p.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === wanted);
   if (cached.length === 1) return cached[0];
-  const res = await ctx.catalogSearchHandler.execute({ query: asked, maxResults: 5 } as any, makeExecContext(ctx));
+  const res = await ctx.catalogSearchHandler.execute({ exactTitle: asked, maxResults: 5 } as any, makeExecContext(ctx));
   const same = ((res.products || res.items || []) as any[]).filter((p: any) => String(p.title || p.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === wanted);
   if (same.length !== 1 || !same[0]?.sku) return undefined;
   ctx.turnProductSkus.add(same[0].sku);
@@ -261,8 +289,10 @@ function makeExecContext(ctx: AgentToolContext) {
     environmentId: ctx.environmentId,
     workspaceId: ctx.workspaceId || ctx.sessionId || 'agent_workspace',
     sessionId: ctx.sessionId || ctx.workspaceId || 'agent_session',
-    principalId: ctx.principalId || 'customer',
+    principalId: ctx.principalId,
     principalRole: ctx.principalRole || 'customer',
+    principalGroups: ctx.principal?.groups ?? [],
+    companies: ctx.companies ?? [],
     stageId: 'agent_stage',
     packVersionId: ctx.release.manifest?.version || ctx.release.manifest?.packId || '1.0.0',
     correlationId: ctx.correlationId,
@@ -270,6 +300,7 @@ function makeExecContext(ctx: AgentToolContext) {
     release: ctx.release,
     packSettings: ctx.release,
     okfRelease: ctx.okfContent,
+    signal: ctx.signal,
     currency: primaryCurrency,
     pricing: (ctx.release as any)?.pricing || (primaryCurrency ? { currency: primaryCurrency } : undefined),
   };
@@ -281,7 +312,7 @@ function makeExecContext(ctx: AgentToolContext) {
  * system wants a code instead), any fixed extra inputs (a limit), and a note for the model. Without this setting check_stock has only the
  * catalogue's shop-wide flag, and says so. Nothing here names a system: the pack does.
  */
-export interface BranchStockRoute { connector: string; tool: string; inputs?: { sku?: string; branch?: string }; extra?: Record<string, unknown>; note?: string }
+export interface BranchStockRoute { connector: string; tool: string; inputs?: { sku?: string; branch?: string }; extra?: Record<string, unknown>; note?: string; dataMode: 'live' | 'demo' }
 
 export function branchStockRoute(release: unknown): BranchStockRoute | undefined {
   const raw = (release as any)?.extensions?.branchStock;
@@ -291,7 +322,7 @@ export function branchStockRoute(release: unknown): BranchStockRoute | undefined
   if (!connector || !tool) return undefined;
   const inputs = raw.inputs && typeof raw.inputs === 'object' && !Array.isArray(raw.inputs) ? raw.inputs : undefined;
   const extra = raw.extra && typeof raw.extra === 'object' && !Array.isArray(raw.extra) ? raw.extra : undefined;
-  return { connector, tool, inputs, extra, note: typeof raw.note === 'string' ? raw.note : undefined };
+  return { connector, tool, inputs, extra, note: typeof raw.note === 'string' ? raw.note : undefined, dataMode: raw.dataMode === 'demo' ? 'demo' : 'live' };
 }
 
 /**
@@ -347,14 +378,6 @@ export function resolveBoundCapability(
   const direct = toolBindings.find((b: any) => b.toolId === toolName);
   if (direct?.toolId) return direct.toolId;
 
-  // 3. Match from pack toolBindings (e.g. pack binding toolId matching toolName)
-  const normTool = toolName.toLowerCase().replace(/[_.]/g, '');
-  const boundMatch = toolBindings.find((b: any) => {
-    const normBound = (b.toolId || '').toLowerCase().replace(/[_.]/g, '');
-    return normBound.endsWith(normTool) || normTool.endsWith(normBound) || normBound.includes(normTool);
-  });
-  if (boundMatch?.toolId) return boundMatch.toolId;
-
   // 4. Neutral canonical platform fallback
   const neutralFallbacks: Record<string, string> = {
     search_products: 'catalog.search',
@@ -371,6 +394,7 @@ export function resolveBoundCapability(
     update_quote: 'quote.update',
     add_to_quote: 'quote.update',
     get_cart: 'cart.get',
+    get_checkout_receipt: 'checkout.receipt',
     update_cart: 'cart.update',
     add_to_cart: 'cart.update',
     get_journey_checklist: 'journey.checklist',
@@ -512,6 +536,8 @@ export function getAgentToolDefinitions(
   const forms = formsOf(release, person);
 
   return AGENT_TOOL_DEFINITIONS.filter((tool) => {
+    if (isIqTool(tool.name) && !iqEnabled(release)) return false;
+    if (['list_desks', 'read_desk'].includes(tool.name) && !deskSummaries({ release, principal: person } as any).length) return false;
     if (tool.name === 'calculate_quantity' && !hasCalculators) {
       return false;
     }
@@ -522,6 +548,7 @@ export function getAgentToolDefinitions(
     if (isCustomerAccountTool(tool.name) && !customerAccountSettings(release).enabled) return false;
     return true;
   }).map((tool) => {
+    if (isIqTool(tool.name)) return specializeIqTool(tool, release);
     if (tool.name === 'search_products') {
       return specializeSearchProductsTool(tool, release);
     }
@@ -534,6 +561,7 @@ export function getAgentToolDefinitions(
 }
 
 export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
+  { name: 'remember_context', description: 'Retain useful context the customer explicitly stated, such as their goal, constraints or a correction. Use a stable descriptive key so a correction replaces the older value. Value and evidence must be verbatim from this turn. Never store credentials, payments, inferred compatibility, live prices, inventory or permission claims. This is private conversation memory, not business knowledge.', parameters: { type: 'object', properties: { key: { type: 'string' }, value: { type: 'string' }, evidence: { type: 'string' } }, required: ['key', 'value', 'evidence'], additionalProperties: false } },
   {
     name: 'consult_business_knowledge',
     description: 'Look up verified business knowledge: project recipes, product family notes, relationships (what accessories go with what), care and installation notes, and document pointers. Returns compact notes with source IDs.',
@@ -740,10 +768,11 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'get_warranty',
-    description: 'Retrieve verified warranty periods, terms, and compliance certificates for a product or brand.',
+    description: 'Read the exact product catalogue warranty duration and applicable linked/indexed PDF warranty or guarantee terms. Distinguishes a catalogue duration, sourced manufacturer wording and missing full terms. Does not infer component coverage or legal guarantees.',
     parameters: {
       type: 'object',
       properties: {
+        sku: { type: 'string', description: 'Prefer the exact selected product SKU when supplied by the customer or product card.' },
         productOrBrand: {
           type: 'string',
           description: 'The product title, SKU, or brand name.',
@@ -835,7 +864,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   {
     name: 'present_card',
-    description: 'Present an interactive UI card in the customer interface from the approved catalogue (e.g. products, productDetail, comparison, bundle, clarify, accessories, warranty, guide, plan). Every SKU on the card must come from a tool result of this turn.',
+    description: 'Present an interactive UI card from the approved catalogue. Every SKU must come from a tool result of this turn. For a staff operational records card first read_desk; use cardType records with optional state.recordId. The server fills its rows from the authorised desk result and merchant field labels, never model-written figures.',
     parameters: {
       type: 'object',
       properties: {
@@ -861,6 +890,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
             'disclosure',
             'hero',
             'working',
+            'records',
           ],
           description: 'The approved card type name.',
         },
@@ -935,15 +965,15 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
             required: ['sku', 'quantity'],
           },
         },
-        specs: { type: 'array', description: 'Optional project specifications or configuration items.' },
+        expectedVersion: { type: 'integer', minimum: 1, description: 'The quote revision you read; a changed revision requires a fresh read.' },
         notes: { type: 'string', description: 'Optional notes explaining the update.' },
       },
-      required: ['quoteId'],
+      required: ['quoteId', 'items'],
     },
   },
   {
     name: 'add_to_quote',
-    description: 'Add new items or specifications to an existing quote.',
+    description: 'Add catalogue items and quantities to an existing quote.',
     parameters: {
       type: 'object',
       properties: {
@@ -970,13 +1000,13 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
     parameters: {
       type: 'object',
       properties: {
-        cartId: { type: 'string', description: 'Optional cart identifier.' },
+        expectedVersion: { type: 'integer', description: 'The cart revision returned by get_cart. A stale revision is rejected.' },
       },
     },
   },
   {
     name: 'update_cart',
-    description: 'Update the customer cart by adding, modifying, or removing items.',
+    description: 'Replace the owned cart with the complete desired SKU and quantity list. Read get_cart first, preserve items the customer did not remove, and send an empty list only to clear the cart.',
     parameters: {
       type: 'object',
       properties: {
@@ -992,7 +1022,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
             required: ['sku', 'quantity'],
           },
         },
-        cartId: { type: 'string', description: 'Optional cart identifier.' },
+        expectedVersion: { type: 'integer', description: 'The cart revision returned by get_cart. A stale revision is rejected.' },
         category: { type: 'string', description: 'Optional category tag.' },
       },
       required: ['items'],
@@ -1014,6 +1044,14 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
   },
   // Generic tools for reaching connectors; offered only when the pack declares connectors this person may use.
   ...CONNECTOR_META_TOOL_DEFINITIONS,
+  ...IQ_TOOL_DEFINITIONS,
+  { name: 'list_desks', description: 'List the configured working surfaces available to your staff role. Each opens the same operational records used by chat and boards.', parameters: { type: 'object', properties: {}, additionalProperties: false } },
+  { name: 'read_desk', description: 'Read a configured desk or selected record through shared IQ. Follow a returned nextCursor to read another page; a partial page is not the whole backlog or conversation. This never writes or executes a preset workflow.', parameters: { type: 'object', properties: { deskId: { type: 'string' }, recordId: { type: 'string' }, cursor: { type: 'string', maxLength: 1000 } }, required: ['deskId'], additionalProperties: false } },
+  {
+    name: 'get_checkout_receipt',
+    description: 'Read the signed-in person’s committed checkout receipt using the complete orderId. Use it after checkout or when asked about what they bought, payment, line quantities, tax and total. This is the saved payment/order receipt, not a current shipment, stock or delivery estimate. Other customers’ receipts are never returned.',
+    parameters: { type: 'object', properties: { orderId: { type: 'string', description: 'Complete orderId returned by checkout, never the shortened display suffix.' } }, required: ['orderId'] },
+  },
   // A signed-in trade customer's own account; offered only to a customer the team has linked to a company, and only when the pack turns it on.
   ...CUSTOMER_ACCOUNT_TOOL_DEFINITIONS,
 ];
@@ -1030,8 +1068,10 @@ export function isReadOnlyTool(toolName: string): boolean {
     'add_to_quote',
     'update_cart',
     'add_to_cart',
+    'generate_visual', // Creates a remote image and a local asset; never a read-only lookup.
     // A connector tool may change data in the other system, so connector calls run one at a time.
     'call_connector_tool',
+    'propose_connector_action',
   ]);
   return !mutatingTools.has(toolName);
 }
@@ -1047,8 +1087,9 @@ export function isReadOnlyTool(toolName: string): boolean {
 function holdForConfirmation(toolName: string, args: Record<string, any>, prompt: string | undefined, ctx: AgentToolContext, detailsFrom?: Record<string, unknown>): any {
   if (!ctx.workspace) return { ok: false, error: 'This needs the person\'s yes and there is nowhere to keep the question, so it was not done. Say you cannot do it here.' };
   const wording = ctx.confirmationWording || {};
-  const { pending, reused } = createPendingConfirmation(ctx.workspace as any, { toolId: toolName, args, summary: prompt || defaultPrompt(wording), principalId: ctx.principalId || 'anonymous', ...(detailsFrom ? { detailsFrom } : {}) });
-  if (!reused) {
+  const source = toolName === 'call_connector_tool' ? ctx.release.extensions?.connectors?.connectors.find(connector => connector.connectorId === args.connector) : undefined;
+  const { pending } = createPendingConfirmation(ctx.workspace as any, { toolId: toolName, args, summary: prompt || defaultPrompt(wording), principalId: ctx.principalId || 'anonymous', ...(source ? { reviewSource: { name: source.displayName, environment: ctx.environmentId, sample: source.sample === true } } : {}), ...(detailsFrom ? { detailsFrom } : {}) });
+  if (!ctx.presentedCards.some(card => card.cardType === 'confirm' && card.state?.confirmationId === pending.id)) {
     const state = confirmCardState(pending, wording);
     ctx.presentedCards.push({ cardType: 'confirm', state });
     ctx.emitUiAction?.({ name: 'presentCard', arguments: { card: { id: `confirm-${pending.id}`, cardType: 'confirm', state } } });
@@ -1097,6 +1138,21 @@ export async function executeAgentTool(
     if (effective.state === 'ask') return holdForConfirmation(toolName, args, effective.prompt, ctx);
   }
 
+  if (ctx.readOnly) {
+    const nativeWrite = ['hand_off_to_human', 'create_quote', 'update_quote', 'add_to_quote', 'update_cart'].includes(toolName);
+    const connectorWrite = toolName === 'call_connector_tool' && ctx.release.extensions?.connectors?.connectors?.find(entry => entry.connectorId === args.connector)?.tools?.find(entry => entry.name === args.tool)?.sideEffect !== 'read';
+    const bound = ctx.release.capabilities?.toolDefinitions?.find(tool => tool.toolId === resolveBoundCapability(ctx.release, toolName));
+    if (nativeWrite || connectorWrite || (bound && bound.sideEffect !== 'read')) return { ok: false, code: 'read_only_session', error: 'This investigation is read-only. No business action was performed.' };
+  }
+  if (isIqTool(toolName)) return executeIqTool(toolName, args, ctx);
+  if (toolName === 'list_desks') return { desks: deskSummaries(ctx) };
+  if (toolName === 'read_desk') {
+    const view = await readOperationalDesk(args.deskId, args.recordId, ctx, undefined, args.cursor);
+    ctx.lastOperationalView = view.ok ? view : undefined;
+    return { ...deskToolResult(view), ...(view.ok ? { presentation: 'If a card helps, call present_card with cardType records; the server supplies the rows from this authorised read.' } : {}) };
+  }
+
+  if (toolName === 'remember_context') return rememberContext(args, ctx.customerQuestion ?? '', ctx.sourceTurnId ?? '', ctx.memoryNotes ??= []);
   switch (toolName) {
     case 'get_journey_checklist': {
       return deriveJourneyChecklist(ctx);
@@ -1159,6 +1215,7 @@ export async function executeAgentTool(
       // (reusing the gate's effectiveVerification / scopedClaims logic) and only for those classes.
       const now = new Date();
       const verifications = new Map((ctx.okfContent.verifications || []).map((v) => [v.recordId, v]));
+      const knowledgeClaimClasses = new Set<string>();
 
       for (const concept of activeConcepts) {
         if (ctx.consultedConcepts) ctx.consultedConcepts.add(concept);
@@ -1178,6 +1235,7 @@ export async function executeAgentTool(
         for (const claimClass of allowed) {
           if (claimClass !== 'suggestion') {
             ctx.allowedClaimClasses.add(claimClass);
+            knowledgeClaimClasses.add(claimClass);
           }
         }
       }
@@ -1303,6 +1361,11 @@ export async function executeAgentTool(
       return {
         found: true,
         topic,
+        guidance: {
+          status: knowledgeClaimClasses.size ? 'scoped_claims' : 'context_only',
+          allowedClaimClasses: [...knowledgeClaimClasses],
+          notice: 'Concept discovery provides business context, not blanket verification. Use only the listed authorised claim classes for technical advice; retrieve applicable source guides for other claims. Do not supply missing numerical specifications or instructions from general model knowledge.',
+        },
         knowledge: notesBlock,
         descriptions,
         synonyms,
@@ -1396,7 +1459,7 @@ export async function executeAgentTool(
       const areaM2 = areaToSquareMetres(Number(args.area), args.areaUnit ? String(args.areaUnit) : undefined, config.areaUnits);
       const optionalNumber = (value: unknown) => (value === undefined || value === null || value === '' ? undefined : Number(value));
       const estimate = estimateQuantity(
-        { title: product.title || product.name, texts: [product.description, ...(Array.isArray(product.highlights) ? product.highlights : [])] },
+        { title: product.title || product.name, category: product.category, categoryPath: product.categoryPath, texts: [product.description, ...(Array.isArray(product.highlights) ? product.highlights : [])] },
         { areaM2, coveragePerPack: optionalNumber(args.coveragePerPack), coats: optionalNumber(args.coats), allowancePercent: optionalNumber(args.allowancePercent) },
         config,
       );
@@ -1629,6 +1692,12 @@ export async function executeAgentTool(
           currency: p.currency || ctx.release.profile?.primaryCurrency,
           category: p.category,
           excerpt: p.description?.slice(0, 140),
+          // A short merchandising excerpt can cut off an interior-only restriction
+          // or a compatibility caveat. The agent needs the actual bounded source.
+          description: p.description?.slice(0, 4000),
+          specs: p.specs || p.attributes,
+          catalogueWarranty: catalogueWarranty(p, ctx),
+          sourceUrl: p.sourceUrl,
           // What the catalogue's own record says beyond the name: why it might suit the job, and any warning it gives about its use.
           ...(Array.isArray(p.highlights) && p.highlights.length > 0 ? { highlights: p.highlights.slice(0, 3) } : {}),
           ...(Array.isArray(p.cautions) && p.cautions.length > 0 ? { caution: p.cautions[0] } : {}),
@@ -1652,7 +1721,8 @@ export async function executeAgentTool(
     case 'get_product': {
       const sku = skuFromEvent(String(args.sku || '').trim(), ctx.customerEvent);
       // The exact identifier first: a text search can put another product ahead of the one asked for. Only when no product has that
-      // identifier (the model gave a title or part of one) is the text searched, and then the best match is taken.
+      // identifier is a title lookup considered. Similarity alone cannot turn a
+      // missing exact identifier into a different product.
       const isSku = (p: any) => String(p?.sku).toLowerCase() === sku.toLowerCase();
       const exact = await ctx.catalogSearchHandler.execute({ sku, maxResults: 1 }, makeExecContext(ctx));
       let rawItems: any[] = exact.products || exact.items || [];
@@ -1660,7 +1730,8 @@ export async function executeAgentTool(
         const text = await ctx.catalogSearchHandler.execute({ query: sku, maxResults: 5 }, makeExecContext(ctx));
         rawItems = text.products || text.items || [];
       }
-      const found = (rawItems || []).find(isSku) || rawItems?.[0];
+      const titleMatches = rawItems.filter((product: any) => String(product.title || product.name || '').trim().toLowerCase() === sku.toLowerCase());
+      const found = rawItems.find(isSku) || (titleMatches.length === 1 ? titleMatches[0] : undefined);
 
       if (found && found.sku) {
         if (isProductDiscontinued(found)) {
@@ -1686,11 +1757,17 @@ export async function executeAgentTool(
           product: {
             sku: found.sku,
             title: found.title || found.name,
+            integrity: found.integrity,
             description: found.description,
             price: found.priceUSD?.min ?? found.price ?? null,
             currency: found.currency || ctx.release.profile?.primaryCurrency,
             category: found.category,
             specs: found.specs || found.attributes,
+            displaySpecs: Object.fromEntries(Object.entries(found.specs || found.attributes || {}).map(([key, value]) => [key, typeof value === 'string' || typeof value === 'number' ? humanizeMeasure(value) : value])),
+            lengthEquivalents: Object.fromEntries(Object.entries(found.specs || {}).flatMap(([key, value]) => { const units = metricLengthEquivalents(value); return units ? [[key, units]] : []; })),
+            sourceUrl: found.sourceUrl,
+            documents: found.documents,
+            catalogueWarranty: catalogueWarranty(found, ctx),
             ...(Array.isArray(found.highlights) && found.highlights.length > 0 ? { highlights: found.highlights } : {}),
             ...(Array.isArray(found.cautions) && found.cautions.length > 0 ? { cautions: found.cautions } : {}),
             ...(typeof found.rating === 'number' ? { rating: found.rating, ratingCount: found.ratingCount } : {}),
@@ -1698,7 +1775,9 @@ export async function executeAgentTool(
         };
       }
 
-      return { found: false, sku, message: `Product SKU '${sku}' not found in catalogue.` };
+      (ctx.catalogueMisses ??= new Set()).add(sku);
+      const statement = `SKU ${sku} was not found in our catalogue.`;
+      return { found: false, sku, message: statement, factualStatement: statement };
     }
 
     case 'get_related_products': {
@@ -1783,7 +1862,7 @@ export async function executeAgentTool(
         title: p.title || p.name,
         price: p.priceUSD?.min ?? p.price ?? null,
         currency: p.currency || ctx.release.profile?.primaryCurrency,
-        inStock: Boolean(p.inStock),
+        availability: 'unknown',
       });
       if (groups.length > 0) ctx.allowedClaimClasses.add('catalog_fact');
 
@@ -1798,10 +1877,10 @@ export async function executeAgentTool(
         message: source === 'must_have'
           ? 'These are the things this job needs, as the shop sets them out: each group is something the customer must have, with a real product list. Offer only these, with each group\'s hint as the reason; do not add extras such as mirrors or showers, and do not call anything else a requirement.'
           : source === 'shop_suggestions'
-          ? 'The knowledge has no goes-with links for this shelf, but the shop\'s own product record suggests these items with it (not its own colours or sizes). They are suggestions to check, not confirmed requirements or compatibility. Show them on an accessories card and say in one sentence what each is for; you may still search for other kinds that usually go with it.'
+          ? 'The shop\'s product record provides suggestions to check, not confirmed requirements, compatibility or purchase-frequency evidence. Check product details against the customer\'s task and selected item before recommending. Select only relevant items for an optional accessories card; omit unsuitable or uncertain candidates. No extras are required to proceed.'
           : groups.length > 0
-          ? 'These are the groups customers commonly buy with this product, from the shop\'s own knowledge; each group lists real products. They are suggestions to check, not confirmed requirements or compatibility. Show them on an accessories card (one group per card group), and say in one sentence what each is for.'
-          : 'The knowledge has no goes-with links for this product\'s shelf, so there is no verified list. Name, as suggestions to check, the kinds of product that usually go with it (from consult_business_knowledge and the guides), search_products for each kind, and show what you find on an accessories card. Never present the product\'s own alternatives as accessories.',
+          ? 'These category-level relationships identify candidate groups from the shop\'s knowledge, not verified compatibility or purchase-frequency evidence for these individual items. Inspect the candidate details and select only items relevant to this customer\'s task, dimensions and selected product. An accessories card is optional; omit unsuitable or uncertain items and do not claim a fit or requirement without evidence.'
+          : 'The knowledge has no goes-with links for this product\'s shelf, so there is no verified list. Only look for extras if useful to the customer, using business knowledge and guides to identify candidates, then check their details against the actual task before recommending. It is fine to suggest nothing. Never present the product\'s own alternatives as accessories.',
       };
     }
 
@@ -1919,8 +1998,13 @@ export async function executeAgentTool(
         }
       }
       const title = String(product.title || product.name || sku);
-      const records = ctx.productGuideRepo ? await ctx.productGuideRepo.findForProducts(ctx.tenantId, [String(product.sku || ''), String(product.parentSku || ''), sku]) : [];
+      if (product.integrity?.identityConsistent === false) return { ok: false, found: false, sku: product.sku || sku, title, code: 'catalogue_integrity_review', integrity: product.integrity, message: 'The product source identity fields disagree. Do not apply attached or indexed instructions to this product identity until the source record has been reviewed.' };
+      const guideLookup = ctx.productGuideRepo ? await ctx.productGuideRepo.readForProducts(ctx.tenantId, [String(product.sku || ''), String(product.parentSku || ''), sku], productDocumentUrls(product)) : { guides: [], status: 'unavailable' as const };
+      const linked = guideLookup.guides;
+      const applicability = await applicableProductGuides(product, linked, value => findProductBySku(ctx, value));
+      const records = applicability.accepted;
       if (records.length === 0) {
+        if (guideLookup.status !== 'available') return { ok: false, found: false, sku: product.sku || sku, title, sourceStatus: guideLookup.status, code: 'source_unavailable', message: 'The product guide source could not be fully checked. Say that the lookup is unavailable, not that the product has no guide; retain any verified catalogue facts and do not invent document contents.' };
         if (ctx.knowledgeGapRepo) {
           ctx.knowledgeGapRepo.recordGap({
             tenantId: ctx.tenantId,
@@ -1935,6 +2019,7 @@ export async function executeAgentTool(
           found: false,
           sku: product.sku || sku,
           title,
+          rejectedGuides: applicability.rejected,
           message: 'We do not have the text of a guide for this product. Say so the way one of us would ("I don\'t have the guide for this one to hand"), and do not describe what a guide for this kind of product usually says. Offer what we know about the product from get_product, or a colleague who can check the maker\'s guide.',
         };
       }
@@ -1975,6 +2060,7 @@ export async function executeAgentTool(
       return {
         ok: true,
         found: true,
+        sourceStatus: guideLookup.status,
         sku: product.sku || sku,
         title,
         ...(readFor ? { foundFromWords: `This guide is for "${readFor}", found from the customer's words and not from a SKU: say which product you read it for.` } : {}),
@@ -1996,13 +2082,13 @@ export async function executeAgentTool(
         const cart: any = (await executeAgentTool('get_cart', {}, ctx))?.cart;
         rawLines = Array.isArray(cart?.items) ? cart.items : Array.isArray(cart?.lines) ? cart.lines : [];
       }
-      const wanted = new Map<string, { quantity: number; branchStatus?: string }>();
+      const wanted = new Map<string, { quantity: number }>();
       for (const entry of rawLines.slice(0, 30)) {
         const sku = String(entry?.sku ?? '').trim();
         if (!sku || wanted.has(sku)) continue;
         const quantity = Math.min(9999, Math.max(1, Math.floor(Number(entry?.quantity ?? entry?.qty ?? 1)) || 1));
-        const status = typeof entry?.stock?.status === 'string' ? entry.stock.status : typeof entry?.branchStatus === 'string' ? entry.branchStatus : undefined;
-        wanted.set(sku, { quantity, ...(status ? { branchStatus: status.slice(0, 80) } : {}) });
+        // Browser/model inputs describe what to review, never authoritative stock.
+        wanted.set(sku, { quantity });
       }
       if (wanted.size === 0) return { ok: false, error: 'No order lines were given and none are in the cart. Ask the customer to add what they need first, then to tap the button that reviews their order.' };
       const branch = eventPayload.branch && typeof eventPayload.branch === 'object'
@@ -2015,9 +2101,10 @@ export async function executeAgentTool(
         if (!product) continue;
         const warranty: any = await executeAgentTool('get_warranty', { productOrBrand: String(product.sku || sku) }, ctx).catch(() => undefined);
         const terms = warranty?.found === true && typeof warranty?.warranty?.terms === 'string' ? warranty.warranty.terms.replace(/\s+/g, ' ').trim() : undefined;
-        const guides = ctx.productGuideRepo ? await ctx.productGuideRepo.findForProducts(ctx.tenantId, [String(product.sku || ''), String(product.parentSku || ''), sku]) : [];
+        const guides = ctx.productGuideRepo ? await ctx.productGuideRepo.findForProducts(ctx.tenantId, [String(product.sku || ''), String(product.parentSku || ''), sku], productDocumentUrls(product)) : [];
         lines.push({
           sku: String(product.sku || sku), title: String(product.title || product.name || sku), quantity: want.quantity,
+          category: product.category, categoryPath: product.categoryPath,
           imageUrl: typeof product.imageUrl === 'string' ? product.imageUrl : undefined,
           discontinued: isProductDiscontinued(product),
           pickupOnly: typeof product.pickupOnly === 'boolean' ? product.pickupOnly : undefined,
@@ -2025,18 +2112,21 @@ export async function executeAgentTool(
           branchesAvailable: typeof product.branchesAvailable === 'number' ? product.branchesAvailable : undefined,
           branchesTotal: typeof product.branchesTotal === 'number' ? product.branchesTotal : undefined,
           coverageTexts: [product.description, ...(Array.isArray(product.highlights) ? product.highlights : [])].filter((text) => typeof text === 'string'),
-          ...(want.branchStatus ? { branchStatus: want.branchStatus } : {}),
           ...(terms ? { warranty: terms } : {}),
+          ...(warranty?.catalogue?.duration ? { catalogueWarranty: warranty.catalogue.duration } : {}),
           // Only a guide with words in it can be explained, so only those are offered.
           guides: guides.filter((guide) => hasReadableText(guide.text)).map((guide) => guide.title),
         });
       }
       if (lines.length === 0) return { ok: false, error: 'None of the order\'s lines is a product in the catalogue, so there is nothing to review.' };
-      // What else the order may need: the suggestions the knowledge and the shop's own records give for the first lines.
+      // A category relationship or merchandising carousel does not establish relevance
+      // to this job. Only the merchant's explicit requirements belong in automatic
+      // checkout review; the agent can separately select useful optional suggestions.
       const suggestions: ReviewSuggestion[] = [];
       const seen = new Set<string>();
       for (const line of lines.slice(0, 3)) {
         const related: any = await executeAgentTool('get_related_products', { sku: line.sku }, ctx).catch(() => undefined);
+        if (related?.source !== 'must_have') continue;
         for (const item of Array.isArray(related?.relatedProducts) ? related.relatedProducts : []) {
           const sku = String(item?.sku || '');
           if (!sku || seen.has(sku)) continue;
@@ -2047,7 +2137,7 @@ export async function executeAgentTool(
       }
       const review = buildReview({
         lines, suggestions, branch, labels: config.labels, deliveryLabels: config.deliveryLabels,
-        coveragePatterns: quantityHelper.coveragePatterns, minPieceSideMm: quantityHelper.minPieceSideMm, maxAccessories: config.maxAccessories,
+        coveragePatterns: quantityHelper.coveragePatterns, minPieceSideMm: quantityHelper.minPieceSideMm, pieceAreaCategories: quantityHelper.pieceAreaCategories, maxAccessories: config.maxAccessories,
       });
       ctx.lastReview = review;
       return {
@@ -2135,171 +2225,11 @@ export async function executeAgentTool(
     }
 
     case 'get_warranty': {
-      const target = String(args.productOrBrand || '').trim();
-      if (!target) {
-        return {
-          found: false,
-          productOrBrand: '',
-          message: 'No product or brand specified.',
-        };
-      }
-
-      let matchedChunk: OkfEvidenceChunk | null = null;
-      const now = new Date();
-      const verifications = new Map((ctx.okfContent?.verifications || []).map((v) => [v.recordId, v]));
-
-      if (ctx.okfContent?.evidenceChunks) {
-        const targetLower = target.toLowerCase();
-        let targetProduct = ctx.catalogProductCache.get(target);
-        if (!targetProduct) {
-          targetProduct = [...ctx.catalogProductCache.values()].find(
-            (p) =>
-              p.sku?.toLowerCase() === targetLower ||
-              p.name?.toLowerCase() === targetLower ||
-              p.title?.toLowerCase() === targetLower
-          );
-        }
-        const targetSku = targetProduct?.sku?.toLowerCase();
-        const targetName = (targetProduct?.name || targetProduct?.title)?.toLowerCase();
-
-        for (const chunk of ctx.okfContent.evidenceChunks) {
-          if (!chunk.claimClasses.includes('warranty')) {
-            continue;
-          }
-
-          // Match the chunk to the asked product, brand or concept
-          const refs = (chunk.applicability?.refs || []).map((r) => r.toLowerCase());
-          const matchesRef = refs.some(
-            (ref) =>
-              ref === targetLower ||
-              targetLower.includes(ref) ||
-              ref.includes(targetLower) ||
-              (targetSku && ref === targetSku) ||
-              (targetName && (ref === targetName || targetName.includes(ref)))
-          );
-
-          let matchesConcept = false;
-          if (chunk.conceptIds && ctx.okfContent.concepts) {
-            for (const cId of chunk.conceptIds) {
-              if (cId.toLowerCase() === targetLower) {
-                matchesConcept = true;
-                break;
-              }
-              const concept = ctx.okfContent.concepts.find((c) => c.conceptId === cId);
-              if (concept) {
-                const nameLower = concept.name.toLowerCase();
-                if (
-                  nameLower === targetLower ||
-                  targetLower.includes(nameLower) ||
-                  nameLower.includes(targetLower) ||
-                  (targetName && (nameLower === targetName || targetName.includes(nameLower)))
-                ) {
-                  matchesConcept = true;
-                  break;
-                }
-                if (
-                  concept.synonyms?.some(
-                    (s) =>
-                      s.toLowerCase() === targetLower ||
-                      targetLower.includes(s.toLowerCase()) ||
-                      (targetName && s.toLowerCase() === targetName)
-                  )
-                ) {
-                  matchesConcept = true;
-                  break;
-                }
-              }
-            }
-          }
-
-          // Also match title only if it explicitly mentions target or target product name
-          const matchesTitle =
-            chunk.title.toLowerCase().includes(targetLower) ||
-            Boolean(targetName && chunk.title.toLowerCase().includes(targetName));
-
-          if (!matchesRef && !matchesConcept && !matchesTitle) {
-            continue;
-          }
-
-          // Require verified status: must be verified
-          let isVerified = false;
-
-          // 1. Direct verification record
-          const directVer = (ctx.okfContent.verifications || []).find(
-            (v) => v.targetId === chunk.chunkId || v.sourceRefs?.includes(chunk.sourceRef)
-          );
-          if (directVer && effectiveVerification(directVer, now) === 'verified') {
-            isVerified = true;
-          }
-
-          // 2. Verified via concept evidence refs
-          if (!isVerified && chunk.conceptIds && ctx.okfContent.concepts) {
-            for (const cId of chunk.conceptIds) {
-              const concept = ctx.okfContent.concepts.find((c) => c.conceptId === cId);
-              if (concept) {
-                const verifiedSources = verifiedEvidenceRefs(ctx.okfContent, concept, now);
-                if (verifiedSources.includes(chunk.sourceRef)) {
-                  isVerified = true;
-                  break;
-                }
-              }
-            }
-          }
-
-          // 3. Verified via relationship
-          if (!isVerified && ctx.okfContent.relationships) {
-            for (const rel of ctx.okfContent.relationships) {
-              if (
-                rel.claimClasses?.includes('warranty') &&
-                rel.sourceRefs?.includes(chunk.sourceRef)
-              ) {
-                const relVer = rel.verificationRef ? verifications.get(rel.verificationRef) : undefined;
-                if (effectiveVerification(relVer, now) === 'verified') {
-                  isVerified = true;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (isVerified) {
-            matchedChunk = chunk;
-            break;
-          }
-        }
-      }
-
-      if (matchedChunk) {
-        ctx.readSourceIds.add(matchedChunk.sourceRef);
-        ctx.allowedClaimClasses.add('warranty');
-        return {
-          productOrBrand: target,
-          found: true,
-          warranty: {
-            sourceId: matchedChunk.sourceRef,
-            title: matchedChunk.title,
-            terms: matchedChunk.content,
-          },
-        };
-      }
-
-      if (ctx.knowledgeGapRepo && target) {
-        ctx.knowledgeGapRepo.recordGap({
-          tenantId: ctx.tenantId,
-          environmentId: ctx.environmentId,
-          topic: target,
-          toolName: 'get_warranty',
-          conversationId: ctx.workspaceId || ctx.sessionId || ctx.correlationId,
-        }).catch(() => {});
-      }
-
-      return {
-        productOrBrand: target,
-        found: false,
-        warranty: {
-          message: `No verified warranty certificate registered for '${target}'. Please consult store staff.`,
-        },
-      };
+      const result = await readProductWarranty(skuFromEvent(String(args.sku || args.productOrBrand || '').trim(), ctx.customerEvent), ctx, {
+        bySku: value => findProductBySku(ctx, value), byTitle: value => findProductByTitle(ctx, value),
+      });
+      ctx.lastWarranty = result;
+      return result;
     }
 
     case 'my_company':
@@ -2321,6 +2251,12 @@ export async function executeAgentTool(
       return executeConnectorMetaTool(toolName, args, ctx, makeExecContext(ctx) as any, {
         confirmed: options.confirmed === true,
         hold: (heldArgs, details, prompt) => holdForConfirmation(toolName, heldArgs, prompt, ctx, details),
+      });
+    }
+
+    case 'propose_connector_action': {
+      return executeConnectorMetaTool(toolName, args, ctx, makeExecContext(ctx) as any, {
+        hold: (heldArgs, details, prompt) => holdForConfirmation('call_connector_tool', heldArgs, prompt, ctx, details),
       });
     }
 
@@ -2397,9 +2333,12 @@ export async function executeAgentTool(
           const callArgs: Record<string, unknown> = { ...(route.extra ?? {}), [route.inputs?.sku || 'sku']: sku };
           // The branch goes along only when the pack says the tool takes it as the person says it: systems often want a code, not a name.
           if (branchAsked && route.inputs?.branch) callArgs[route.inputs.branch] = branchAsked;
-          const called: any = await runtime.call(ctx.release as any, person, makeExecContext(ctx) as any, route.connector, route.tool, callArgs);
-          ctx.emitTrace?.('connector_call', { connector: route.connector, tool: route.tool, outcome: called.ok ? 'success' : called.status });
+          const called: any = await executeConnectorMetaTool('call_connector_tool', { connector: route.connector, tool: route.tool, arguments: callArgs }, ctx, makeExecContext(ctx) as any);
           if (called.ok) {
+            const configured = ctx.release.extensions?.connectors?.connectors?.find(entry => entry.connectorId === route.connector);
+            const sample = configured?.sample === true || called.result?.sample === true;
+            if (sample && route.dataMode !== 'demo') return { sku, ...(branchAsked ? { branch: branchAsked } : {}), branchChecked: false, source: 'not_checked', stockLevel: 'Not checked', message: 'This source returned demonstration inventory, but this release does not permit demonstration stock. Live branch stock was not checked.' };
+            const demonstration = route.dataMode === 'demo';
             (ctx.usedConnectorIds ||= new Set()).add(route.connector);
             // The SKU is not added to this turn's verified products: the catalogue was not read, so a card or a quote for it still needs a product lookup.
             ctx.allowedClaimClasses.add('catalog_fact');
@@ -2407,11 +2346,13 @@ export async function executeAgentTool(
             return {
               sku,
               ...(branchAsked ? { branch: branchAsked } : {}),
-              source: 'business_system',
+              source: demonstration ? 'demo_business_system' : 'business_system',
+              sample: demonstration,
+              branchChecked: !demonstration,
               connector: route.connector,
               tool: route.tool,
               branchStock: called.result,
-              message: `Branch stock for SKU ${sku} from the business system, branch by branch${branchAsked ? `: find ${branchAsked} among the rows` : ''}. "available" (on hand less reserved) is what can be sold. If the branch is not among the rows, say it is not listed in what the system returned (the list can be cut short), not that it holds none. Quote the figures as the system shows them, with the count date when it gives one.${route.note ? ` ${route.note}` : ''}`,
+              message: `${demonstration ? 'DEMONSTRATION INVENTORY ONLY. Label every stock figure as demonstration data; do not imply live availability, reservation or pickup. ' : ''}Branch stock for SKU ${sku} from the configured source, branch by branch${branchAsked ? `: find ${branchAsked} among the rows` : ''}. "available" is on hand less reserved. If a branch is absent, say it is not listed in the returned page, not that it holds none. Quote source figures and count dates.${route.note ? ` ${route.note}` : ''}`,
             };
           }
           // The system did not answer: the catalogue below is all that is left, and the branch is reported as not checked.
@@ -2435,40 +2376,28 @@ export async function executeAgentTool(
         } catch {}
       }
 
-      ctx.turnProductSkus.add(sku);
-      ctx.allowedClaimClasses.add('catalog_fact');
-      ctx.allowedClaimClasses.add('stock');
-
-      if (cached && isProductDiscontinued(cached)) {
-        return {
-          sku,
-          ...(branchAsked ? { branch: branchAsked } : {}),
-          inStock: false,
-          isDiscontinued: true,
-          stockLevel: 'Discontinued (no longer stocked)',
-          message: `SKU ${sku} is discontinued and no longer stocked. Do not claim this item is in stock.`,
-        };
+      if (cached) {
+        ctx.turnProductSkus.add(sku);
+        ctx.allowedClaimClasses.add('catalog_fact');
       }
 
-      const inStock = cached ? Boolean(cached.inStock) : false;
-      const branchNote = branchAsked
-        ? ` Stock at ${branchAsked} was NOT checked: this is the catalogue's shop-wide flag, not a branch figure. Do not say the item is in stock at ${branchAsked}; say the catalogue shows it as ${inStock ? 'in stock' : 'out of stock'} and that the branch's stock is unverified${runtime ? ', or read the branch figures from the business system through its connector' : ''}.`
-        : '';
       return {
         sku,
         ...(branchAsked ? { branch: branchAsked } : {}),
-        inStock,
+        ...(cached && isProductDiscontinued(cached) ? { isDiscontinued: true } : {}),
         branchChecked: false,
-        source: 'catalogue',
-        stockLevel: cached?.stockLevel || (inStock ? 'Available (in stock)' : 'Out of stock / special order'),
-        message: inStock
-          ? `The catalogue lists SKU ${sku} as in stock (shop-wide).${branchNote}`
-          : `The catalogue lists SKU ${sku} as out of stock or special order.${branchNote} Do not claim this item is in stock.`,
+        source: 'not_checked',
+        stockLevel: 'Not checked',
+        message: 'No authoritative inventory source confirmed current stock. Catalogue availability and lifecycle flags are not stock, reservation or pickup receipts. Do not claim in-stock, out-of-stock or pickup timing.',
       };
     }
 
     case 'present_card': {
       const cardType = String(args.cardType || '').trim() as CardType;
+      const allowedCards = ctx.release.experience?.cards?.allowedCardTypes;
+      if (Array.isArray(allowedCards) && !allowedCards.includes(cardType)) {
+        return { ok: false, error: `Rejected card: card type "${cardType}" is disabled in this release.` };
+      }
       const cardDef = CARD_TYPES[cardType];
       if (!cardDef) {
         return {
@@ -2482,7 +2411,17 @@ export async function executeAgentTool(
         return { ok: false, error: 'Rejected card: an ask-first card is made by the system when a tool needs the person\'s yes. Call the tool and the system asks.' };
       }
 
-      const state: any = normaliseCardState(cardType, args.state);
+      const receiptCard = cardType === 'orderStatus';
+      const receipt = ctx.lastCheckoutReceipt;
+      if (receiptCard && (!receipt || (args.state?.orderId && args.state.orderId !== receipt.orderId))) return { ok: false, error: 'Read the owned checkout receipt before showing its order card.' };
+      const recordState = cardType === 'records' ? deskRecordCard(ctx.lastOperationalView, args.state?.recordId) : undefined;
+      if (cardType === 'records' && !recordState) return { ok: false, code: 'record_source_required', error: 'Read the permitted desk and selected record this turn before showing a records card. Model-written rows are not accepted.' };
+      const state: any = receiptCard ? {
+        orderId: receipt.orderId, orderRef: String(receipt.orderId).replace(/^ord_/, '').slice(-8).toUpperCase(),
+        status: receipt.status, placedAt: receipt.paidAt || receipt.createdAt,
+        lines: receipt.lines.map((line: any) => ({ sku: line.sku, title: line.title, qty: line.quantity, price: line.unitPrice, lineTotal: line.lineTotal, currency: receipt.currency })),
+        totals: { subtotal: receipt.subtotal, discount: receipt.discount, tax: receipt.tax, total: receipt.total, currency: receipt.currency },
+      } : recordState ?? normaliseCardState(cardType, args.state);
 
       // 1. Collect all product SKUs referenced in the card state
       const referencedSkus: string[] = [];
@@ -2501,7 +2440,7 @@ export async function executeAgentTool(
           }
         }
       };
-      extractSkus(state);
+      if (!receiptCard) extractSkus(state); // Historical purchase lines do not become new product recommendations.
 
       // 2. Enforce OKF Safety & Commerce Policy: block product presentation if safety.blocksProducts or commercePolicy is blocked
       const isProductCard =
@@ -2579,6 +2518,7 @@ export async function executeAgentTool(
           };
         }
         const cached = ctx.catalogProductCache.get(sku);
+        if (cached?.integrity?.identityConsistent === false) return { ok: false, code: 'catalogue_integrity_review', error: 'This catalogue record has conflicting source identity fields. It cannot establish product specifications, suitability, price or a verified product card until the source record is reviewed.', sku, integrity: cached.integrity };
         if (cached && isProductDiscontinued(cached)) {
           return {
             ok: false,
@@ -2596,20 +2536,43 @@ export async function executeAgentTool(
         // Examples shown to describe a range were not chosen for the customer's job, so none of them claims to fit it.
         const facts = productCardFacts(cached.highlights, { customerText: ctx.lastProducts?.source === 'overview' ? '' : ctx.customerQuestion, locale: (ctx.release as any)?.profile?.primaryLocale });
         const offered = typeof p.reason === 'string' ? p.reason.trim() : '';
+        const measurements = new ProductMeasurementEvidence(); measurements.update([cached], ctx.customerQuestion || '');
+        const numbers = new Set<string>(); addNumericEvidence(numbers, cached);
+        for (const value of Object.values(cached.specs || {})) addNumericEvidence(numbers, metricLengthEquivalents(value));
+        const safeReason = offered && !measurements.check(offered) && validateOkfGeneratedClaims(offered, [...ctx.allowedClaimClasses].filter(claim => claim !== 'stock'), ctx.release,
+          { knownNumbers: numbers, knownNames: [cached.title || cached.name].filter(Boolean), exactClaimStatements: ctx.exactClaimStatements, catalogueWarrantyFacts: ctx.catalogueWarrantyFacts }).valid ? offered : undefined;
+        const specs = Object.fromEntries(Object.entries(cached.specs || cached.attributes || {}).filter(([, value]) => typeof value === 'string' || typeof value === 'number').map(([key, value]) => [key, humanizeMeasure(value as string | number)]));
+        const documents = (Array.isArray(cached.documents) ? cached.documents : []).filter((document: any) => document?.kind !== 'supplier' && document?.type !== 'supplier' && typeof document?.title === 'string' && typeof document?.url === 'string');
         return {
           ...p,
-          ...(offered ? {} : facts.reason ? { reason: facts.reason } : {}),
-          ...(facts.highlights.length > 0 ? { highlights: facts.highlights } : {}),
-          ...(Array.isArray(cached.cautions) && cached.cautions.length > 0 ? { cautions: cached.cautions.slice(0, 1) } : {}),
+          reason: safeReason || facts.reason,
+          highlights: facts.highlights,
+          cautions: Array.isArray(cached.cautions) ? cached.cautions.slice(0, 1) : [],
+          description: cached.description,
+          brand: cached.brand,
+          integrity: cached.integrity,
+          category: cached.category,
+          specs,
+          specList: Object.entries(specs).map(([label, value]) => ({ label, value })),
+          hasSpecs: Object.keys(specs).length > 0,
+          documents,
+          hasDocuments: documents.length > 0,
+          url: cached.sourceUrl,
+          productUrl: cached.sourceUrl,
+          hasProductUrl: typeof cached.sourceUrl === 'string' && cached.sourceUrl.length > 0,
           ...(typeof cached.rating === 'number' ? { rating: cached.rating } : {}),
           ...(typeof cached.ratingCount === 'number' ? { ratingCount: cached.ratingCount } : {}),
           ...(typeof cached.branchesAvailable === 'number' ? { branchesAvailable: cached.branchesAvailable } : {}),
           ...(typeof cached.branchesTotal === 'number' ? { branchesTotal: cached.branchesTotal } : {}),
           title: cached.title || cached.name || p.title,
-          price: cached.priceUSD?.min ?? cached.price ?? p.price,
+          price: cached.priceUSD?.min ?? cached.price,
           currency: cached.currency || ctx.release.profile?.primaryCurrency || p.currency,
-          inStock: cached.inStock !== undefined ? Boolean(cached.inStock) : p.inStock,
-          availability: cached.inStock ? 'in_stock' : 'out_of_stock',
+          // A listing flag is not a current inventory receipt. Never promote it into a stock badge.
+          inStock: undefined,
+          availability: 'unknown',
+          branchesAvailable: undefined,
+          branchesTotal: undefined,
+          inventorySource: 'not_checked',
           // The picture is a catalogue fact too: taken from the catalogue record, never from model-written text.
           imageUrl: cached.imageUrl || undefined,
         };
@@ -2624,7 +2587,7 @@ export async function executeAgentTool(
       if (Array.isArray(state.items)) {
         state.items = state.items.map(enrichProduct);
       }
-      if (Array.isArray(state.lines)) {
+      if (Array.isArray(state.lines) && !receiptCard) {
         state.lines = state.lines.map(enrichProduct);
       }
       if (Array.isArray(state.groups)) {
@@ -2661,7 +2624,7 @@ export async function executeAgentTool(
       if (RECOMMENDATION_CARDS.includes(cardType)) {
         const cartId = `cart-${ctx.workspaceId || 'default'}`;
         const added = skusInCart({
-          carts: [(ctx as any).cart, (ctx as any).workspace?.facts?.cart?.value, ctx.inMemoryCarts instanceof Map ? (ctx.inMemoryCarts.get(cartId) || ctx.inMemoryCarts.get('default')) : undefined],
+          carts: [(ctx as any).cart, (ctx as any).workspace?.facts?.cart?.value, ctx.inMemoryCarts instanceof Map ? (ctx.inMemoryCarts.get(scopedCommerceId(makeExecContext(ctx), cartId))) : undefined],
           event: ctx.customerEvent,
         });
         const dropped = dropAdded(cardType, state, added);
@@ -2676,6 +2639,20 @@ export async function executeAgentTool(
         }
         for (const key of Object.keys(state)) delete state[key];
         Object.assign(state, ctx.lastReview);
+      }
+      if (cardType === 'warranty') {
+        const read = ctx.lastWarranty;
+        if (!read?.found) return { ok: false, error: 'Read this product’s warranty first; the card can only contain returned source facts.' };
+        const items: Array<{ title: string; text: string; url?: string }> = [];
+        if (read.catalogue) items.push({ title: read.catalogue.label, text: read.catalogue.duration, ...(read.catalogue.sourceUrl ? { url: read.catalogue.sourceUrl } : {}) });
+        for (const passage of read.passages || []) {
+          const guide = read.guides?.find((guide: any) => guide.guideId === passage.guideId);
+          items.push({ title: guide?.title || passage.guide, text: passage.text, ...(guide?.url ? { url: guide.url } : {}) });
+        }
+        if (!items.length && read.warranty?.terms) items.push({ title: read.warranty.title || read.title || read.productOrBrand, text: read.warranty.terms });
+        if (!items.length) return { ok: false, error: 'No source-owned warranty card items are available.' };
+        for (const key of Object.keys(state)) delete state[key];
+        Object.assign(state, { ...(read.sku ? { product: enrichProduct({ sku: read.sku }) } : {}), items });
       }
       if (cardType === 'visual') {
         if (!ctx.lastVisual) {
@@ -2738,22 +2715,15 @@ export async function executeAgentTool(
 
     case 'hand_off_to_human': {
       const reason = String(args.reason || 'Customer requested human assistance.').trim();
-      ctx.isHumanHandoffRequested = true;
       ctx.handoffReason = reason;
-
-      if (ctx.emitUiAction) {
-        ctx.emitUiAction({
-          name: 'handoff',
-          arguments: { reason },
-        });
-      }
-
-      return {
-        ok: true,
-        handedOff: true,
-        reason,
-        message: 'A human customer consultant has been requested and will assist shortly.',
-      };
+      const request = supportRequestArgs(ctx, reason);
+      if (!request) return { ok: false, handedOff: false, code: 'not_configured', message: 'A support request could not be created from the available configuration and verified contact details. Do not say anyone has been contacted.' };
+      const response = await executeConnectorMetaTool('call_connector_tool', request, ctx, { ...makeExecContext(ctx), actionId: `${ctx.idempotencyKey}:support-handoff` } as any, {
+        confirmed: options.confirmed === true,
+        hold: (heldArgs, details, prompt) => holdForConfirmation('call_connector_tool', heldArgs, prompt, ctx, details),
+      });
+      if (response?.ok !== true || !ctx.isHumanHandoffRequested) return { ...response, handedOff: false };
+      return { ...response, handedOff: true, reason, message: 'The support system created the request. Give its actual ticket reference; no response time has been confirmed.' };
     }
 
     case 'create_quote': {
@@ -2805,7 +2775,7 @@ export async function executeAgentTool(
       const inputPayload = {
         items: items.map((it: any) => ({
           sku: it.sku,
-          quantity: Number(it.quantity) || 1,
+          quantity: it.quantity,
           name: it.name,
         })),
         projectDimensions: args.projectDimensions,
@@ -2832,7 +2802,7 @@ export async function executeAgentTool(
             return {
               ok: true,
               status: 'success',
-              quote: existing.outputPayload,
+              quote: existing.outputPayload?.quote ?? existing.outputPayload,
               idempotentReplay: true,
             };
           }
@@ -2960,15 +2930,7 @@ export async function executeAgentTool(
           } else if (execRes.status === 'success') {
             quoteOutcome = execRes.output;
           } else {
-            const nativeHandler =
-              ctx.capabilityGateway.getNativeHandler(targetCapabilityId) ||
-              ctx.capabilityGateway.getNativeHandler('quote.create') ||
-              ctx.capabilityGateway.getNativeHandler('quote');
-            if (nativeHandler) {
-              quoteOutcome = await nativeHandler.execute(inputPayload, makeExecContext(ctx));
-            } else {
-              throw new Error(execRes.error || `${targetCapabilityId} capability execution failed`);
-            }
+            throw new Error(execRes.error || `${targetCapabilityId} capability execution refused`);
           }
         } else {
           const handler = new QuoteCreateHandler(
@@ -2997,6 +2959,7 @@ export async function executeAgentTool(
           });
         }
 
+        if (quoteOutcome?.quoteId) ctx.emitUiAction?.({ name: 'updateQuote', arguments: quoteOutcome });
         if (ctx.inMemoryQuotes instanceof Map && quoteOutcome?.quoteId) {
           ctx.inMemoryQuotes.set(quoteOutcome.quoteId, quoteOutcome);
         }
@@ -3042,10 +3005,8 @@ export async function executeAgentTool(
       const inputPayload = {
         quoteId,
         items: args.items,
-        specs: args.specs,
-        spaceType: args.spaceType,
-        finish: args.finish,
-        totalAmountCents: args.totalAmountCents,
+        expectedVersion: args.expectedVersion,
+        mode: toolName === 'add_to_quote' ? 'add' as const : 'replace' as const,
       };
 
       const idempotencyKey =
@@ -3066,7 +3027,7 @@ export async function executeAgentTool(
             return {
               ok: true,
               status: 'success',
-              quote: existing.outputPayload,
+              quote: existing.outputPayload?.quote ?? existing.outputPayload,
               idempotentReplay: true,
             };
           }
@@ -3153,17 +3114,13 @@ export async function executeAgentTool(
           if (execRes.status === 'success') {
             updateOutcome = execRes.output;
           } else {
-            const nativeHandler = ctx.capabilityGateway.getNativeHandler('quote.update');
-            if (nativeHandler) {
-              updateOutcome = await nativeHandler.execute(inputPayload, makeExecContext(ctx));
-            } else {
-              throw new Error(execRes.error || 'quote.update capability execution failed');
-            }
+            throw new Error(execRes.error || 'quote.update capability execution refused');
           }
         } else {
           const handler = new QuoteUpdateHandler(
             undefined,
-            ctx.inMemoryQuotes instanceof Map ? ctx.inMemoryQuotes : undefined
+            ctx.inMemoryQuotes instanceof Map ? ctx.inMemoryQuotes : undefined,
+            ctx.inMemoryCommerceProducts
           );
           updateOutcome = await handler.execute(inputPayload, makeExecContext(ctx));
         }
@@ -3186,6 +3143,7 @@ export async function executeAgentTool(
           });
         }
 
+        if ((updateOutcome?.quote || updateOutcome)?.quoteId) ctx.emitUiAction?.({ name: 'updateQuote', arguments: updateOutcome?.quote || updateOutcome });
         return {
           ok: true,
           status: 'success',
@@ -3217,37 +3175,39 @@ export async function executeAgentTool(
       }
     }
 
+    case 'get_checkout_receipt': {
+      if (!ctx.capabilityGateway) return { ok: false, code: 'not_configured' };
+      const result = await ctx.capabilityGateway.executeCapability(ctx.release, resolveBoundCapability(ctx.release, toolName), { orderId: args.orderId }, makeExecContext(ctx));
+      if (result.status !== 'success') return { ok: false, error: result.error || 'The checkout receipt could not be verified.' };
+      const data = (result as any).data ?? (result as any).output;
+      if (data?.found === true && data.receipt?.authority === 'committed_checkout_receipt') {
+        ctx.lastCheckoutReceipt = data.receipt;
+        ctx.allowedClaimClasses.add('catalog_fact');
+        ctx.readSourceIds.add(`checkout:${data.receipt.orderId}`);
+        for (const line of data.receipt.lines ?? []) if (typeof line.sku === 'string') ctx.turnProductSkus.add(line.sku);
+      }
+      return { ok: true, ...data };
+    }
+
     case 'get_cart': {
-      const cartId = String(args.cartId || `cart-${ctx.workspaceId || 'default'}`).trim();
-      let cartData: any = null;
-
-      if (ctx.inMemoryCarts instanceof Map) {
-        cartData = ctx.inMemoryCarts.get(cartId) || ctx.inMemoryCarts.get('default');
+      const cartId = `cart-${ctx.workspaceId}`;
+      try {
+        const handler = new CartUpdateHandler(undefined, ctx.inMemoryCarts instanceof Map ? ctx.inMemoryCarts : undefined);
+        const cartData = await handler.get({ cartId }, makeExecContext(ctx));
+        const cart = cartData ?? { cartId, version: 0, items: [], totalItems: 0, status: 'empty' };
+        (ctx as any).cart = cart;
+        return { ok: true, cart };
+      } catch {
+        return { ok: false, error: 'The owned cart could not be read. No cart contents are confirmed.' };
       }
-
-      if (!cartData && ctx.workspace?.facts?.cart?.value) {
-        cartData = ctx.workspace.facts.cart.value;
-      }
-
-      if (!cartData) {
-        cartData = {
-          cartId,
-          items: [],
-          totalItems: 0,
-          status: 'empty',
-        };
-      }
-
-      return {
-        ok: true,
-        cart: cartData,
-      };
     }
 
     case 'update_cart':
     case 'add_to_cart': {
-      const items = Array.isArray(args.items) ? args.items : [];
-      const cartId = String(args.cartId || `cart-${ctx.workspaceId || 'default'}`).trim();
+      let items: Array<{ sku: string; quantity: number }>;
+      try { items = commerceItems(args.items, true); }
+      catch (error: any) { return { ok: false, error: error.message }; }
+      const cartId = `cart-${ctx.workspaceId}`;
 
       // Verify SKUs in catalogue
       for (const item of items) {
@@ -3287,16 +3247,16 @@ export async function executeAgentTool(
 
       const inputPayload = {
         cartId,
+        expectedVersion: args.expectedVersion,
         items: items.map((it: any) => ({
           sku: it.sku,
-          quantity: Number(it.quantity) || 1,
+          quantity: it.quantity,
         })),
         category: args.category,
       };
 
-      const idempotencyKey =
-        ctx.idempotencyKey ||
-        `${ctx.correlationId}:update_cart:${cartId}:${hashPayload(inputPayload)}`;
+      const idempotencyKey = `${ctx.idempotencyKey || ctx.correlationId}:cart:${hashPayload(inputPayload)}`;
+      const cartExecContext = { ...makeExecContext(ctx), idempotencyKey };
 
       // 1. Idempotency Check
       if (ctx.executionRepo) {
@@ -3312,7 +3272,8 @@ export async function executeAgentTool(
             return {
               ok: true,
               status: 'success',
-              cart: existing.outputPayload,
+              cart: existing.outputPayload?.cart ?? existing.outputPayload,
+              quote: existing.outputPayload?.quote,
               idempotentReplay: true,
             };
           }
@@ -3350,24 +3311,20 @@ export async function executeAgentTool(
             ctx.release,
             'cart.update',
             inputPayload,
-            makeExecContext(ctx)
+            cartExecContext
           );
           if (execRes.status === 'success') {
             cartOutcome = execRes.output;
           } else {
-            const nativeHandler = ctx.capabilityGateway.getNativeHandler('cart.update');
-            if (nativeHandler) {
-              cartOutcome = await nativeHandler.execute(inputPayload, makeExecContext(ctx));
-            } else {
-              throw new Error(execRes.error || 'cart.update capability execution failed');
-            }
+            throw new Error(execRes.error || 'cart.update capability execution refused');
           }
         } else {
           const handler = new CartUpdateHandler(
             undefined,
-            ctx.inMemoryCarts instanceof Map ? ctx.inMemoryCarts : undefined
+            ctx.inMemoryCarts instanceof Map ? ctx.inMemoryCarts : undefined,
+            ctx.inMemoryCommerceProducts
           );
-          cartOutcome = await handler.execute(inputPayload, makeExecContext(ctx));
+          cartOutcome = await handler.execute(inputPayload, cartExecContext);
         }
 
         const durationMs = Date.now() - startTime;
@@ -3388,10 +3345,14 @@ export async function executeAgentTool(
           });
         }
 
+        (ctx as any).cart = cartOutcome?.cart || cartOutcome;
+        if (cartOutcome?.quote) ctx.emitUiAction?.({ name: 'updateQuote', arguments: cartOutcome.quote });
+        else ctx.emitUiAction?.({ name: 'clearCart', arguments: {} });
         return {
           ok: true,
           status: 'success',
           cart: cartOutcome?.cart || cartOutcome,
+          quote: cartOutcome?.quote,
           message: 'Cart updated successfully.',
         };
       } catch (err: any) {

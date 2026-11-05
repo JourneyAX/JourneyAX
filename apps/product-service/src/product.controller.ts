@@ -1,18 +1,14 @@
-import { Controller, Post, Get, Param, Body, Inject, Headers, HttpException, HttpStatus, Query } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Inject, Headers, HttpException, HttpStatus, Query, UseGuards } from '@nestjs/common';
+import { ProductWriteGuard } from './product-write.guard';
 import { ProductService } from './product.service';
 import { RenderService } from './render.service';
 import { TryOnService, TryOnInput } from './tryon.service';
+import { TryOnAccessGuard } from './tryon-access.guard';
 
 // Read at REQUEST time, not module-load time — env may not be populated when this
 // module is first imported (dotenv loads in main.ts), which would leave the key
 // undefined and reject every internal caller (the quote engine's pricebook call).
 const internalKey = () => process.env.INTERNAL_API_KEY;
-
-// Shape of the demo-only branch stock answers (see `inventory` below): about this share of branch/sku pairs are in stock,
-// with a quantity between DEMO_MIN_QTY and DEMO_MIN_QTY + DEMO_QTY_SPREAD - 1.
-const DEMO_IN_STOCK_PERCENT = 88;
-const DEMO_MIN_QTY = 3;
-const DEMO_QTY_SPREAD = 118;
 
 @Controller('api/v1/:projectId/products')
 export class ProductController {
@@ -40,28 +36,13 @@ export class ProductController {
    * palette and zone names. No credentials live here.
    */
   /**
-   * Demo-only branch stock, for a project with no inventory connector yet. It is OFF unless the project is named in
-   * DEMO_INVENTORY_TENANTS, and every answer is labelled source "demo". The numbers come from a fixed function of sku and branch,
-   * so the same question always gets the same answer; they are not real stock.
+   * Catalogue availability is not branch inventory. Until an authoritative
+   * inventory binding is connected, this endpoint cannot promise quantities or pickup.
    */
   @Get('inventory')
   async inventory(@Param('projectId') projectId: string, @Query('sku') sku?: string, @Query('branch') branch?: string) {
-    const demoTenants = String(process.env.DEMO_INVENTORY_TENANTS || '').split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
-    if (!demoTenants.includes(String(projectId || '').toLowerCase())) {
-      throw new HttpException('No inventory connector is configured for this project', HttpStatus.NOT_FOUND);
-    }
-    if (!sku || !branch) throw new HttpException('sku and branch are required', HttpStatus.BAD_REQUEST);
-    let hash = 5381;
-    for (const ch of `${sku}|${String(branch).toLowerCase()}`) hash = ((hash << 5) + hash + ch.charCodeAt(0)) >>> 0;
-    const inStock = hash % 100 < DEMO_IN_STOCK_PERCENT;
-    const stockQty = inStock ? DEMO_MIN_QTY + (hash % DEMO_QTY_SPREAD) : 0;
-    // The pickup wording is configuration, not code. Unset, the field is left out and the caller's own fallback applies.
-    const collectionTimeframe = String(process.env.DEMO_INVENTORY_COLLECTION_TIMEFRAME || '').trim();
-    return {
-      sku,
-      source: 'demo',
-      branches: [{ branchName: branch, branchCode: branch, inStock, stockQty, clickAndCollectReady: inStock, ...(collectionTimeframe ? { collectionTimeframe } : {}) }],
-    };
+    if (!projectId || !sku || !branch) throw new HttpException('project, sku and branch are required', HttpStatus.BAD_REQUEST);
+    throw new HttpException('Verified branch inventory is not connected.', HttpStatus.SERVICE_UNAVAILABLE);
   }
 
   /** What else can hang in this kit, grouped by the catalogue's garment types. */
@@ -220,6 +201,7 @@ export class ProductController {
    * action must show what it would change before it changes it.
    */
   @Post('maintenance')
+  @UseGuards(ProductWriteGuard)
   async maintenance(
     @Param('projectId') projectId: string,
     @Headers('x-internal-key') internalKeyHeader: string,
@@ -246,6 +228,7 @@ export class ProductController {
    * never needs a direct DB write. Idempotent per document title.
    */
   @Post('knowledge/documents')
+  @UseGuards(ProductWriteGuard)
   async ingestKnowledgeDocs(
     @Param('projectId') projectId: string,
     @Headers('x-internal-key') internalKeyHeader: string,
@@ -272,6 +255,7 @@ export class ProductController {
    * collection name; membership is replaced wholesale per collection.
    */
   @Post('relationships/collections')
+  @UseGuards(ProductWriteGuard)
   async ingestCollections(
     @Param('projectId') projectId: string,
     @Headers('x-internal-key') internalKeyHeader: string,
@@ -295,6 +279,7 @@ export class ProductController {
    * chunk's metadata so search, cards and the pricebook all agree.
    */
   @Post('products/availability')
+  @UseGuards(ProductWriteGuard)
   async setAvailability(
     @Param('projectId') projectId: string,
     @Headers('x-internal-key') internalKeyHeader: string,
@@ -370,6 +355,7 @@ export class ProductController {
    * Heavy work runs in a detached worker; progress lands in `ingest_jobs`.
    */
   @Post('ingest')
+  @UseGuards(ProductWriteGuard)
   async startIngest(
     @Param('projectId') projectId: string,
     @Headers('x-internal-key') internalKeyHeader: string,
@@ -426,6 +412,17 @@ export class ProductController {
     return result;
   }
 
+  @Post('semantic-candidates')
+  async semanticCandidates(@Param('projectId') projectId: string, @Headers('x-internal-key') key: string | undefined, @Body() body: { query?: unknown; limit?: unknown }) {
+    const expected = internalKey();
+    if (!expected || key !== expected) throw new HttpException('Internal authentication required', HttpStatus.UNAUTHORIZED);
+    const tenantId = String(projectId || '').trim().toLowerCase();
+    const query = typeof body?.query === 'string' ? body.query.trim() : '';
+    if (!tenantId || !query || query.length > 500) throw new HttpException('Invalid semantic query', HttpStatus.BAD_REQUEST);
+    const limit = typeof body.limit === 'number' && Number.isSafeInteger(body.limit) ? Math.max(1, Math.min(100, body.limit)) : 20;
+    return this.productService.semanticProductCandidates(query, tenantId, limit);
+  }
+
   /**
    * Get catalog statistics for this tenant.
    */
@@ -440,6 +437,7 @@ export class ProductController {
   }
 
   @Post('tryon')
+  @UseGuards(TryOnAccessGuard)
   async tryOn(@Body() body: TryOnInput) {
     if (!body.personDataUrl || !body.garmentImageUrl) {
       throw new HttpException('personDataUrl and garmentImageUrl are required', HttpStatus.BAD_REQUEST);

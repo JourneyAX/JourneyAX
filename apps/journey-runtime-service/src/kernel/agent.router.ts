@@ -16,10 +16,10 @@ export interface ResolvedAgent {
 
 export class AgentRouter {
   /**
-   * Resolves the primary specialist agent for the current workspace stage.
+   * Resolves the configured agent for this person and their explicit selection.
    *
    * Only agents this person may use are candidates (pack `extensions.agentAccess`, see `resolveAccess`): a locked agent wins, then the agent
-   * they asked for (if they may use it), then the agent the table makes their default, then the usual choice by stage and pack default
+   * they asked for (if they may use it), then the agent the table makes their default, then the pack default
    * among the agents they may use. A pack without the table lets everyone use every agent, as before.
    */
   resolveAgent(release: BusinessPackRelease, workspace: WorkspaceState, requestedAgentId?: string, principal?: AgentChooser): ResolvedAgent {
@@ -64,62 +64,16 @@ export class AgentRouter {
     const pluginDefault = agents.find((a) => gate.installs('agents', a.agentId));
     if (pluginDefault) return resolved(pluginDefault);
 
-    const activeJourney =
-      release.journeys?.find((j) => j.journeyId === workspace?.journeyId) ||
-      release.journeys?.find((j) => j.isDefaultConsultant) ||
-      release.journeys?.find((j) => j.journeyId === release.routingPolicy?.defaultJourneyId) ||
-      (release.journeys?.length === 1 ? release.journeys.find(Boolean) : undefined);
-
-    const currentStageKey = workspace?.currentStage && activeJourney?.stages?.[workspace.currentStage]
-      ? workspace.currentStage
-      : activeJourney?.initialStage;
-
-    const currentStage = currentStageKey ? activeJourney?.stages?.[currentStageKey] : undefined;
-
+    // Agent choice is access/configuration, not a conversational stage transition.
     let selectedAgent: AgentDefinition | undefined;
-
-    // 1. Stage-level handoff policy targetRole match
-    if (currentStage?.handoffPolicy?.targetRole) {
-      const targetRole = currentStage.handoffPolicy.targetRole.toLowerCase();
-      const norm = (s?: string) => (s || '').toLowerCase().replace(/[_\s-]+/g, ' ');
-      const normTarget = norm(targetRole);
-
-      const match = agents.find(
-        (a) =>
-          norm(a.agentId).includes(normTarget) ||
-          norm(a.name).includes(normTarget) ||
-          norm(a.purpose).includes(normTarget)
-      );
-      if (match) selectedAgent = match;
-    } else if (currentStageKey) {
-      // 2. Direct stage ID match
-      const stageMatch = agents.find(
-        (a) => a.agentId.toLowerCase() === currentStageKey.toLowerCase()
-      );
-      if (stageMatch) selectedAgent = stageMatch;
-    }
-
-    // 3. Single-agent pack: if exactly one agent is declared, it is the sole specialist
-    if (!selectedAgent && agents.length === 1) {
-      selectedAgent = agents.find(Boolean);
-    }
-
-    // 4. Explicit default agent configuration (defaultAgentId or isDefault flag)
+    const explicitDefaultId = release.defaultAgentId || release.routingPolicy?.defaultAgentId;
+    if (explicitDefaultId) selectedAgent = agents.find(agent => agent.agentId === explicitDefaultId);
     if (!selectedAgent) {
-      const explicitDefaultId = (release as any).defaultAgentId || release.routingPolicy?.defaultAgentId;
-      if (explicitDefaultId) {
-        selectedAgent = agents.find((a) => a.agentId === explicitDefaultId);
-      }
-      if (!selectedAgent) {
-        selectedAgent = agents.find((a) => a.isDefault === true);
-      }
+      const defaults = agents.filter(agent => agent.isDefault === true);
+      if (defaults.length === 1) selectedAgent = defaults[0];
     }
-
-    if (!selectedAgent) {
-      throw new Error(
-        `[AgentRouter] Could not resolve specialist agent for stage '${workspace?.currentStage}' in journey '${workspace?.journeyId}'. Pack declares ${agents.length} agents without an explicit match, targetRole, defaultAgentId, or isDefault flag - failing closed.`
-      );
-    }
+    if (!selectedAgent && agents.length === 1) selectedAgent = agents[0];
+    if (!selectedAgent) throw new Error(`[AgentRouter] Pack declares ${agents.length} accessible agents without an unambiguous defaultAgentId or isDefault flag - failing closed.`);
 
     return {
       agent: selectedAgent,
@@ -163,9 +117,7 @@ export class AgentRouter {
     const userPromptParts = [
       `[Workspace Context]`,
       `Tenant: ${workspace.tenantId}`,
-      `Journey: ${workspace.journeyId}`,
-      `Current Stage: ${workspace.currentStage}`,
-      `Journey Goal: ${workspace.goal}`,
+      `Conversation Goal: ${workspace.goal}`,
       `[Verified Facts]:\n${safeFacts}`,
       `[Open Questions]: ${workspace.openQuestions?.length ? workspace.openQuestions.join(', ') : 'None'}`,
       `[User Message]:\n${userMessage || '(Evaluating workspace progress)'}`,

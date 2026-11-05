@@ -177,11 +177,10 @@ export class RuntimeAuthGuard implements CanActivate {
     } else if (isInternalKeyValid) {
       // Authenticated workload identity presenting verified X-Internal-Key
       principalId = (headers['x-user-id'] as string) || (headers['x-principal-id'] as string) || 'service:internal';
-      principalRole = (headers['x-user-role'] as string) || (headers['x-principal-role'] as string) || 'admin';
+      principalRole = (headers['x-user-role'] as string) || (headers['x-principal-role'] as string) || 'service';
     } else {
-      // External caller without proof: cannot claim elevated roles
-      principalId = (headers['x-user-id'] as string) || 'anonymous';
-      principalRole = 'customer';
+      // A customer identity is sensitive too: accepting an unverified email could expose its company records.
+      throw new UnauthorizedException('A verified gateway assertion or authenticated workload is required.');
     }
 
     req.authContext = {

@@ -6,7 +6,8 @@
     "build": "tsc",
     "dev": "node ../../scripts/dev/watch-service.mjs",
     "start": "node dist/main.js",
-    "test": "tsx test/gateway.registry.spec.ts && tsx test/group-directory.spec.ts && tsx test/gateway.assertion.spec.ts && tsx test/open-sign-up.spec.ts"
+    "test": "tsx test/gateway.registry.spec.ts && tsx test/group-directory.spec.ts && tsx test/gateway.assertion.spec.ts && tsx test/open-sign-up.spec.ts && npm run test:edge-boundaries",
+    "test:edge-boundaries": "tsx --tsconfig tsconfig.json --test test/payment-webhook-transport.spec.ts test/gateway-identity-sanitization.spec.ts"
   },
   "dependencies": {
     "@journeyax/database": "*",

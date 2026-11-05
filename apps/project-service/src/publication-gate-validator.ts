@@ -5,9 +5,10 @@ import {
   PackRepository,
 } from '@journeyax/business-pack';
 import { CutoverRepository, connectToDatabase } from '@journeyax/database';
-import { EvaluationRunner } from '@journeyax/pack-eval';
+import { EvaluationRunner, type RunEvaluationOptions } from '@journeyax/pack-eval';
+import { createPublicEvaluationStorage, type EvaluationStorageRequest } from './publication-evaluation-storage';
 
-export type IsolatedStorageFactory = () => Promise<{
+export type IsolatedStorageFactory = (request: EvaluationStorageRequest) => Promise<{
   db: any;
   client: any;
   cleanup: () => Promise<void> | void;
@@ -33,16 +34,24 @@ export function retargetSecretRefs<T>(value: T, environmentId: string): T {
 export class PublicationGateValidator implements ReleaseValidationPort {
   constructor(
     private readonly storageFactory?: IsolatedStorageFactory,
-    private readonly gatewayUrl?: string
+    private readonly gatewayUrl?: string,
+    private readonly inProcessFactory?: RunEvaluationOptions['inProcessFactory']
   ) {}
 
-  private async getStorage(): Promise<{
+  private async getStorage(request: EvaluationStorageRequest): Promise<{
     db: any;
     client: any;
     cleanup: () => Promise<void> | void;
   }> {
     if (this.storageFactory) {
-      return await this.storageFactory();
+      return await this.storageFactory(request);
+    }
+
+    if (process.env.PUBLICATION_EVALUATION_STORAGE === 'public-source-memory') {
+      if (process.env.NODE_ENV === 'production' || !['dev', 'test'].includes(process.env.COMMERCE_ENVIRONMENT || '') || process.env.PUBLICATION_EVALUATION_TENANT !== request.projectId) throw new Error('Public-source memory evaluation is limited to its explicitly configured local tenant and environment.');
+      if (!process.env.MONGODB_URI || !process.env.RUNTIME_MONGODB_DB_NAME) throw new Error('The explicit public-source evaluation database is unavailable.');
+      const { db } = await connectToDatabase(process.env.MONGODB_URI, process.env.RUNTIME_MONGODB_DB_NAME);
+      return createPublicEvaluationStorage(db, request);
     }
 
     const testUri = process.env.TEST_MONGODB_URI;
@@ -79,7 +88,7 @@ export class PublicationGateValidator implements ReleaseValidationPort {
   ): Promise<ReleaseValidationResult> {
     let storage: Awaited<ReturnType<PublicationGateValidator['getStorage']>>;
     try {
-      storage = await this.getStorage();
+      storage = await this.getStorage({ projectId, businessPack });
     } catch (storageErr: any) {
       // No isolated store means no pre-flight; the publication is refused cleanly rather than failing with an exception.
       return { passed: false, error: `Publication gate failed: ${storageErr.message}` };
@@ -178,12 +187,14 @@ export class PublicationGateValidator implements ReleaseValidationPort {
                 tenantId: projectId,
                 environmentId: 'test',
                 mode: evalMode,
-                release: testCandidate as any,
+                release: loadedActivePack,
                 suitePath: undefined,
+                suiteId: suite.suiteId,
                 isolatedDb,
+                inProcessFactory: this.inProcessFactory,
               });
               latestEvalResult = evalResult;
-              if (!evalResult.passed) {
+              if (!evalResult.passed || evalResult.suiteId !== suite.suiteId) {
                 return {
                   passed: false,
                   latestEvalSuiteResult: evalResult,

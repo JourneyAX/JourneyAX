@@ -258,6 +258,7 @@ async function main() {
     assert.equal(published.success, true, published.message);
     const profile = db.dump('business_pack_releases').at(-1)!.profile;
     assert.equal(profile.primaryCurrency, 'NZD');
+    assert.equal(db.dump('business_pack_releases').at(-1)!.extensions.commerce.pricing.currency, 'NZD', 'runtime pricing and profile use the same explicitly configured currency');
     assert.deepEqual(profile.supportedCurrencies, ['NZD']);
     assert.equal(profile.primaryLocale, 'en-NZ');
     const missing = await createService({ pricing: undefined });

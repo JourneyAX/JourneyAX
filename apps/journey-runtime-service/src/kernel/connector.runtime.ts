@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { signScope, hashScopeArguments } from '@journeyax/jax-iq';
+import { getVerifiedBusinessPackMetadata } from '@journeyax/business-pack';
 import {
   McpClientPool,
   type CapabilityDispatcher,
@@ -74,7 +77,7 @@ export function connectorSummaries(release: { extensions?: Record<string, any> }
     name: connector.displayName,
     description: connector.description,
     // What the assistant is told about each system: that it holds sample data only when the pack wants that said.
-    sample: Boolean(connector.sample) && (release?.extensions?.connectors as ConnectorsExtension | undefined)?.announceSample !== false,
+    sample: Boolean(connector.sample),
     tools: connector.tools.filter((tool) => tool.state !== 'blocked').length,
   }));
 }
@@ -113,19 +116,10 @@ const SAMPLE_NOTICE = 'This connector runs on sample data, not on the live syste
 
 /** The notice a sample connector's answer carries: only when the pack says the assistant should announce sample data (it does unless the pack turns that off). */
 const noticeFor = (registry: ConnectorsExtension | undefined, connector: { sample?: boolean }) =>
-  connector.sample && registry?.announceSample !== false ? { sample: true, notice: SAMPLE_NOTICE } : {};
+  connector.sample ? { sample: true, notice: SAMPLE_NOTICE } : {};
 
-/** A sample system's records carry `sample: true` of their own; a pack that does not want sample data announced does not show the assistant those marks either. */
-function withoutSampleMarks(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutSampleMarks);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key, entry]) => !(key === 'sample' && typeof entry === 'boolean')).map(([key, entry]) => [key, withoutSampleMarks(entry)]));
-  }
-  return value;
-}
-
-const shownResult = (registry: ConnectorsExtension | undefined, connector: { sample?: boolean }, result: unknown) =>
-  connector.sample && registry?.announceSample === false ? withoutSampleMarks(result) : result;
+/** Sample provenance is data, not a presentation preference. A release cannot conceal a demonstration source. */
+const shownResult = (_registry: ConnectorsExtension | undefined, _connector: { sample?: boolean }, result: unknown) => result;
 
 export function connectorToolId(connectorId: string, tool: string): string {
   return `connector:${connectorId}.${tool}`;
@@ -286,11 +280,28 @@ export class ConnectorRuntime {
       confirmed = await options.approvals.consumeApproved(options.approvalRequestId, toolId, args, ctx).catch(() => false);
     }
 
+    let commandScope: string | undefined;
+    const commandSecret = process.env.JAX_COMMAND_SIGNING_SECRET;
+    if (definition.sideEffect !== 'read' && commandSecret && (state === 'allow' || (state === 'ask' && confirmed))) {
+      const meta = getVerifiedBusinessPackMetadata(release as any);
+      if (!meta || meta.tenantId !== ctx.tenantId || meta.environmentId !== ctx.environmentId || !connector.connectionRef || !ctx.principalId || !ctx.idempotencyKey || commandSecret.length < 32) {
+        audit(state, 'blocked');
+        return { ok: false as const, status: 'blocked' as const, connector: connectorId, tool: toolName, error: 'This command requires a verified release, identity, connection and action key.' };
+      }
+      const iat = Math.floor(Date.now() / 1000);
+      commandScope = signScope({ v: 2, operation: 'command', actionId: ctx.actionId ?? ctx.idempotencyKey,
+        tenantId: ctx.tenantId, environmentId: ctx.environmentId, queryId: randomUUID(), correlationId: ctx.correlationId,
+        principal: { id: ctx.principalId, audience: person.audience, groups: person.groups }, connectorId, connectionRef: connector.connectionRef,
+        tool: toolName, toolState: 'allow', toolStateVia: 'tool', capRuleIds: [], argsHash: hashScopeArguments(args), fields: [],
+        release: { version: meta.version, checksum: meta.checksum }, iat, exp: iat + 60, jti: randomUUID(),
+      }, commandSecret).header;
+    }
+
     const response: ExecutionResponse = await this.deps.dispatcher.dispatch(
       definition,
       binding,
       { toolId, input: args, policyState: state, userConfirmationConfirmed: confirmed, idempotencyKey: ctx.idempotencyKey },
-      ctx,
+      { ...ctx, ...(commandScope ? { callerScope: commandScope } : {}) },
     );
 
     if (response.status === 'denied') {

@@ -34,32 +34,33 @@ function stockSystem(answer: any = { ok: true, connector: 'stock-system', tool: 
 }
 
 const withRoute = () => {
-  const release: any = connectorPack(REGISTRY);
+  const release: any = connectorPack(structuredClone(REGISTRY));
+  // This fixture exercises the live-source contract; the demo test marks its source answer explicitly.
+  const source = release.extensions.connectors.connectors.find((entry: any) => entry.connectorId === 'stock-system');
+  if (source) source.sample = false;
   release.extensions.branchStock = { connector: 'stock-system', tool: 'stock_by_branch', inputs: { sku: 'sku' }, extra: { limit: 25 }, note: 'Branch codes are three digits.' };
   return release;
 };
 
 describe('check_stock tells the truth about what it read', () => {
-  test('without a stock system the answer is the catalogue flag, said as shop-wide, and a named branch is reported as NOT checked', async () => {
+  test('without an authoritative stock system neither catalogue flags nor a named branch establish stock', async () => {
     const { ctx } = ctxFor(connectorPack(undefined));
     const result = await executeAgentTool('check_stock', { sku: SKU, branch: 'Te Anau' }, ctx);
-    assert.equal(result.source, 'catalogue');
-    assert.equal(result.inStock, true);
+    assert.equal(result.source, 'not_checked');
+    assert.equal(result.inStock, undefined);
+    assert.equal(ctx.allowedClaimClasses.has('stock'), false);
     assert.equal(result.branchChecked, false);
     assert.equal(result.branch, 'Te Anau');
-    assert.match(result.message, /catalogue lists SKU 1357711 as in stock \(shop-wide\)/);
-    assert.match(result.message, /Stock at Te Anau was NOT checked/);
-    assert.match(result.message, /Do not say the item is in stock at Te Anau/);
-    assert.doesNotMatch(result.message, /verified IN STOCK/);
-    assert.ok(ctx.allowedClaimClasses.has('stock'), 'the catalogue flag still supports a shop-wide stock sentence');
+    assert.match(result.message, /No authoritative inventory/);
+    assert.equal(ctx.allowedClaimClasses.has('stock'), false, 'a catalogue flag never authorises a current stock claim');
   });
 
-  test('without a branch named, the catalogue answer is plain, says shop-wide, and names no branch', async () => {
+  test('without a branch or stock system, availability is unknown', async () => {
     const { ctx } = ctxFor(connectorPack(undefined));
     const result = await executeAgentTool('check_stock', { sku: SKU }, ctx);
-    assert.equal(result.source, 'catalogue');
+    assert.equal(result.source, 'not_checked');
     assert.equal('branch' in result, false, 'no branch was asked for, so none is echoed back');
-    assert.match(result.message, /shop-wide/);
+    assert.match(result.message, /No authoritative inventory/);
     assert.doesNotMatch(result.message, /NOT checked/);
   });
 
@@ -74,7 +75,7 @@ describe('check_stock tells the truth about what it read', () => {
     assert.deepEqual(result.branchStock, ROWS, 'the system\'s rows reach the model as they are');
     assert.deepEqual(system.seen, [{ connector: 'stock-system', tool: 'stock_by_branch', args: { limit: 25, sku: SKU } }], 'the SKU goes under the pack\'s input name, with the pack\'s extras; the branch name is not passed when the tool wants a code');
     assert.match(result.message, /find Te Anau among the rows/);
-    assert.match(result.message, /"available" \(on hand less reserved\) is what can be sold/);
+    assert.match(result.message, /"available" is on hand less reserved/);
     assert.match(result.message, /Branch codes are three digits\./, 'the pack\'s own note is carried');
     assert.equal('inStock' in result, false, 'no single yes/no is made up from several branches');
     assert.ok(ctx.allowedClaimClasses.has('stock') && ctx.allowedClaimClasses.has('catalog_fact'));
@@ -93,7 +94,7 @@ describe('check_stock tells the truth about what it read', () => {
     assert.deepEqual(system.seen[0].args, { limit: 25, productCode: SKU, branchName: 'Albany' });
   });
 
-  test('a connector switched off for the chat, not offered to this person, or failing, leaves the catalogue answer with the branch reported as NOT checked', async () => {
+  test('a connector switched off for the chat, not offered to this person, or failing, leaves availability and branch stock unconfirmed', async () => {
     const release = withRoute();
     for (const [label, runtime, extra] of [
       ['switched off', stockSystem().runtime, { disabledConnectors: new Set(['stock-system']) }],
@@ -102,10 +103,10 @@ describe('check_stock tells the truth about what it read', () => {
     ] as const) {
       const { ctx } = ctxFor(release, { connectorRuntime: runtime, principal: { audience: 'staff', groups: ['branch'] }, ...(extra as any) });
       const result = await executeAgentTool('check_stock', { sku: SKU, branch: 'Te Anau' }, ctx);
-      assert.equal(result.source, 'catalogue', label);
+      assert.equal(result.source, 'not_checked', label);
       assert.equal(result.branchChecked, false, label);
-      assert.match(result.message, /Stock at Te Anau was NOT checked/, label);
-      assert.match(result.message, /read the branch figures from the business system/, `${label}: with connectors in the chat, the model is pointed at them`);
+      assert.match(result.message, /No authoritative inventory/, label);
+      assert.equal(ctx.allowedClaimClasses.has('stock'), false, label);
     }
   });
 
@@ -113,7 +114,7 @@ describe('check_stock tells the truth about what it read', () => {
     assert.equal(branchStockRoute({ extensions: {} }), undefined);
     assert.equal(branchStockRoute({ extensions: { branchStock: { connector: 'stock system!', tool: 'stock_by_branch' } } }), undefined);
     assert.equal(branchStockRoute({ extensions: { branchStock: { connector: 'stock-system' } } }), undefined);
-    assert.deepEqual(branchStockRoute({ extensions: { branchStock: { connector: 'stock-system', tool: 'stock_by_branch' } } }), { connector: 'stock-system', tool: 'stock_by_branch', inputs: undefined, extra: undefined, note: undefined });
+    assert.deepEqual(branchStockRoute({ extensions: { branchStock: { connector: 'stock-system', tool: 'stock_by_branch' } } }), { connector: 'stock-system', tool: 'stock_by_branch', inputs: undefined, extra: undefined, note: undefined, dataMode: 'live' });
   });
 
   test('the tool description tells the model what a branch claim needs', () => {
@@ -123,4 +124,29 @@ describe('check_stock tells the truth about what it read', () => {
     assert.match(tool.description, /only a branch row from it supports/);
     assert.doesNotMatch(tool.description, /real-time/);
   });
+});
+
+
+test('missing catalogue stock is unknown and does not unlock an availability claim', async () => {
+  const { ctx } = ctxFor(connectorPack(undefined));
+  ctx.catalogProductCache.set(SKU, { sku: SKU, title: 'Catalogue item without a stock flag' });
+  const result = await executeAgentTool('check_stock', { sku: SKU }, ctx);
+  assert.equal(result.inStock, undefined);
+  assert.equal(result.stockLevel, 'Not checked');
+  assert.equal(ctx.allowedClaimClasses.has('stock'), false);
+});
+
+test('demonstration stock needs explicit release opt-in and remains labelled rather than becoming live branch confirmation', async () => {
+  const release = withRoute();
+  const system = stockSystem({ ok: true, connector: 'stock-system', tool: 'stock_by_branch', result: { ...ROWS, sample: true } });
+  const denied = ctxFor(release, { connectorRuntime: system.runtime, principal: { audience: 'staff', groups: ['branch'] } }).ctx;
+  const refused = await executeAgentTool('check_stock', { sku: SKU, branch: 'Te Anau' }, denied);
+  assert.equal(refused.branchChecked, false); assert.equal(refused.source, 'not_checked');
+  assert.equal(denied.allowedClaimClasses.has('stock'), false);
+  release.extensions.branchStock.dataMode = 'demo';
+  const allowed = ctxFor(release, { connectorRuntime: system.runtime, principal: { audience: 'staff', groups: ['branch'] } }).ctx;
+  const shown = await executeAgentTool('check_stock', { sku: SKU, branch: 'Te Anau' }, allowed);
+  assert.equal(shown.sample, true); assert.equal(shown.branchChecked, false); assert.equal(shown.source, 'demo_business_system');
+  assert.match(shown.message, /DEMONSTRATION INVENTORY ONLY/);
+  assert.deepEqual(shown.branchStock.records, ROWS.records);
 });

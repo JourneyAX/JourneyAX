@@ -8,6 +8,8 @@
  */
 
 export interface QuantityHelperConfig {
+  /** Merchant-authored category IDs/names whose piece dimensions actually represent material coverage. Empty means no inference. */
+  pieceAreaCategories?: string[];
   /** Extra to buy for cuts and waste, as a percentage of what the area needs; the tenant decides, none when absent. */
   allowancePercent?: number;
   /** Case-insensitive patterns whose first capture group is an area in square metres one pack covers, tried against the product's own text. */
@@ -16,6 +18,11 @@ export interface QuantityHelperConfig {
   minPieceSideMm?: number;
   /** Units of area the shop understands, each as square metres per unit, keyed by the unit written plainly ("ft2", "sqft"). */
   areaUnits?: Record<string, number>;
+}
+
+export function permitsPieceArea(product: { category?: string; categoryPath?: string[] }, config: QuantityHelperConfig): boolean {
+  const categories = new Set([product.category, ...(product.categoryPath || [])].filter((value): value is string => typeof value === 'string').map(value => value.trim().toLowerCase()));
+  return (config.pieceAreaCategories || []).some(value => categories.has(value.trim().toLowerCase()));
 }
 
 export interface EstimateInput {
@@ -94,7 +101,7 @@ export function statedCoverage(texts: Array<string | undefined>, patterns: strin
 const roundUp = (value: number) => Math.ceil(value - 1e-9);
 
 export function estimateQuantity(
-  product: { title?: string; texts?: Array<string | undefined> },
+  product: { title?: string; texts?: Array<string | undefined>; category?: string; categoryPath?: string[] },
   input: Partial<EstimateInput>,
   config: QuantityHelperConfig = {},
 ): QuantityEstimate {
@@ -107,7 +114,7 @@ export function estimateQuantity(
 
   const fromCustomer = input.coveragePerPack !== undefined && Number.isFinite(input.coveragePerPack) && input.coveragePerPack > 0;
   const fromRecord = fromCustomer ? undefined : statedCoverage([...(product.texts || [])], config.coveragePatterns);
-  const piece = fromCustomer || fromRecord !== undefined ? undefined : pieceSizeFromName(product.title || '', config.minPieceSideMm);
+  const piece = fromCustomer || fromRecord !== undefined || !permitsPieceArea(product, config) ? undefined : pieceSizeFromName(product.title || '', config.minPieceSideMm);
 
   if (fromCustomer || fromRecord !== undefined) {
     const coveragePerUnitM2 = fromCustomer ? input.coveragePerPack! : fromRecord!;

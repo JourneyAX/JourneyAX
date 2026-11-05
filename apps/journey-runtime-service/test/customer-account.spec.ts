@@ -1,3 +1,4 @@
+import '../../../packages/jax-iq/test/setup/no-world';
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -38,18 +39,24 @@ let base = '';
 
 before(async () => {
   server = new SampleConnectorServer({ tenants: [TENANT], apiKey: KEY });
-  base = await server.listen(0);
+  base = 'http://sample.test';
   const pool = new McpClientPool({
     directory: new StaticMcpServerDirectory(Object.fromEntries(server.connectorIds().map((id) => [id, `${base}/mcp/${id}`]))),
     secrets: { resolve: async () => KEY },
     nodeEnv: 'test',
+    fetchImpl: (async (url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      const headers = new Headers(init.headers);
+      const answer = await server.handle(new URL(url).pathname.split('/').pop()!, headers.get('x-tenant-id')!, body);
+      return answer === undefined ? new Response(null, { status: 202 }) : new Response(JSON.stringify(answer), { headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch,
   });
   gateway = new CapabilityGateway({ mcpClients: pool });
 });
 after(async () => { await server.close(); });
 
 const ALL_TOOLS = ['search_products', 'present_card', 'hand_off_to_human', ...CUSTOMER_ACCOUNT_TOOL_NAMES];
-function release(options: { customerAccount?: unknown } = { customerAccount: { enabled: true, connector: 'ace-erp' } }) {
+function release(options: { customerAccount?: unknown } = { customerAccount: { enabled: true, connector: 'ace-erp', tools: { balance: 'account_balance', deliveries: 'list_deliveries', price: 'trade_price' }, pricingFields: { bronze: 'bronzePrice', silver: 'silverPrice', gold: 'goldPrice' } } }) {
   const pack: any = connectorPack(ConnectorsSchema.parse(SAMPLE_REGISTRY), {
     tenantId: TENANT, environmentId: ENVIRONMENT,
     agents: [{ agentId: 'advisor', name: 'advisor', purpose: 'Help customers.', systemPromptTemplate: 'You help customers.', allowedTools: ALL_TOOLS, modelPolicyRef: 'default', maxTurns: 6, handoffConditions: [], isDefault: true }],

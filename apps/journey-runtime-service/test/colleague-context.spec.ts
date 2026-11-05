@@ -27,10 +27,10 @@ describe('The assistant is told who it is talking to', () => {
     const prompt = buildAgentSystemPrompt({ resolvedAgent, release, person: { audience: principal.audience, groups: principal.groups } });
     assert.match(prompt, /# Who you are talking to/);
     assert.match(prompt, /a colleague on the customer service team, not a customer/);
-    assert.match(prompt, /This changes none of the hand-off conditions above/, 'the carve-out is for lookups only');
-    assert.match(prompt, /damaged or missing freight, a safety fault or dangerous product, a refund, return or credit note on a dispatched order/, 'the situations a condition names are still handed off');
-    assert.match(prompt, /A colleague who asks for a person gets one\./);
-    assert.doesNotMatch(prompt, /do not apply to the colleague themselves|never hand a colleague's own question off/, 'the broad wording that could switch off real hand-offs is gone');
+    assert.match(prompt, /same configured business knowledge, approval requirements and handoff conditions/);
+    assert.match(prompt, /staff role does not authorise unlisted tools/);
+    assert.match(prompt, /If they request a person, use the configured handoff capability/);
+    assert.doesNotMatch(formatWhoYouAreTalkingTo({ audience: 'staff', groups: ['customer-service'] }), /freight|dispatched order|structural|gas|refund/, 'platform role context contains no merchant escalation scenarios');
     assert.ok(prompt.indexOf('You help people.') < prompt.indexOf('# Who you are talking to'), 'the block follows the agent block, where the hand-off conditions are');
   });
 

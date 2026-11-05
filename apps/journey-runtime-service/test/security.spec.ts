@@ -105,7 +105,7 @@ async function runSecurityTests() {
   });
 
   // ── TEST 4: External Header Spoofing Prevention ─────────────────────────
-  await test('External caller cannot spoof admin role via unverified headers; role defaults to customer', async () => {
+  await test('unverified identity headers cannot impersonate either staff or a customer', async () => {
     delete process.env.INTERNAL_API_KEY;
     delete process.env.GATEWAY_ASSERTION_SECRET;
     const ctx = createMockExecutionContext({
@@ -122,14 +122,8 @@ async function runSecurityTests() {
     });
     (guard as any).reflector = (ctx as any)._reflector;
 
-    const allowed = await guard.canActivate(ctx);
-    assert.equal(allowed, true);
-
-    const req = ctx.switchToHttp().getRequest();
-    assert.equal(req.authContext.tenantId, 'workweargroup');
-    assert.equal(req.authContext.principalRole, 'customer');
-    assert.notEqual(req.authContext.principalRole, 'admin');
-    assert.notEqual(req.authContext.principalRole, 'super_admin');
+    await assert.rejects(() => guard.canActivate(ctx), (error: any) => error instanceof UnauthorizedException);
+    assert.equal(ctx.switchToHttp().getRequest().authContext, undefined);
   });
 
   // ── TEST 4B: Cryptographically Signed Gateway Assertion Verification ────

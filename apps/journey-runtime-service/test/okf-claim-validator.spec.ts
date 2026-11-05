@@ -37,6 +37,9 @@ for (const sentence of [
   'Isolate the supply before you start.',
   'Stop using the heater.',
   "Don't use the shower until it is repaired.",
+  'Unplug electrical equipment near the spill.',
+  'Turn the water back on briefly to investigate.',
+  'Switch the power on again.',
 ]) assert.ok(validateOkfGeneratedClaims(sentence, ['suggestion']).forbidden.includes('safety_instruction'), sentence);
 assert.deepEqual(withholdUnsupportedClaims('For a leaky toilet, turn off the isolation tap and avoid using it until the leak is checked. Tell me where the water shows up?', ['suggestion']).text, 'Tell me where the water shows up?', 'the instruction goes, the question stays');
 for (const ordinary of ['Isolation valves are in the plumbing aisle.', 'This kettle has an automatic switch.', 'Spray on, leave to dry, then brush off.', 'Turn the handle clockwise to open.']) {
@@ -121,3 +124,10 @@ assert.equal(withholdUnsupportedClaims(referral2, ['suggestion'], packOptions).t
 
 console.log('✅ OKF claim validator: all tests passed including V1 & V2 pack extraClaimPatterns & clause splitting');
 
+
+// A question mark cannot launder a source-free stock or coverage assertion.
+for (const text of ['This item is in stock, shall I add it?', 'It has a lifetime warranty, okay?', 'Turn the power back on, can you do that?']) {
+  assert.equal(validateOkfGeneratedClaims(text, ['suggestion']).valid, false, text);
+  assert.equal(withholdUnsupportedClaims(text, ['suggestion']).text, '', text);
+}
+assert.equal(validateOkfGeneratedClaims('What are you fixing into?', ['suggestion']).valid, true);

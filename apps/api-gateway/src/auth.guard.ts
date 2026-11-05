@@ -10,8 +10,15 @@ import { requiredPermission, can, permissionsFor, resolveServiceUrl } from '@jou
  * Returns true if allowed. Guests (no jwt) are handled by the caller.
  */
 export function projectAllowed(projectId: string, role?: string, tenantId?: string): boolean {
-  if (role === 'admin' || tenantId === 'platform') return true;
+  if (role === 'admin' && tenantId === 'platform') return true;
   return !!tenantId && tenantId === projectId;
+}
+
+/** The edge owns identity. Never retain caller-supplied privileges on a guest or failed-token path. */
+export function stripCallerIdentity(headers: Request['headers']): void {
+  for (const key of Object.keys(headers)) {
+    if (/^x-(?:user-|principal-|auth-|internal-|gateway-)/i.test(key)) delete headers[key];
+  }
 }
 
 /**
@@ -37,7 +44,7 @@ const AUTH_SERVICE_URL = resolveServiceUrl('AUTH_SERVICE_URL', process.env.AUTH_
 // who genuinely needs to bypass auth must opt in EXPLICITLY with AUTH_DEV_BYPASS=true
 // (never set in any deployed environment); otherwise protected routes 401 as they
 // should. The flag is logged loudly so it can't hide.
-const DEV_BYPASS = process.env.AUTH_DEV_BYPASS === 'true';
+const DEV_BYPASS = process.env.NODE_ENV === 'development' && process.env.AUTH_DEV_BYPASS === 'true';
 if (DEV_BYPASS) {
   console.warn('[AuthGuard] ⚠️  AUTH_DEV_BYPASS=true — authentication is DISABLED for protected routes. NEVER use this in production.');
 }
@@ -59,6 +66,7 @@ const ANONYMOUS_DOMAINS = new Set(['commerce', 'products']);
 @Injectable()
 export class AuthGuard implements NestMiddleware {
   async use(req: Request, res: Response, next: NextFunction) {
+    stripCallerIdentity(req.headers);
     const path = req.originalUrl.split('?')[0];
 
     // ── 1. Fully public ───────────────────────────────────────────
@@ -118,10 +126,13 @@ export class AuthGuard implements NestMiddleware {
         });
 
         if (verifyResponse.ok) {
-          const { payload } = await verifyResponse.json() as {
+          const { valid, payload } = await verifyResponse.json() as {
             valid: boolean;
             payload: { sub: string; tenantId: string; role: string; fullName: string };
           };
+          if (valid !== true || !payload?.sub || !payload.tenantId || !payload.role) {
+            return res.status(401).json({ error: 'Unauthorized', message: 'A verified sign-in identity is required.' });
+          }
 
           // ── Tenant isolation: the URL projectId must belong to this identity ──
           if (projectId && !projectAllowed(projectId, payload.role, payload.tenantId)) {

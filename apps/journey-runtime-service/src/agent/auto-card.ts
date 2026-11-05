@@ -1,11 +1,17 @@
 /**
- * Which products a reply is about, so they are always shown on a card.
- *
- * The agent writes the words; the products it names (or, when it names none, the ones its search just found) are shown as a
- * card after them. Leaving that to a separate model call cost a round trip on every recommendation and sometimes did not
- * happen at all, so a reply could recommend a product the customer could not see or add. Only products the tools returned
- * this turn can be chosen, so nothing here can introduce a product the agent did not look up.
+ * Match a reply to verified products. The release chooses whether to show named
+ * products, search results, or only cards explicitly requested by the model.
  */
+import type { ProductCardMode } from '@journeyax/business-pack';
+
+export function productCardMode(release: { experience?: { cards?: { productCardMode?: ProductCardMode } }; extensions?: Record<string, any> }): ProductCardMode {
+  const configured = release.experience?.cards?.productCardMode;
+  if (configured) return configured;
+  const legacy = release.extensions?.presentation?.autoProductCards;
+  if (legacy === true) return 'after_search';
+  if (legacy === false) return 'model';
+  return 'when_named';
+}
 
 /** The products the most recent product lookup of the turn returned, best first. */
 export interface LastProducts {
@@ -72,6 +78,8 @@ export function chooseCardSkus(input: {
   turnSkus: Iterable<string>;
   catalog: Map<string, any>;
   last?: LastProducts;
+  /** Legacy callers may explicitly include search results; new releases default to named products only. */
+  mode?: 'when_named' | 'after_search';
 }): { skus: string[]; basis: 'named' | 'searched' | 'none' } {
   const haystack = normalise(input.text);
   const named = [...input.turnSkus]
@@ -86,7 +94,7 @@ export function chooseCardSkus(input: {
   if (named.length > 0) return { skus: named, basis: 'named' };
 
   // Nothing named: show what the last lookup found, but not alternatives the search had to settle for.
-  if (input.last && !input.last.relaxed && input.last.skus.length > 0) {
+  if (input.mode !== 'when_named' && input.last && !input.last.relaxed && input.last.skus.length > 0) {
     return { skus: aboutTheReply(haystack, input.last.skus, input.catalog).slice(0, MAX_SEARCHED), basis: 'searched' };
   }
   return { skus: [], basis: 'none' };

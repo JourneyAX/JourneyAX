@@ -1,4 +1,5 @@
 import { resolveServiceUrl } from '@journeyax/shared-types';
+import sourceStatuses from './branch-stock-statuses.json';
 /**
  * Tenant-Scoped Branch Stock & Fulfillment Lookup Service
  *
@@ -31,7 +32,6 @@ export interface BranchStockResponse {
 }
 
 export class BranchStockService {
-  private static productServiceUrl = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, 'http://localhost:8083');
 
   /**
    * Retrieves real inventory and fulfillment facts for an SKU across tenant branches.
@@ -55,9 +55,12 @@ export class BranchStockService {
     }
 
     try {
-      const url = `${this.productServiceUrl}/api/v1/${encodeURIComponent(tid)}/products/inventory?sku=${encodeURIComponent(sku)}${preferredBranch ? `&branch=${encodeURIComponent(preferredBranch)}` : ''}`;
+      if (!process.env.PRODUCT_SERVICE_URL) throw new Error('Inventory source is not configured');
+      const productServiceUrl = resolveServiceUrl('PRODUCT_SERVICE_URL', process.env.PRODUCT_SERVICE_URL, '');
+      const url = `${productServiceUrl}/api/v1/${encodeURIComponent(tid)}/products/inventory?sku=${encodeURIComponent(sku)}${preferredBranch ? `&branch=${encodeURIComponent(preferredBranch)}` : ''}`;
       const res = await fetch(url, {
         headers: { 'x-tenant-id': tid },
+        signal: AbortSignal.timeout(8000), redirect: 'error',
       });
 
       if (!res.ok) {
@@ -72,12 +75,16 @@ export class BranchStockService {
       }
 
       const data: any = await res.json();
+      if (data.sample === true || /demo|sample|fixture/i.test(String(data.source ?? ''))) throw new Error('Demo inventory cannot confirm branch availability');
+      if (data.tenantId !== tid || String(data.sku) !== sku || !data.source || !Array.isArray(data.branches)) throw new Error('Inventory source scope or provenance is missing');
+      const branches = data.branches.filter((entry: any) => !preferredBranch || entry.branchCode === preferredBranch || entry.branchName === preferredBranch);
+      if (!branches.length || branches.some((entry: any) => !Number.isFinite(entry.stockQty) || entry.stockQty < 0 || !sourceStatuses.includes(entry.status) || typeof entry.clickAndCollectReady !== 'boolean' || (entry.clickAndCollectReady && entry.stockQty <= 0))) throw new Error('Verified inventory facts are unavailable');
       return {
         ok: data.ok !== false,
         sku,
         productTitle: data.productTitle || productTitle,
         requestedBranch: preferredBranch,
-        branches: Array.isArray(data.branches) ? data.branches : [],
+        branches,
         ...(data.error ? { error: data.error } : {}),
       };
     } catch (err: any) {

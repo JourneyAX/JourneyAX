@@ -232,3 +232,6 @@ assert.equal(fallback('Which one do you mean?', true, false, ['warranty']), 'REF
 assert.equal(fallback('Here are the options.', false, false, ['warranty']), undefined, 'a reply with a statement is never replaced');
 
 console.log('✅ claim guard: real sentences kept, invented claims still removed');
+
+assert.deepEqual(judge('If you need more details—such as installation guidance, warranty, or accessories—let me know what you would like to check next.').forbidden, []);
+assert.ok(judge('I can check the guide, and this product has a lifetime warranty.').forbidden.includes('warranty'));

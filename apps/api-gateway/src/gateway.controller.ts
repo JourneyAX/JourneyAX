@@ -66,7 +66,7 @@ export class GatewayController {
     }
 
     try {
-      const result = await this.gatewayService.proxyRequest(method, path, req.headers, req.body);
+      const result = await this.gatewayService.proxyRequest(method, path, req.headers, req.body, (req as any).rawBody);
 
       // Forward status code and headers
       res.status(result.status);

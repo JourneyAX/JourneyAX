@@ -198,7 +198,7 @@ async function main() {
     await service.load(request());
     assert.equal(calls.length, 4, 'after the time is up it asks again');
     await service.load(request({ ...sales, userId: 'other.rep@placemakers.demo' }));
-    assert.equal(calls.length, 6, 'another person does not get the first person’s answers');
+    assert.equal(calls.length, 5, 'another person gets no cached answer; their unknown owner blocks the owner-scoped read');
   });
 
   await check('a number the person may not read is left blank without asking, and ask-first tools are not read either', async () => {
@@ -210,8 +210,9 @@ async function main() {
     assert.ok(!calls.some((c) => c.tool === 'list_cases'));
     const cases = view!.metrics.find((m) => m.id === 'open-cases')!;
     assert.equal(cases.value, '–');
-    assert.equal(view!.metrics.find((m) => m.id === 'open-deals')!.ok, true);
-    assert.equal(view!.scope, 'team', 'no name is known for this login, so the figures are the team’s');
+    assert.equal(view!.metrics.find((m) => m.id === 'open-deals')!.ok, false);
+    assert.equal(calls.length, 0, 'missing owner must not broaden a personal query to the whole team');
+    assert.equal(view!.scope, 'mine');
   });
 
   await check('a slow or failing system blanks its own figure only, and a failure is not kept', async () => {

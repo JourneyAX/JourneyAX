@@ -97,6 +97,7 @@ export interface AgentToolDefinition {
   description: string;
   parameters: {
     type: 'object';
+    additionalProperties?: boolean;
     properties: Record<string, any>;
     required?: string[];
   };

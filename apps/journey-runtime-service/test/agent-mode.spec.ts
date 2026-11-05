@@ -1,3 +1,4 @@
+import '../../../packages/jax-iq/test/setup/no-world';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -198,6 +199,8 @@ function createTestPack(overrides: Record<string, any> = {}): BusinessPackReleas
       attributeDefinitions: PLACEMAKERS_ATTRIBUTE_DEFINITIONS,
     },
     extensions: {
+      presentation: { autoProductCards: true },
+      commerce: { pricing: { currency: 'NZD', symbol: '$', taxRate: 0, discountRate: 0 } },
       agentMode: { enabled: true },
       dialoguePolicy: { agentMode: true },
       ...overrides,
@@ -413,7 +416,8 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     const [a, b]: any[] = (toolContext.presentedCards[0].state as any).products;
     assert.equal(a.reason, 'Suitable for bathrooms and laundries', 'the feature that answers the request');
     assert.deepEqual(a.highlights, ['Water resistant core']);
-    assert.deepEqual([a.rating, a.ratingCount, a.branchesAvailable, a.branchesTotal], [4.9, 88, 22, 87]);
+    assert.deepEqual([a.rating, a.ratingCount, a.branchesAvailable, a.branchesTotal], [4.9, 88, undefined, undefined]);
+    assert.equal(a.availability, 'unknown', 'catalogue branch listings are not current stock evidence');
     assert.equal(b.reason, 'A cheaper general-purpose option', 'a reason the agent gave is kept');
     assert.deepEqual(b.highlights, ['General purpose lining']);
     assert.equal(b.rating, undefined, 'no rating is shown for a product without one');
@@ -785,7 +789,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
           seen = { prompt: String(req.systemPrompt || ''), tools: (req.tools || []).map((tool: any) => tool.name) };
           return { content: 'Hello.', toolCalls: [] };
         };
-        const repo = new FormSubmissionRepository();
+        const repo = new FormSubmissionRepository({ explicitMemory: true });
         await new AgentTurnLoop().execute({
           command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: 'ws-plugins', sessionId: 's', correlationId: 'c', message: 'hello', ...command } as any,
           release,
@@ -852,7 +856,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         if (out?.content) onDelta?.(out.content);
         return out;
       };
-      const repo = input.repo === null ? undefined : (input.repo || new FormSubmissionRepository());
+      const repo = input.repo === null ? undefined : (input.repo || new FormSubmissionRepository({ explicitMemory: true }));
       const outcome = await new AgentTurnLoop().execute({
         command: { tenantId: input.tenantId || 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 'form-session', turnId: `t-${Math.random().toString(36).slice(2, 8)}`, correlationId: 'c-form', message: 'I want to contact you', principalId: 'shopper-1', principalRole: 'customer', ...(input.command || {}) } as any,
         release,
@@ -905,7 +909,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     });
 
     test('a sent form is checked against the shop\'s definition and kept with a reference; the model hears that it is sent but never what was typed', async () => {
-      const repo = new FormSubmissionRepository();
+      const repo = new FormSubmissionRepository({ explicitMemory: true });
       const { outcome, seen, workspace } = await run({ forms: [contact], repo, command: sendEvent({ ...filled, isAdmin: true, injected: '<script>' }), script: quiet });
       const kept = await repo.list('test-tenant', 'test');
       assert.equal(kept.length, 1);
@@ -924,7 +928,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     });
 
     test('a form with a mistake is not kept, and the model is told what to fix; another shop\'s form id is not a form of this one', async () => {
-      const repo = new FormSubmissionRepository();
+      const repo = new FormSubmissionRepository({ explicitMemory: true });
       const bad = await run({ forms: [contact], repo, command: sendEvent({ name: '', email: 'nope', message: '' }), script: quiet });
       assert.equal((await repo.list('test-tenant', 'test')).length, 0);
       assert.match(JSON.stringify(bad.seen[0].messages), /was not sent because of: .*Please fill in Your name/);
@@ -934,20 +938,20 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     });
 
     test('a conversation may send a handful of forms an hour, no more; a store that cannot keep it means "not sent"', async () => {
-      const repo = new FormSubmissionRepository();
+      const repo = new FormSubmissionRepository({ explicitMemory: true });
       const workspace = createTestWorkspace();
       for (let i = 0; i < 6; i++) await run({ forms: [contact], repo, workspace, command: sendEvent(filled), script: quiet });
       assert.equal((await repo.list('test-tenant', 'test')).length, 5, 'the sixth is not kept');
       const noStore = await run({ forms: [contact], repo: null, command: sendEvent(filled), script: quiet });
       assert.match(JSON.stringify(noStore.seen[0].messages), /could not be kept here, so it was not sent/);
-      const broken = new FormSubmissionRepository();
+      const broken = new FormSubmissionRepository({ explicitMemory: true });
       (broken as any).save = async () => { throw new Error('database down'); };
       const lost = await run({ forms: [contact], repo: broken, command: sendEvent(filled), script: quiet });
       assert.match(JSON.stringify(lost.seen[0].messages), /NOT sent/);
     });
 
     test('each shop reads only its own submissions, and references are readable and different each time', async () => {
-      const repo = new FormSubmissionRepository();
+      const repo = new FormSubmissionRepository({ explicitMemory: true });
       await run({ forms: [contact], repo, command: sendEvent(filled), script: quiet });
       await run({ forms: [contact], repo, tenantId: 'another-shop', command: sendEvent({ ...filled, name: 'Other Person' }), script: quiet });
       assert.deepEqual((await repo.list('test-tenant', 'test')).map((r) => r.values.name), ['Jo Bloggs']);
@@ -1015,6 +1019,18 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(kept.length, 1);
       assert.deepEqual([kept[0].toolId, kept[0].args.reason, kept[0].principalId], ['hand_off_to_human', 'wants a person', 'shopper-1']);
       assert.equal(outcome.toolsCalled[0].ok, false);
+      assert.equal(outcome.turnResult.executedCapabilities[0].status, 'requires_approval', 'a held action is not an executed source change or a failed operation');
+    });
+
+    test('follow-up context retains the exact outstanding review without proposing it again or revealing it to another principal', async () => {
+      const first = await run({ rows: asking, script: callsHandoff });
+      const id = (first.workspace.facts as any).pending_confirmations.value[0].id;
+      const followup = await run({ rows: asking, workspace: first.workspace, command: { message: 'What is waiting for me?' }, script: () => ({ content: 'The existing proposal is waiting for your review.', toolCalls: [] }) });
+      assert.match(JSON.stringify(followup.seen[0].messages), /pending_reviews/);
+      assert.ok(JSON.stringify(followup.seen[0].messages).includes(id));
+      assert.equal((first.workspace.facts as any).pending_confirmations.value.length, 1);
+      const another = await run({ rows: asking, workspace: first.workspace, command: { principalId: 'shopper-2', message: 'What is waiting?' }, script: () => ({ content: 'How can I help?', toolCalls: [] }) });
+      assert.ok(!JSON.stringify(another.seen[0].messages).includes(id));
     });
 
     test('a tap on Allow runs the kept call, once, with the server\'s copy of the arguments; the model is told the result', async () => {
@@ -1025,8 +1041,8 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         command: { message: '', customerEvent: { type: 'confirmTool', payload: { confirmationId: id, decision: 'allow', args: { reason: 'something the page made up' } } } },
         script: (round) => ({ content: round === 1 ? 'Done, a person will join you.' : '', toolCalls: [] }),
       });
-      assert.equal((second.outcome.turnResult.trace as any).handoffRequested, true, 'the kept call ran');
-      assert.equal((second.outcome.turnResult as any).trace.handoffReason, 'wants a person', 'with the arguments the server kept, not the ones on the tap');
+      assert.equal((second.outcome.turnResult.trace as any).handoffRequested, false, 'the kept call cannot invent a ticket without a configured support connection');
+      assert.equal((second.outcome.turnResult as any).trace.handoffReason, 'wants a person', 'the server retains the approved reason even though support is unavailable');
       const told = JSON.stringify(second.seen[0].messages);
       assert.match(told, /which the person allowed/);
       assert.deepEqual((second.workspace.facts as any).pending_confirmations.value, [], 'a confirmation is used once');
@@ -1075,7 +1091,8 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     test('the most specific row wins: a sales person is not asked, a shopper is, and a blocked tool is not even offered', async () => {
       const rows = [...asking, { toolId: 'hand_off_to_human', audience: 'staff', groups: ['sales'], state: 'allow' }, { toolId: 'check_stock', audience: 'shopper', groups: [], state: 'blocked' }, { toolId: 'check_stock', audience: 'staff', groups: ['sales'], state: 'allow' }];
       const staff = await run({ rows, command: { principalId: 'sam@x.test', principalRole: 'manager', principalGroups: ['sales'] }, script: callsHandoff });
-      assert.equal((staff.outcome.turnResult.trace as any).handoffRequested, true, 'allowed for sales: it ran at once');
+      assert.equal((staff.outcome.turnResult.trace as any).handoffRequested, false, 'permission is not a support receipt');
+      assert.ok(staff.outcome.toolsCalled.some(tool => tool.name === 'hand_off_to_human'));
       assert.ok(!staff.outcome.turnResult.uiInstructions?.some((c) => c.component === 'confirm'));
       assert.ok(staff.seen[0].tools.some((tool: any) => tool.name === 'check_stock'));
       const shopper = await run({ rows, script: callsHandoff });
@@ -1103,7 +1120,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(forged.outcome.toolsCalled[0].ok, false);
       assert.ok(!forged.outcome.turnResult.uiInstructions?.some((c) => c.component === 'confirm'));
       const plain = await run({ script: callsHandoff });
-      assert.equal((plain.outcome.turnResult.trace as any).handoffRequested, true, 'no table: the tool just runs');
+      assert.equal((plain.outcome.turnResult.trace as any).handoffRequested, false, 'no support connection means no handoff success');
     });
   });
 
@@ -1223,7 +1240,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
     );
 
     assert.ok(result, 'Must return a TurnResult via the polite handoff');
-    assert.equal(result.decision.type, 'handoff', 'A failed agent turn ends in a handoff decision');
+    assert.equal(result.decision.type, 'fail', 'A model error is not a completed human handoff');
   });
 
   describe('Prompt Injection Resilience', () => {
@@ -1480,11 +1497,13 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(warrantyB.found, false, 'Warranty for Product A must NOT be returned when asked for Product B');
       assert.equal(toolContext.allowedClaimClasses.has('warranty'), false, 'Warranty claim class must NOT be unlocked for Product B');
 
-      // 5. Warranty of Product A IS returned and unlocked when asked for Product A
+      // 5. Product A grants its exact verified statement, never a global warranty permission.
       const warrantyA = await executeAgentTool('get_warranty', { productOrBrand: 'SKU-PROD-A' }, toolContext);
       assert.equal(warrantyA.found, true, 'Warranty for Product A should be found');
       assert.match(warrantyA.warranty.terms, /15-year warranty/i);
-      assert.equal(toolContext.allowedClaimClasses.has('warranty'), true, 'Warranty claim class must be unlocked for verified Product A');
+      assert.equal(toolContext.allowedClaimClasses.has('warranty'), false, 'one product source must not unlock arbitrary warranty claims');
+      assert.equal(validateOkfGeneratedClaims(warrantyA.warranty.terms, [], undefined, { exactClaimStatements: toolContext.exactClaimStatements }).valid, true);
+      assert.equal(validateOkfGeneratedClaims('Product B comes with a 15-year warranty against structural decay.', [], undefined, { exactClaimStatements: toolContext.exactClaimStatements }).valid, false);
     });
 
     test('safety settings: present_card blocks product cards when OKF safety.blocksProducts or commercePolicy is active', async () => {
@@ -1625,7 +1644,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         modelGateway: gateway,
         catalogSearchHandler: {
           execute: async () => ({
-            products: [{ sku: 'SKU-DECK-1', title: 'Kwila Decking', inStock: true }],
+            products: [{ sku: 'SKU-DECK-1', title: 'Kwila Decking', price: 45, currency: 'NZD', inStock: true }],
           }),
         } as any,
         sink: (event, data) => {
@@ -1774,7 +1793,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(totalTokenText, result.assistantMessage, 'Streamed tokens must match assistant message without duplicates');
     });
 
-    test('turn deadline: times out and hands off politely when agent loop exceeds turnDeadlineMs from policy', async () => {
+    test('turn deadline: reports failure without fabricating a successful human handoff or notification', async () => {
       const gateway = new ModelGateway();
       const release = createTestPack({
         agentMode: { enabled: true, timeoutMs: 80 },
@@ -1815,8 +1834,10 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         release
       );
 
-      assert.ok(result, 'Must hand off and produce a TurnResult');
-      assert.equal(result.decision.type, 'handoff', 'A deadline overrun ends in a handoff decision');
+      assert.ok(result, 'Must return a TurnResult');
+      assert.equal(result.decision.type, 'fail');
+      assert.deepEqual(result.executedCapabilities, []);
+      assert.doesNotMatch(result.assistantMessage || '', /notified|will assist|has been contacted/i);
     });
 
     test('fallback after text streamed: does not stream second answer; sends replace token event', async () => {
@@ -2025,10 +2046,10 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(toolContext.allowedClaimClasses.size, 0, 'Empty search must unlock no claim classes');
     });
 
-    test('search finding products does NOT unlock stock claim class; only check_stock does', async () => {
+    test('a catalogue flag never becomes an authoritative stock receipt, including after check_stock', async () => {
       const catalogSearchHandler = {
         execute: async () => ({
-          items: [{ sku: 'SKU-TIMBER-1', name: 'Framing Timber 100x50', price: 15 }],
+          items: [{ sku: 'SKU-TIMBER-1', name: 'Framing Timber 100x50', price: 15, inStock: true }],
           total: 1,
         }),
       } as any;
@@ -2062,22 +2083,23 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(claimResultInStockWithout.valid, false);
       assert.deepEqual(claimResultInStockWithout.forbidden, ['stock']);
 
-      // 3. Executing check_stock unlocks the stock claim class
-      await executeAgentTool('check_stock', { sku: 'SKU-TIMBER-1' }, toolContext);
-      assert.equal(toolContext.allowedClaimClasses.has('stock'), true, 'check_stock must unlock stock claim class');
+      // 3. There is no live stock port in this fixture. The listing flag proves no branch availability.
+      const stock = await executeAgentTool('check_stock', { sku: 'SKU-TIMBER-1' }, toolContext);
+      assert.equal(stock.branchChecked, false); assert.equal(stock.source, 'not_checked');
+      assert.equal(toolContext.allowedClaimClasses.has('stock'), false, 'catalogue flags do not unlock current stock claims');
 
       // 4. Now stock statements are valid and supported
       const claimResultAfterCheck = validateOkfGeneratedClaims(
         'The framing timber is currently in stock at Main Branch.',
         Array.from(toolContext.allowedClaimClasses)
       );
-      assert.equal(claimResultAfterCheck.valid, true, 'Stock claim is now supported after check_stock');
+      assert.equal(claimResultAfterCheck.valid, false, 'a completed but unconfirmed stock lookup cannot authorise a branch claim');
 
       const claimResultOutAfterCheck = validateOkfGeneratedClaims(
         'This item is out of stock at this location.',
         Array.from(toolContext.allowedClaimClasses)
       );
-      assert.equal(claimResultOutAfterCheck.valid, true, 'Out of stock claim is supported after check_stock');
+      assert.equal(claimResultOutAfterCheck.valid, false, 'unknown stock must not become an out-of-stock claim either');
     });
 
     test('records streamed token usage across multi-round execution in agent mode', async () => {
@@ -2626,7 +2648,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       delete (multiAgentPack.agents[1] as any).isDefault;
       assert.throws(
         () => router.resolveAgent(multiAgentPack, workspace),
-        /Pack declares 2 agents without an explicit match, targetRole, defaultAgentId, or isDefault flag - failing closed/
+        /Pack declares 2 accessible agents without an unambiguous defaultAgentId or isDefault flag - failing closed/
       );
     });
 
@@ -2877,13 +2899,14 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       const approvalService = new ApprovalService(new ApprovalStore({ explicitMemory: true }));
 
       const catalogProductCache = new Map<string, any>([
-        ['SKU-TIMBER-100', { sku: 'SKU-TIMBER-100', title: 'Framing Timber 100x50', price: 25.5, priceCents: 2550, currency: 'NZD' }],
+        ['SKU-TIMBER-100', { projectId: 'test-tenant', sku: 'SKU-TIMBER-100', title: 'Framing Timber 100x50', price: 25.5, priceCents: 2550, currency: 'NZD' }],
       ]);
 
       const toolContext: AgentToolContext = {
         tenantId: 'test-tenant',
         environmentId: 'test',
         workspaceId: 'ws-quote-1',
+        principalId: 'customer-fixture',
         correlationId: 'corr-quote-1',
         release,
         catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
@@ -2908,7 +2931,8 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
       assert.equal(result.ok, true);
       assert.equal(result.status, 'success');
       assert.ok(result.quote?.quoteId);
-      assert.equal(result.quote.totalAmount, 255.0);
+      assert.equal(result.quote.total, 255.0);
+      assert.equal(result.quote.lines[0].unitPrice, 25.5);
       assert.equal(result.quote.currency, 'NZD');
 
       // Verify audit record in executionRepo
@@ -2928,6 +2952,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         tenantId: 'test-tenant',
         environmentId: 'test',
         workspaceId: 'ws-quote-2',
+        principalId: 'customer-fixture',
         correlationId: 'corr-quote-2',
         release,
         catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
@@ -2968,12 +2993,13 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         tenantId: 'test-tenant',
         environmentId: 'test',
         workspaceId: 'ws-quote-3',
+        principalId: 'customer-fixture',
         correlationId: 'corr-quote-3',
         release,
         catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
         turnProductSkus: new Set(['SKU-TIMBER-100']),
         catalogProductCache: new Map([
-          ['SKU-TIMBER-100', { sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
+          ['SKU-TIMBER-100', { projectId: 'test-tenant', sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
         ]),
         readSourceIds: new Set(),
         allowedClaimClasses: new Set(),
@@ -3011,12 +3037,13 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         tenantId: 'test-tenant',
         environmentId: 'test',
         workspaceId: 'ws-quote-4',
+        principalId: 'customer-fixture',
         correlationId: 'corr-quote-4',
         release,
         catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
         turnProductSkus: new Set(['SKU-TIMBER-100']),
         catalogProductCache: new Map([
-          ['SKU-TIMBER-100', { sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
+          ['SKU-TIMBER-100', { projectId: 'test-tenant', sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
         ]),
         readSourceIds: new Set(),
         allowedClaimClasses: new Set(),
@@ -3048,6 +3075,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         tenantId: 'test-tenant',
         environmentId: 'test',
         workspaceId: 'ws-cart-1',
+        principalId: 'customer-fixture',
         correlationId: 'corr-cart-1',
         release,
         catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
@@ -3061,6 +3089,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         isHumanHandoffRequested: false,
         executionRepo,
         inMemoryCarts,
+        inMemoryCommerceProducts: [{ projectId: 'test-tenant', sku: 'SKU-FASTENER-50', name: 'Galv Screws 50mm', priceCents: 1200, currency: 'NZD' }],
       };
 
       // 1. Get empty cart
@@ -3165,7 +3194,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         catalogSearchHandler: { execute: async () => ({ products: [] }) } as any,
         turnProductSkus: new Set(['SKU-TIMBER-100']),
         catalogProductCache: new Map([
-          ['SKU-TIMBER-100', { sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
+          ['SKU-TIMBER-100', { projectId: 'test-tenant', sku: 'SKU-TIMBER-100', title: 'Framing Timber', price: 25.5, priceCents: 2550, currency: 'NZD' }],
         ]),
         readSourceIds: new Set(),
         allowedClaimClasses: new Set(),
@@ -3326,25 +3355,11 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
         (event, data) => streamedEvents.push({ event, data })
       );
 
-      // Verify decision is handoff (never routed to rule-based engine)
-      assert.equal(result.decision.type, 'handoff');
-      assert.equal(
-        result.assistantMessage,
-        'We are currently experiencing technical difficulties. Connecting you to our support desk.'
-      );
-
-      // Verify executed capabilities includes hand_off_to_human
-      const handoffCap = result.executedCapabilities?.find((c) => c.toolId === 'hand_off_to_human');
-      assert.ok(handoffCap, 'Must record hand_off_to_human capability execution');
-
-      // Verify token events streamed the polite message
-      const tokenEvents = streamedEvents.filter((e) => e.event === 'token');
-      assert.ok(tokenEvents.length >= 1);
-      assert.match(tokenEvents[0].data.delta, /support desk/i);
-
-      // Verify trace confirms agent mode handoff without rule-based engine
+      assert.equal(result.decision.type, 'fail');
+      assert.doesNotMatch(result.assistantMessage || '', /connecting you|notified|will join/i);
+      assert.equal(result.executedCapabilities?.some(c => c.toolId === 'hand_off_to_human'), false, 'a tool that never ran is not in the audit');
       assert.equal((result.trace as any)?.agentMode, true);
-      assert.equal(Boolean((result.trace as any)?.handoffRequested || (result.trace as any)?.resilienceHandled), true);
+
     });
   });
 
@@ -3775,6 +3790,9 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
 
       assert.equal(result.found, true);
       assert.equal(result.topic, 'decking boards');
+      assert.equal(result.guidance.status, 'context_only', 'discovering an unverified concept does not authorise its installation notes');
+      assert.deepEqual(result.guidance.allowedClaimClasses, []);
+      assert.equal(toolContext.allowedClaimClasses.has('installation_step'), false);
 
       // 1. Knowledge fields
       assert.ok(result.descriptions.length >= 1);
@@ -5503,7 +5521,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
           release,
           workspace,
           modelGateway: gateway,
-          catalogSearchHandler: { search: async () => ({ products: [{ sku: '1010784', name: 'Pine Decking' }], total: 1 }) } as any,
+          catalogSearchHandler: { execute: async () => ({ products: [{ sku: '1010784', title: 'Pine Decking 100 x 25mm H3.2' }, { sku: '4066403', title: 'Bremick Decking Screws' }], total: 2 }) } as any,
           knowledgeSearchHandler: { search: async () => [{ title: 'Decking Guide', snippet: 'Use H3.2 for decking' }] } as any,
           sink: () => {},
         });
@@ -5662,7 +5680,7 @@ describe('Agent Mode: Autonomous Conversational Loop & Tool Calling', () => {
           release,
           workspace,
           modelGateway: gateway,
-          catalogSearchHandler: { search: async () => ({ products: [{ sku: '123456', name: 'Bremick Framing Screws' }], total: 1 }) } as any,
+          catalogSearchHandler: { execute: async () => ({ products: [{ sku: '123456', title: 'Bremick 10g x 75mm Galvanised Screws' }], total: 1 }) } as any,
           sink: (type, payload) => {
             if (type === 'token' && payload.delta) {
               streamedDeltas.push(payload.delta);
@@ -5955,7 +5973,7 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
 
   describe('repair limits come from the pack, with platform defaults', () => {
     const repairedText = "I don't have verified information on that. Which product do you mean, and where will it be used? I can also connect you with a person at the branch.";
-    const runRepairCase = async (draft: string, repair?: { thinBelowChars?: number; minChars?: number; removedShareAbove?: number }) => {
+    const runRepairCase = async (draft: string, repair?: { thinBelowChars?: number; minChars?: number; removedShareAbove?: number }, rewrite = repairedText) => {
       const gateway = new ModelGateway();
       const release: any = createTestPack();
       if (repair) release.conversationPolicy = { ...(release.conversationPolicy || {}), repair };
@@ -5963,7 +5981,7 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
       let calls = 0;
       gateway.mockAgentExecutor = async (req, onDelta) => {
         calls++;
-        const text = calls === 1 ? draft : repairedText;
+        const text = calls === 1 ? draft : rewrite;
         onDelta?.(text);
         return { content: text, toolCalls: [], usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 } };
       };
@@ -6003,6 +6021,11 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
       assert.equal(result.calls, 2, 'the repair round was made');
       assert.notEqual(result.text, repairedText, 'but the short rewrite did not replace the answer');
     });
+    test('a clean usable clarifying question survives even below the substantive-answer minimum', async () => {
+      const question = 'What are you fixing into?';
+      const result = await runRepairCase(draft, { minChars: 900 }, question);
+      assert.equal(result.calls, 2); assert.equal(result.text, question);
+    });
   });
 
   test('a handoff that arrives with no words gets one explanation round, then the handoff message follows', async () => {
@@ -6028,9 +6051,9 @@ describe('Agent quality: repair round, size spelling and ranking', () => {
       catalogSearchHandler: { search: async () => ({ products: [], total: 0 }) } as any,
       sink: () => {},
     } as any);
-    assert.equal(calls, 2);
-    assert.ok(outcome.turnResult.assistantMessage.startsWith(explanation));
-    assert.ok(/notified|assist/i.test(outcome.turnResult.assistantMessage), 'the handoff message follows the explanation');
+    assert.ok(calls <= 3);
+    assert.equal((outcome.turnResult.trace as any).handoffRequested, false, 'no fabricated handoff without a support connection');
+    assert.doesNotMatch(outcome.turnResult.assistantMessage, /notified|will assist shortly/);
   });
 });
 
@@ -6097,7 +6120,7 @@ describe('browse_range: describing what the range holds for a broad request', ()
       customerQuestion: 'paint',
       lastProducts: { skus: ['P1'], relaxed: false, ...(source ? { source } : {}) },
       turnProductSkus: new Set(['P1']),
-      catalogProductCache: new Map<string, any>([['P1', { sku: 'P1', title: 'Gloss Clear', price: 20, inStock: true, highlights: ['Aids newly painted surface to keep its gloss', 'Quick drying'] }]]),
+      catalogProductCache: new Map<string, any>([['P1', { sku: 'P1', title: 'Gloss Clear', price: 20, inStock: true, specs: { Width: '10 MMT' }, sourceUrl: 'https://catalogue.example/p/P1', documents: [{ title: 'Source guide', url: 'https://catalogue.example/P1.pdf' }], highlights: ['Aids newly painted surface to keep its gloss', 'Quick drying'] }]]),
       readSourceIds: new Set(), allowedClaimClasses: new Set(), presentedCards: [], isHumanHandoffRequested: false,
     } as any);
     const asProduct = async (ctx: AgentToolContext) => {
@@ -6110,6 +6133,14 @@ describe('browse_range: describing what the range holds for a broad request', ()
     assert.deepEqual(example.highlights, ['Aids newly painted surface to keep its gloss', 'Quick drying']);
     const found = await asProduct(make());
     assert.equal(found.reason, 'Aids newly painted surface to keep its gloss', 'a product a search found for the request may say what in it answers the request');
+    const ctx = make();
+    await executeAgentTool('present_card', { cardType: 'productDetail', state: { product: { sku: 'P1', specs: { Width: '999 mm' }, productUrl: 'https://invented.example', documents: [{ title: 'Invented guarantee', url: 'https://invented.example/terms.pdf' }] } } }, ctx);
+    const detail = (ctx.presentedCards[0].state as any).product;
+    assert.deepEqual(detail.specList, [{ label: 'Width', value: '10 mm' }]);
+    assert.deepEqual(detail.documents, [{ title: 'Source guide', url: 'https://catalogue.example/P1.pdf' }]);
+    assert.equal(detail.productUrl, 'https://catalogue.example/p/P1');
+    assert.equal(detail.hasSpecs, true);
+    assert.equal(detail.hasDocuments, true);
   });
 
   test('a category scope the model composed itself is turned into the real path of the group it names, so the search is not emptied', () => {
@@ -6341,9 +6372,15 @@ describe('the products a reply is about are shown on a card', () => {
     assert.deepEqual(picked, { skus: ['L1', 'L2'], basis: 'searched' });
   });
 
-  const run = async (opts: { message: string; searchResult: any; reply: string; customerEvent?: any; alsoPresent?: boolean }) => {
+  const run = async (opts: { message: string; searchResult: any; reply: string; customerEvent?: any; alsoPresent?: boolean; alsoReceipt?: boolean; mode?: 'model' | 'when_named' | 'after_search'; useDefault?: boolean; allowedCards?: string[] }) => {
     const gateway = new ModelGateway();
     const release = createTestPack();
+    if (opts.alsoReceipt) release.agents![0].allowedTools!.push('get_checkout_receipt');
+    if (opts.useDefault) delete (release.extensions.presentation as any).autoProductCards;
+    if (opts.mode || opts.allowedCards) release.experience = {
+      ...release.experience,
+      cards: { ...release.experience?.cards, ...(opts.mode ? { productCardMode: opts.mode } : {}), ...(opts.allowedCards ? { allowedCardTypes: opts.allowedCards } : {}) },
+    } as any;
     const workspace = createTestWorkspace();
     let round = 0;
     gateway.mockAgentExecutor = async (_req, onDelta) => {
@@ -6354,6 +6391,7 @@ describe('the products a reply is about are shown on a card', () => {
       if (round === 2 && opts.alsoPresent) {
         return { content: '', toolCalls: [{ id: 'c2', name: 'present_card', arguments: { cardType: 'products', state: { products: [{ sku: '2800027' }] } } }], usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
       }
+      if (round === 2 && opts.alsoReceipt) return { content: '', toolCalls: [{ id: 'receipt', name: 'get_checkout_receipt', arguments: { orderId: 'owned-order' } }], usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
       onDelta?.(opts.reply);
       return { content: opts.reply, toolCalls: [], usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
     };
@@ -6363,6 +6401,7 @@ describe('the products a reply is about are shown on a card', () => {
       workspace,
       modelGateway: gateway,
       catalogSearchHandler: { execute: async () => opts.searchResult } as any,
+      ...(opts.alsoReceipt ? { capabilityGateway: { executeCapability: async () => ({ status: 'success', data: { found: true, receipt: { authority: 'committed_checkout_receipt', orderId: 'owned-order', lines: [{ sku: '2800027', quantity: 1 }] } } }) } } : {}),
       sink: () => {},
     } as any);
     const cards = (outcome.turnResult.uiInstructions || []).filter((u: any) => u.component === 'products');
@@ -6376,9 +6415,30 @@ describe('the products a reply is about are shown on a card', () => {
     assert.equal(result.calls, 2, 'one round to search, one to answer: the card cost no round trip');
   });
 
+  test('a committed receipt names purchased products without reopening them as recommendations', async () => {
+    const result = await run({ useDefault: true, message: 'Confirm my checkout receipt', searchResult: found, alsoReceipt: true, reply: 'Your receipt includes SKU 2800027, Standard Wallboard 2400 x 1200 x 10mm Taper Edge.' });
+    assert.deepEqual(result.skus, []);
+    assert.equal(result.calls, 3);
+  });
+
   test('a reply that names nothing still gets a card of what the search found', async () => {
     const result = await run({ message: 'plasterboard', searchResult: found, reply: 'Here is what I found. Where will it be used?' });
     assert.deepEqual(result.skus, ['2800027', '2800651', '2800407']);
+  });
+
+  test('default presentation attaches named products but leaves a clarification reply without cards', async () => {
+    const named = await run({ useDefault: true, message: 'show the board', searchResult: found, reply: 'The catalogue lists Standard Wallboard 2400 x 1200 x 10mm Taper Edge.' });
+    assert.deepEqual(named.skus, ['2800027']);
+    const question = await run({ useDefault: true, message: 'board', searchResult: found, reply: 'What dimensions are you looking for?' });
+    assert.deepEqual(question.skus, []);
+  });
+
+  test('merchant model-only mode and disabled product cards override automatic presentation', async () => {
+    const reply = 'The catalogue lists Standard Wallboard 2400 x 1200 x 10mm Taper Edge.';
+    const modelOnly = await run({ mode: 'model', message: 'board', searchResult: found, reply });
+    assert.deepEqual(modelOnly.skus, []);
+    const disabled = await run({ mode: 'after_search', allowedCards: ['clarify'], message: 'board', searchResult: found, reply, alsoPresent: true });
+    assert.deepEqual(disabled.skus, [], 'neither the model nor automatic cards may bypass the release allow-list');
   });
 
   test('alternatives the search had to settle for are not shown when the reply names none of them', async () => {
@@ -6408,4 +6468,28 @@ describe('the products a reply is about are shown on a card', () => {
     const result = await run({ message: '', customerEvent: { type: 'viewProduct', payload: { sku: '2800027', title: 'Standard Wallboard' } }, searchResult: found, reply: 'You have opened the Standard Wallboard 2400 x 1200 x 10mm Taper Edge.' });
     assert.deepEqual(result.skus, []);
   });
+});
+
+test('source evidence prefetched for a card action survives streaming without a redundant model lookup', async () => {
+  const release = createTestPack();
+  release.agents[0].toolFirst = true;
+  (release.extensions as any).eventPrefetch = { askProduct: [{ tool: 'get_product', args: { sku: '{sku}' } }] };
+  const workspace = createTestWorkspace();
+  const gateway = new ModelGateway(); let modelCalls = 0;
+  const reply = 'The catalogue price is $125 NZD. Source: https://merchant.example/products/CAB-A';
+  gateway.mockAgentExecutor = async (request, onDelta) => {
+    modelCalls++;
+    assert.ok(request.messages.some(message => typeof message.content === 'string' && message.content.includes('already_looked_up_for_you')));
+    onDelta?.(reply);
+    return { content: reply, toolCalls: [] };
+  };
+  const outcome = await new AgentTurnLoop().execute({
+    command: { tenantId: 'test-tenant', environmentId: 'test', workspaceId: workspace.workspaceId, sessionId: 'prefetched-source', correlationId: 'prefetched-source', customerEvent: { type: 'askProduct', payload: { sku: 'CAB-A', title: 'Cabinet', question: 'What does this cost?' } } },
+    release, workspace, modelGateway: gateway, sink: () => {},
+    catalogSearchHandler: { execute: async () => ({ items: [{ sku: 'CAB-A', title: 'Cabinet', price: 125, currency: 'NZD', sourceUrl: 'https://merchant.example/products/CAB-A' }], total: 1 }) } as any,
+  } as any);
+  assert.equal(modelCalls, 1, 'the configured source lookup has already happened');
+  assert.match(outcome.turnResult.assistantMessage!, /\$125 NZD/);
+  assert.match(outcome.turnResult.assistantMessage!, /https:\/\/merchant\.example\/products\/CAB-A/);
+  assert.ok((outcome.turnResult.executedCapabilities || []).some(call => call.toolId === 'get_product' && call.status === 'success'));
 });

@@ -1,9 +1,10 @@
 import {
   Controller, Post, Get, Body, Headers, Query,
-  UnauthorizedException, BadRequestException, Inject,
+  UnauthorizedException, BadRequestException, ForbiddenException, Inject,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { readPublicRegistration } from './public-registration';
+import { can } from '@journeyax/shared-types';
 
 @Controller('api/v1/auth')
 export class AuthController {
@@ -133,8 +134,16 @@ export class AuthController {
    * GET /api/v1/auth/users
    */
   @Get('users')
-  async getUsers(@Query('tenantId') tenantId?: string) {
-    const users = await this.authService.getUsers(tenantId);
+  async getUsers(@Query('tenantId') tenantId?: string, @Headers('authorization') authorization?: string) {
+    const token = /^Bearer\s+(.+)$/i.exec(authorization ?? '')?.[1];
+    if (!token) throw new UnauthorizedException('Sign in is required.');
+    const verified = await this.authService.verify(token);
+    if (!verified.valid || !verified.payload?.tenantId) throw new UnauthorizedException('A verified sign-in is required.');
+    const actor = verified.payload;
+    if (!can(actor.role, 'user.manage')) throw new ForbiddenException('User administration is required.');
+    const platformAdmin = actor.role === 'admin' && actor.tenantId === 'platform';
+    if (!platformAdmin && tenantId && tenantId !== actor.tenantId) throw new ForbiddenException('The requested tenant is outside your scope.');
+    const users = await this.authService.getUsers(platformAdmin ? tenantId : actor.tenantId);
     return { users };
   }
 }

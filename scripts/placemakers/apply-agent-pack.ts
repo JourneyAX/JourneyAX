@@ -5,7 +5,7 @@
  * whole sequence on an in-memory copy of the project and prints what would change.
  *
  *   npx tsx --env-file=.env --tsconfig tests/public-path/tsconfig.json scripts/placemakers/apply-agent-pack.ts <tenant>
- *        [--environment production] [--apply] [--demo-prices] [--okf-draft <file> --okf-version <x.y.z>]
+ *        [--environment production] [--apply] [--okf-draft <file> --okf-version <x.y.z>]
  *
  * Inputs are data files: docs/agent-instructions/<tenant>-draft.json (agents, persona, profile, conversation policy),
  * docs/agent-instructions/<tenant>-agent-settings.json (reply style, agent mode, routing), and
@@ -29,7 +29,7 @@ if (!TENANT) throw new Error('usage: apply-agent-pack.ts <tenant> [--environment
 const ENVIRONMENT = (option('environment') || 'production') as 'dev' | 'test' | 'staging' | 'production';
 const APPLY = flag('apply');
 /** Demo project only: a product with no real price gets a made-up, always-the-same one (never "Price on request"). Off unless asked for; see docs/migrations/DEMO-PRICES.md. */
-const DEMO_PRICES = flag('demo-prices');
+if (flag('demo-prices')) throw new Error('Generated prices are no longer supported. Configure an authoritative price source.');
 const ACTOR = 'process:claude-code';
 const NOTE = `Agent pack applied by Claude Code on the owner's instruction in chat (mahaveer.it@gmail.com), ${new Date().toISOString().slice(0, 10)}`;
 const root = path.resolve(__dirname, '../..');
@@ -80,7 +80,7 @@ function buildSettings(project: any) {
     ...(Array.isArray(draft.skills) ? { skills: draft.skills } : {}),
     ...(draft.extensions && typeof draft.extensions === 'object' ? { extensions: draft.extensions } : {}),
     conversationPolicy: deepMerge(project.conversationPolicy, draft.conversationPolicy),
-    catalogMapping: deepMerge(project.catalogMapping, mappingFile.catalogMapping, settingsFile.catalogMapping, DEMO_PRICES ? { pricing: { demoFallback: { enabled: true, currency: 'NZD', min: 4.9, max: 480 } } } : undefined),
+    catalogMapping: deepMerge(project.catalogMapping, mappingFile.catalogMapping, settingsFile.catalogMapping),
     agentMode: settingsFile.agentMode ?? true,
     ...(settingsFile.modelPolicyOverrides ? { ai: { policyOverrides: deepMerge(project.ai?.policyOverrides, settingsFile.modelPolicyOverrides) } } : {}),
     ...(settingsFile.interpretationPolicy ? { interpretationPolicy: settingsFile.interpretationPolicy } : {}),

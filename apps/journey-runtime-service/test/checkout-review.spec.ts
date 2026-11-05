@@ -26,7 +26,7 @@ const shop = (extensions: Record<string, any> = { checkoutReview: { enabled: tru
 
 async function main() {
   await suite.test('a paver sold by the piece says what the number covers, and asks if that is the area', () => {
-    const review = buildReview({ lines: [line({ sku: 'P1', title: 'Forum Paver 400 x 400 x 50mm Glacier', quantity: 83 })], suggestions: [] });
+    const review = buildReview({ lines: [line({ sku: 'P1', title: 'Forum Paver 400 x 400 x 50mm Glacier', category: 'Paving', quantity: 83 })], suggestions: [], pieceAreaCategories: ['Paving'] });
     const row = review.quantity.rows[0];
     assert.equal(row.title, '83 × Forum Paver 400 x 400 x 50mm Glacier');
     assert.match(row.detail!, /Covers about 13\.3 m²/);
@@ -35,6 +35,15 @@ async function main() {
     assert.equal(row.hasMessage, true);
     assert.match(row.actionText!, /Forum Paver/);
     assert.equal(review.quantity.warn, true);
+  });
+
+  await suite.test('cabinet sink dimensions are not material coverage and a catalogue period is not full written terms', () => {
+    const review = buildReview({ lines: [line({ sku: 'CAB', title: 'Laundry cabinet with sink (400 x 400)', category: 'Cabinetry', catalogueWarranty: '5 years' })], suggestions: [], pieceAreaCategories: ['Paving'] });
+    assert.equal(review.quantity.rows[0].detail, DEFAULT_REVIEW_LABELS.quantityAsChosen);
+    assert.equal(review.quantity.rows[0].warn, false);
+    assert.match(review.warranty.rows[0].detail!, /Catalogue warranty duration: 5 years/);
+    assert.equal(review.warranty.rows[0].warn, true);
+    assert.equal(review.warranty.rows[0].actionLabel, DEFAULT_REVIEW_LABELS.askWarranty);
   });
 
   await suite.test('a pack with a stated coverage says what the packs cover; a product with neither is left as the customer chose it', () => {
@@ -70,7 +79,8 @@ async function main() {
     });
     const [paver, sand] = review.fulfilment.rows;
     assert.match(paver.detail!, /Pick-up only/);
-    assert.match(paver.detail!, /In stock at 8 of 87 branches/);
+    assert.match(paver.detail!, /Catalogue lists 8 of 87 branches/);
+    assert.match(paver.detail!, /Branch stock has not been checked/);
     assert.equal(paver.warn, true);
     assert.match(sand.detail!, /Courier delivery or Click & Collect/);
     assert.match(sand.detail!, /At Takapuna: In Stock/);
@@ -98,7 +108,7 @@ async function main() {
   });
 
   await suite.test('the summary counts the sections that look right and the shop\'s own wording replaces the defaults', () => {
-    const calm = buildReview({ lines: [line({ sku: 'S1', title: 'Sand', warranty: 'Five years', deliveryOptions: ['courier'] })], suggestions: [] });
+    const calm = buildReview({ lines: [line({ sku: 'S1', title: 'Sand', warranty: 'Five years', deliveryOptions: ['courier'], branchStatus: 'In Stock' })], branch: { id: 'branch-1' }, suggestions: [] });
     assert.equal(calm.summary, 'All 4 checks look right');
     const busy = buildReview({ lines: [line({ sku: 'P1', title: 'Paver 400 x 400', quantity: 10 })], suggestions: [], labels: { heading: 'Ready to pay?', pay: 'Pay now' } });
     assert.match(busy.summary, /of 4 checks look right/);
@@ -117,7 +127,9 @@ async function main() {
     assert.match(quantityRow.title, /^83 ×/);
     const fulfilment = ctx.lastReview!.fulfilment.rows.find((r) => r.key === 'f-P1')!;
     assert.match(fulfilment.detail!, /Pick-up only/);
-    assert.match(fulfilment.detail!, /At Takapuna: Low Stock/);
+    assert.doesNotMatch(fulfilment.detail!, /At Takapuna: Low Stock/);
+    assert.match(fulfilment.detail!, /Branch stock has not been checked/);
+    assert.equal(fulfilment.warn, true, 'a browser-supplied stock status is not a source receipt');
     assert.ok(result.sections.length === 4 && result.message.includes('warm sentences'));
     // The card shows only this review, whatever the model writes.
     const card: any = await executeAgentTool('present_card', { cardType: 'review', state: { heading: 'Anything I like', quantity: { title: 'x' } } }, ctx);
@@ -143,6 +155,19 @@ async function main() {
     assert.equal(switchedOff.ok, false);
     const fromArgs: any = await executeAgentTool('review_cart', { items: [{ sku: 'S1', quantity: 3 }] }, shop());
     assert.equal(fromArgs.ok, true, 'the lines can also be given when the tap carried none');
+  });
+
+  await suite.test('checkout does not promote merchandising candidates into job requirements', async () => {
+    const ctx = shop();
+    ctx.catalogProductCache.set('P1', { sku: 'P1', title: 'Chosen product', categoryTrail: ['Main shelf'], accessorySkus: ['S1'] } as any);
+    ctx.catalogProductCache.set('S1', { sku: 'S1', title: 'Unassessed candidate', categoryTrail: ['Other shelf'] } as any);
+    const candidates: any = await executeAgentTool('get_related_products', { sku: 'P1' }, ctx);
+    assert.equal(candidates.source, 'shop_suggestions');
+    assert.equal(candidates.relatedProducts[0].sku, 'S1');
+    ctx.customerEvent = { type: 'reviewCart', payload: { items: [{ sku: 'P1', quantity: 1 }] } };
+    const review: any = await executeAgentTool('review_cart', {}, ctx);
+    assert.equal(review.ok, true);
+    assert.deepEqual(ctx.lastReview!.accessories.rows, [], 'a real SKU alone is not evidence that this customer needs it');
   });
 
   await suite.test('a tap on "review my order" starts a turn and the pack can have its lookup run and shown at once', () => {

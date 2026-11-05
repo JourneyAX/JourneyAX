@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildPlaceMakersStack, TENANT as PM_TENANT, ENVIRONMENT as PM_ENV } from './helpers/placemakers-stack';
+import { buildPlaceMakersStack, FixedGateway, TENANT as PM_TENANT, ENVIRONMENT as PM_ENV } from './helpers/placemakers-stack';
 import { buildAbercrombieStack, ABERCROMBIE_TENANT, ABERCROMBIE_ENV } from './helpers/abercrombie-stack';
 import { readHistory } from '../src/conversation/history';
 import { resolveCustomerEventAction } from '../src/kernel/customer-event-policy';
@@ -66,7 +66,16 @@ test('P3: Customer actions are events, not silent local state', async (t) => {
 
   await t.test('2. Building materials tenant (PlaceMakers): addToQuote starts agent turn; removeFromQuote is recorded only', async () => {
     const stack = await buildPlaceMakersStack({ agentMode: true });
-    const service = stack.serviceFor({ servePacks: true });
+    const model = new FixedGateway();
+    let modelSawEvent = false;
+    model.mockAgentExecutor = async (request, onDelta) => {
+      modelSawEvent ||= request.messages.some(message => typeof message.content === 'string' && message.content.includes('Type: addToQuote'));
+      // Test the event boundary, without a stand-in model claiming an unexecuted cart write or inventing product facts.
+      const content = 'I see the quote action. What would you like to do next?';
+      onDelta?.(content);
+      return { content, toolCalls: [] };
+    };
+    const service = stack.serviceFor({ servePacks: true, modelGateway: model });
     const workspaceId = 'ws-pm-customer-events';
 
     // Step A: Customer action "addToQuote" starts agent turn
@@ -90,6 +99,7 @@ test('P3: Customer actions are events, not silent local state', async (t) => {
     });
 
     assert.ok(turn1.assistantMessage, 'addToQuote starts turn and produces assistant response');
+    assert.equal(modelSawEvent, true, 'the actual customer event reaches the model');
     const msgLower = turn1.assistantMessage.toLowerCase();
     assert.ok(
       msgLower.includes('wood screw') || msgLower.includes('quote') || msgLower.includes('added'),

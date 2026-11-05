@@ -77,11 +77,3 @@ export function withModel(pack: Json, spec: string): Json {
   }
   return out;
 }
-
-/** Shows demo prices (a made-up price for a product with no real one) in a preview, the way `pricing.demoFallback` does once published. In memory only. */
-export function withDemoPrices(pack: Json): Json {
-  if (!pack.catalogMapping?.pricing) return pack;
-  const out: Json = structuredClone(pack);
-  out.catalogMapping.pricing.demoFallback = { enabled: true, currency: 'NZD', min: 4.9, max: 480 };
-  return out;
-}

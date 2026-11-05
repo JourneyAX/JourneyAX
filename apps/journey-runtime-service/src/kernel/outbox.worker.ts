@@ -6,12 +6,14 @@ export type OutboxEventDispatcher = (event: OutboxEventRecord) => Promise<void>;
 export type DeadLetterAlertHandler = (event: OutboxEventRecord, error: string) => Promise<void> | void;
 
 export interface OutboxWorkerOptions {
+  scope?: { environmentId: string; tenantId?: string };
   workerId?: string;
   leaseDurationMs?: number;
   pollIntervalMs?: number;
   batchSize?: number;
   maxAttempts?: number;
   backoffBaseMs?: number;
+  maxBackoffMs?: number;
   dispatcher?: OutboxEventDispatcher;
   onDeadLetterAlert?: DeadLetterAlertHandler;
 }
@@ -36,8 +38,10 @@ export class OutboxWorker {
   private readonly batchSize: number;
   private readonly maxAttempts: number;
   private readonly backoffBaseMs: number;
+  private readonly maxBackoffMs: number;
   private readonly dispatcher: OutboxEventDispatcher;
   private readonly onDeadLetterAlert?: DeadLetterAlertHandler;
+  private readonly scope?: OutboxWorkerOptions['scope'];
 
   private running = false;
   private isPolling = false;
@@ -57,6 +61,7 @@ export class OutboxWorker {
     this.batchSize = options.batchSize || 10;
     this.maxAttempts = options.maxAttempts || 5;
     this.backoffBaseMs = options.backoffBaseMs || 1000;
+    this.maxBackoffMs = options.maxBackoffMs || 15 * 60 * 1000;
     if (!options.dispatcher) {
       throw new Error(
         '[OutboxWorker] OutboxEventDispatcher is mandatory. A real delivery dispatcher must be supplied to ensure events are genuinely delivered.'
@@ -64,6 +69,7 @@ export class OutboxWorker {
     }
     this.dispatcher = options.dispatcher;
     this.onDeadLetterAlert = options.onDeadLetterAlert;
+    this.scope = options.scope;
   }
 
   start(): void {
@@ -134,7 +140,8 @@ export class OutboxWorker {
       const claimed = await this.outboxRepo.claimLeases(
         this.workerId,
         this.leaseDurationMs,
-        this.batchSize
+        this.batchSize,
+        this.scope
       );
       this.activeLeasesCount = claimed.length;
 
@@ -154,7 +161,8 @@ export class OutboxWorker {
             event.eventId,
             err.message || 'Dispatch error',
             this.maxAttempts,
-            this.backoffBaseMs
+            this.backoffBaseMs,
+            this.maxBackoffMs
           );
           if (result === 'dead_letter') {
             console.error(

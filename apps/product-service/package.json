@@ -9,6 +9,7 @@
     "test": "tsx test/product-detail.spec.ts"
   },
   "dependencies": {
+    "@journeyax/business-pack": "*",
     "@journeyax/database": "*",
     "@journeyax/shared-types": "*",
     "@nestjs/common": "^10.4.15",

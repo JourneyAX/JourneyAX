@@ -225,12 +225,15 @@ async function main() {
       assert.deepEqual(await repo.findForProducts('test-tenant', ['NOPE']), []);
       assert.deepEqual(await repo.findForProducts('', ['P1']), []);
 
-      let asked: any;
-      const db = { collection: () => ({ find: (query: any, options: any) => { asked = { query, options }; return { limit: () => ({ toArray: async () => [{ title: 'From the database' }] }) }; } }) };
+      const asked: Record<string, any> = {};
+      const db = { collection: (name: string) => ({ find: (query: any, options: any) => { asked[name] = { query, options }; const cursor = { sort: () => cursor, limit: () => cursor, toArray: async () => name === 'product_guides' ? [{ title: 'From the database' }] : [] }; return cursor; } }) };
       const live = new ProductGuideRepository(db);
       assert.equal((await live.findForProducts('test-tenant', ['P1', 'P1', ' P2 ']))[0].title, 'From the database');
-      assert.deepEqual(asked.query, { tenantId: 'test-tenant', skus: { $in: ['P1', 'P2'] } }, 'every read names the tenant');
-      assert.deepEqual(asked.options.projection, { _id: 0 });
+      assert.deepEqual(asked.product_guides.query, { tenantId: 'test-tenant', skus: { $in: ['P1', 'P2'] } }, 'guide reads name the tenant');
+      assert.deepEqual(asked.product_guides.options.projection, { _id: 0 });
+      assert.match(JSON.stringify(asked.documents.query), /test-tenant/, 'indexed PDF reads also name the tenant');
+      assert.deepEqual(asked.documents.query.$and[1].$or[0], { 'metadata.sku': { $in: ['P1', 'P2'] } });
+      assert.equal(asked.documents.options.projection.embedding, undefined, 'vectors are not loaded into model context');
       const broken = new ProductGuideRepository({ collection: () => ({ find: () => { throw new Error('down'); } }) });
       assert.deepEqual(await broken.findForProducts('test-tenant', ['P1']), []);
     } finally {

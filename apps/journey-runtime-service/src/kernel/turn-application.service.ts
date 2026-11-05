@@ -28,6 +28,7 @@ import {
   type KnowledgeControlPlanePort,
 } from './knowledge-control-plane';
 import { AgentTurnLoop } from '../agent/agent-loop';
+import { MongoRetailIqIdentityPort, type RetailIqIdentityPort } from '../agent/iq-customer-identity';
 import { TurnTranscriptStore } from './transcript.store';
 import { KnowledgeGapRepository } from './knowledge-gap.repository';
 import { ProductGuideRepository } from './product-guide.repository';
@@ -38,6 +39,7 @@ import { CatalogueIndexRegistry, openCatalogueDatabase } from '../capabilities/c
 import { CompanyDirectory, defaultCompanyDirectory } from './company-directory';
 import { resolveCatalogMapping } from '@journeyax/business-pack';
 import { BranchStockCheckHandler } from '../capabilities/handlers/branch-stock-check.handler';
+import agentLoopDefaults from '../defaults/agent-loop.json';
 import { KnowledgeSearchHandler } from '../capabilities/handlers/knowledge-search.handler';
 import { resolveCustomerEventAction } from './customer-event-policy';
 
@@ -77,7 +79,13 @@ export class TurnApplicationService {
     public readonly productGuideRepo: ProductGuideRepository = new ProductGuideRepository(),
     public readonly contentPageRepo: ContentPageRepository = new ContentPageRepository(),
     public readonly formSubmissionRepo: FormSubmissionRepository = new FormSubmissionRepository(),
-    public readonly companyDirectory: CompanyDirectory = defaultCompanyDirectory()
+    public readonly companyDirectory: CompanyDirectory = defaultCompanyDirectory(),
+    public readonly scopedPorts?: {
+      iqClient?: import('@journeyax/jax-iq').IqClient;
+      retailIqIdentity?: RetailIqIdentityPort;
+      /** Explicit isolated draft stores; absent in the connected application. */
+      commerceStores?: { quotes: Map<string, any>; carts: Map<string, any>; products: readonly unknown[] };
+    }
   ) {
     if (this.approvalService && !this.approvalService.getOutboxRepo()) {
       this.approvalService.setOutboxRepo(this.outboxRepo);
@@ -94,7 +102,7 @@ export class TurnApplicationService {
     const tenants = (process.env.CATALOGUE_INDEX_WARM_TENANTS || '').split(',').map((tenant) => tenant.trim()).filter(Boolean);
     for (const tenantId of tenants) {
       try {
-        const release = await this.packRepo.loadActivePack(tenantId, 'production');
+        const release = await this.packRepo.loadActivePack(tenantId, (process.env.COMMERCE_ENVIRONMENT || 'production') as EnvironmentId);
         await registry.warm({ tenantId, mapping: resolveCatalogMapping((release as any).catalogMapping), getDb: () => openCatalogueDatabase() });
       } catch (err: any) {
         console.warn(`[CatalogueIndex] could not warm tenant=${tenantId}: ${err?.message || err}`);
@@ -102,7 +110,7 @@ export class TurnApplicationService {
     }
   }
 
-  private createWorkspacePins(release: BusinessPackRelease): WorkspaceReleasePins {
+  public createWorkspacePins(release: BusinessPackRelease): WorkspaceReleasePins {
     const verified = getVerifiedBusinessPackMetadata(release);
     const knowledge = release.knowledgeModel?.type === 'okf_release'
       ? release.knowledgeModel
@@ -337,11 +345,13 @@ export class TurnApplicationService {
 
       let agentStreamedText = '';
       let agentCancelled = false;
+      const streamingEnabled = release.extensions?.dialoguePolicy?.streaming !== false;
       const agentTimingSink = (event: string, data: any) => {
         if (agentCancelled) return;
         if (event === 'token') {
           const chunk = data?.delta !== undefined ? data.delta : (data?.token || '');
           agentStreamedText += chunk;
+          if (!streamingEnabled) return;
         }
         timingSink(event, data);
       };
@@ -372,12 +382,18 @@ export class TurnApplicationService {
             modelGateway: this.modelGateway,
             catalogSearchHandler,
             branchStockHandler,
-            knowledgeSearchHandler: new KnowledgeSearchHandler(
-              undefined,
-              this.knowledgeControlPlane ? (() => this.knowledgeControlPlane) as any : undefined
-            ),
+            knowledgeSearchHandler: (this.capabilityGateway?.getNativeHandler?.('knowledge.search') as KnowledgeSearchHandler) || new KnowledgeSearchHandler(),
             knowledgeControlPlane: this.knowledgeControlPlane,
             capabilityGateway: this.capabilityGateway,
+            iqClient: this.scopedPorts?.iqClient,
+            retailIqIdentity: this.scopedPorts ? this.scopedPorts.retailIqIdentity : new MongoRetailIqIdentityPort(async () => {
+              const uri = process.env.MONGODB_URI, database = process.env.MONGODB_DB_NAME;
+              if (!uri || !database) throw new Error('Explicit runtime identity storage is required.');
+              return (await connectToDatabase(uri, database)).db;
+            }),
+            inMemoryQuotes: this.scopedPorts?.commerceStores?.quotes,
+            inMemoryCarts: this.scopedPorts?.commerceStores?.carts,
+            inMemoryCommerceProducts: this.scopedPorts?.commerceStores?.products,
             approvalService: this.approvalService,
             executionRepo: this.executionRepo,
             transcriptStore: this.transcriptStore,
@@ -418,6 +434,10 @@ export class TurnApplicationService {
             thread: (outcome as any).thread,
           }
         );
+        if (!streamingEnabled && outcome.turnResult.assistantMessage) {
+          const message = typeof outcome.turnResult.assistantMessage === 'string' ? outcome.turnResult.assistantMessage : (outcome.turnResult.assistantMessage as any).content;
+          if (message) timingSink('token', { delta: message, token: message });
+        }
         this.streamCommittedFinalEvents(
           command,
           outcome.turnResult,
@@ -442,14 +462,11 @@ export class TurnApplicationService {
         agentCancelled = true;
         clearTimeout(timeoutHandle);
         console.warn(
-          `[AgentMode] Autonomous turn failed (${agentErr?.message || agentErr}). Initiating polite handoff resilience (never routing to rule-based engine).`
+          `[AgentMode] Autonomous turn failed (${agentErr?.message || agentErr}). Returning a failure response; no support notification is confirmed.`
         );
 
-        const politeMessage =
-          (release.conversationPolicy as any)?.handoffMessage ||
-          (release.extensions?.dialoguePolicy as any)?.handoffMessage ||
-          (release.extensions?.agentMode as any)?.handoffMessage ||
-          'I apologize, but I am unable to complete your request right now. A customer consultant has been notified and will assist you shortly.';
+        // No handoff capability ran in this catch path. A configured handoff promise is not a notification receipt.
+        const politeMessage = agentLoopDefaults.modelUnavailableMessage;
 
         if (agentStreamedText.length > 0) {
           timingSink('token', { replace: politeMessage, delta: politeMessage });
@@ -466,32 +483,24 @@ export class TurnApplicationService {
           release.extensions?.dialoguePolicy?.history
         );
 
-        const handoffDecision: Decision = {
+        const failureDecision: Decision = {
           decisionId: `dec_${Date.now()}`,
-          type: 'handoff',
+          type: 'fail',
           payload: { reason: agentErr?.message || 'Agent mode failure' },
           reason: agentErr?.message || 'Agent mode failure',
           createdAt: new Date().toISOString(),
         };
 
-        const handoffResult: TurnResult = {
+        const failureResult: TurnResult = {
           workspace,
-          decision: handoffDecision,
+          decision: failureDecision,
           assistantMessage: politeMessage,
           uiInstructions: [],
-          executedCapabilities: [
-            {
-              toolId: 'hand_off_to_human',
-              input: { reason: agentErr?.message },
-              output: { handedOff: true, reason: agentErr?.message },
-              status: 'success',
-              durationMs: 0,
-            } as any,
-          ],
+          executedCapabilities: [],
           trace: {
             stage: workspace.currentStage || 'unassigned',
             transitions: [],
-            decisionsMade: [handoffDecision],
+            decisionsMade: [failureDecision],
             agentMode: true,
             fallbackToRuleEngine: false,
             resilienceHandled: true,
@@ -505,20 +514,20 @@ export class TurnApplicationService {
           envId,
           tenantId,
           workspaceId,
-          handoffDecision.type,
+          failureDecision.type,
           command.correlationId
         );
 
         this.streamCommittedFinalEvents(
           command,
-          handoffResult,
-          handoffResult.executedCapabilities || [],
+          failureResult,
+          failureResult.executedCapabilities || [],
           timingSink,
           politeMessage
         );
 
         this.recordTurnTiming(
-          handoffResult,
+          failureResult,
           turnStartTime,
           timeToFirstEventMs,
           timeToFirstTextMs,
@@ -529,7 +538,7 @@ export class TurnApplicationService {
           command
         );
 
-        return handoffResult;
+        return failureResult;
       } finally {
         clearTimeout(timeoutHandle);
       }
@@ -677,7 +686,7 @@ export class TurnApplicationService {
       throw new Error(`[TurnApplicationService] MONGODB_URI is required for atomic transactions in ${envId}`);
     }
 
-    if (uri) {
+    if (uri && !isExplicitMemoryConfigured) {
       const { client } = await connectToDatabase(uri, process.env.MONGODB_DB_NAME || 'journeyx');
       const topologyType = (client as any)?.topology?.description?.type;
       const setName = (client as any)?.topology?.description?.setName;

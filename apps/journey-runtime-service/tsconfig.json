@@ -13,7 +13,8 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@journeyax/knowledge": ["../../packages/knowledge/src"]
+      "@journeyax/knowledge": ["../../packages/knowledge/src"],
+      "@journeyax/jax-iq": ["../../packages/jax-iq/src"]
     },
     "incremental": true,
     "skipLibCheck": true,

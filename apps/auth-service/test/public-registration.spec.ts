@@ -180,7 +180,10 @@ async function main() {
 
   await suite.test('the admin seed still makes a working platform admin, which the open route can never make, and a sign-up cannot take its place', async () => {
     const seedDb = new MemoryDb();
-    const plan = planAdminSeed({});
+    assert.throws(() => planAdminSeed({}), /credentials|ADMIN_EMAIL/);
+    assert.throws(() => planAdminSeed({ NODE_ENV: 'production', ALLOW_INSECURE_DEV_ADMIN: 'true' }), /credentials|ADMIN_EMAIL/);
+    assert.throws(() => planAdminSeed({ NODE_ENV: 'production', ADMIN_EMAIL: 'root@example.test', ADMIN_PASSWORD: 'admin' }), /credentials|ADMIN_EMAIL/);
+    const plan = planAdminSeed({ NODE_ENV: 'test', ALLOW_INSECURE_DEV_ADMIN: 'true' });
     assert.deepEqual(plan, { email: 'admin', password: 'admin', tenantId: 'platform' });
     assert.deepEqual(planAdminSeed({ ADMIN_EMAIL: 'Root@Example.com', ADMIN_PASSWORD: 'long-password', ADMIN_TENANT: 'Platform' }), { email: 'root@example.com', password: 'long-password', tenantId: 'platform' });
     await applyAdminSeed(seedDb as any, plan, quickHash);

@@ -1,5 +1,5 @@
 import { NativeCapabilityHandler, ExecutionContext } from '@journeyax/capability-sdk';
-import { connectToDatabase, COLLECTION_PRODUCTS, COLLECTION_OKF_RELEASES } from '@journeyax/database';
+import { connectToDatabase, COLLECTION_PRODUCTS } from '@journeyax/database';
 import {
   buildCatalogueBaseFilter,
   buildCategoryScopeClauses,
@@ -22,8 +22,9 @@ export type VectorSearchFunction = (
     categoryIds?: string[];
     categoryPaths?: string[][];
     excludeCategoryIds?: string[];
+    signal?: AbortSignal;
   }
-) => Promise<Array<{ doc: any; score: number }>>;
+) => Promise<Array<{ doc: any; score: number; candidateId?: string }>>;
 
 export interface CatalogSearchInput {
   isAgentMode?: boolean;
@@ -35,6 +36,8 @@ export interface CatalogSearchInput {
   query?: string;
   /** One product by its exact identifier (any of the mapping's identifier fields): nothing else is returned and no text is searched. */
   sku?: string;
+  /** Exact selected product title; never broadens into a keyword or semantic search. */
+  exactTitle?: string;
   category?: string;
   categoryIds?: string[];
   /** Hierarchy scopes (department → group → category); a product matches when its category path starts with one. */
@@ -60,7 +63,6 @@ export interface CatalogSearchInput {
    */
   scopeAuthoritative?: boolean;
   glossary?: Record<string, string[]>;
-  queryEmbedding?: number[];
   vectorSearcher?: VectorSearchFunction;
   groups?: Array<{
     conceptId: string;
@@ -460,7 +462,7 @@ function scoreDocumentRelevance(doc: any, tokens: QueryToken[], mapping: Resolve
 }
 
 export class CatalogSearchHandler implements NativeCapabilityHandler {
-  private readonly okfConceptCache = new Map<string, Array<{ name?: string; synonyms?: string[]; customerPhrases?: string[] }>>();
+
   /** The distinct category texts a tenant's catalogue holds, per field (a few hundred values, read from an index). */
   private readonly categoryValueCache = new Map<string, { at: number; values: Record<string, string[]> }>();
   private static readonly CATEGORY_VALUE_TTL_MS = 10 * 60 * 1000;
@@ -482,6 +484,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     /** Injected database (the runtime's own handle); falls back to MONGODB_URI when absent. */
     private readonly dbProvider?: () => Promise<any>,
     private readonly vectorSearcher?: VectorSearchFunction,
+    private readonly useSharedIndex = true,
   ) {}
 
   private readonly indexCollections = new WeakMap<any[], MemoryProductCollection>();
@@ -495,7 +498,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
 
   /** The tenant's in-memory catalogue copy as a collection, when CATALOGUE_INDEX is on and the copy is loaded; otherwise undefined. */
   private indexedProducts(tenantId: string, mapping: ResolvedCatalogMapping): MemoryProductCollection | undefined {
-    if (this.inMemoryProducts) return undefined;
+    if (this.inMemoryProducts || !this.useSharedIndex) return undefined;
     const docs = CatalogueIndexRegistry.shared().productsFor({ tenantId, mapping, getDb: () => openCatalogueDatabase(this.dbProvider) });
     if (!docs) return undefined;
     let collection = this.indexCollections.get(docs);
@@ -624,6 +627,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     const tenantId = ctx.tenantId;
     const query = input.query || '';
     const exactId = typeof input.sku === 'string' ? input.sku.trim() : '';
+    const exactTitle = typeof input.exactTitle === 'string' ? input.exactTitle.trim() : '';
+    const titleMatch = exactTitle ? new RegExp(`^${escapeRegex(exactTitle).replace(/\s+/g, '\\s+')}$`, 'i') : undefined;
     let servedFromIndex = false;
     const category = input.category || input.productType || '';
     const categoryIds = Array.isArray(input.categoryIds) ? input.categoryIds.filter(Boolean) : [];
@@ -645,27 +650,6 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           : (await connectToDatabase(process.env.MONGODB_URI!, process.env.MONGODB_DB_NAME || 'journeyx')).db;
       } catch {
         // Database connection error handled below if needed
-      }
-    }
-
-    if (!okfConcepts && db && (ctx as any).release?.knowledgeModel?.type === 'okf_release') {
-      const ref = (ctx as any).release.knowledgeModel;
-      const cacheKey = `${tenantId}:${ref.releaseId}`;
-      if (this.okfConceptCache.has(cacheKey)) {
-        okfConcepts = this.okfConceptCache.get(cacheKey);
-      } else {
-        try {
-          const row = await db.collection(COLLECTION_OKF_RELEASES).findOne({
-            tenantId,
-            releaseId: ref.releaseId,
-          });
-          if (row?.content?.concepts) {
-            okfConcepts = row.content.concepts;
-            this.okfConceptCache.set(cacheKey, okfConcepts);
-          }
-        } catch {
-          // Non-blocking if collection lookup fails
-        }
       }
     }
 
@@ -763,6 +747,8 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
       return matchers.length === 0 ? haystack.includes(value.toLowerCase()) : matchers.every((rx) => rx.test(haystack));
     };
 
+    let semanticLookup: ReturnType<VectorSearchFunction> | undefined;
+    let semanticUsed = false;
     const fetchCandidates = async (
       activeSpecs?: StructuredSearchSpecs,
       activeCategory?: string,
@@ -812,6 +798,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             if (activeCategory && !typeMatches(activeCategory, textOf(p, typePaths)) && !typeMatches(activeCategory, textOf(p, mapping.titlePaths))) return false;
             if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
             if (exactId && !mapping.identifierPaths.some((path) => String(readPath(p, path) ?? '') === exactId)) return false;
+            if (titleMatch && !mapping.titlePaths.some(path => titleMatch.test(String(readPath(p, path) ?? '')))) return false;
 
             if (activeSpecs?.brand) {
               const cleanBrand = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -900,6 +887,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             if (activeCategory && !typeMatches(activeCategory, textOf(p, typePaths))) return false;
             if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, p)) return false;
             if (exactId && !mapping.identifierPaths.some((path) => String(readPath(p, path) ?? '') === exactId)) return false;
+            if (titleMatch && !mapping.titlePaths.some(path => titleMatch.test(String(readPath(p, path) ?? '')))) return false;
             if (query && !exactId) {
               const text = textOf(p, mapping.searchPaths);
               if (tokens.length > 0) {
@@ -930,6 +918,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           }
 
           const { filter, and } = buildCatalogueBaseFilter(mapping, tenantId);
+          if (titleMatch) and.push({ $or: mapping.titlePaths.map(path => ({ [path]: titleMatch })) });
           const products = this.productCollection(db, this.indexedProducts(tenantId, mapping), () => { servedFromIndex = true; });
           const anyOf = (paths: string[], matcher: any) => paths.map((path) => ({ [path]: matcher }));
           const strongSearchPaths = (): string[] => [...new Set([
@@ -1068,7 +1057,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
                 if (named.length > 0) shelfClauses = [{ $or: named.map((entry) => ({ [entry.field]: { $in: entry.values } })) }];
               }
               const shelfLimit = mapping.candidateLimit * 4;
-              const shelf = shelfClauses
+              const shelf: any[] = shelfClauses
                 ? await runFind(shelfClauses, shelfLimit, and.filter((clause) => clause !== typeClause))
                 : await runFind([], shelfLimit);
               const wordMatchers = [...new Set(keywordList
@@ -1163,45 +1152,63 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
         }
       }
 
+      // Catalogue aliases are alternatives for locating records, not permission to accept contradictory ownership.
+      docs = docs.filter(doc => {
+        const owners = mapping.tenantFields.map(path => readPath(doc, path)).filter(owner => owner != null);
+        return (owners.length > 0 || !!this.inMemoryProducts) && owners.every(owner => owner === tenantId);
+      });
+
       // Hybrid retrieval: Atlas vector search through existing product-service logic or equivalent, plus keyword search, then rerank
-      let vectorResults: Array<{ doc: any; score: number }> = [];
+      let vectorResults: Array<{ doc: any; score: number; candidateId?: string }> = [];
       const searcher = input.vectorSearcher || (ctx as any).vectorSearcher || this.vectorSearcher;
-      if (searcher && query) {
+      if (searcher && query && !exactId) {
         try {
-          vectorResults = await searcher(query, {
+          vectorResults = await (semanticLookup ??= searcher(query, {
             tenantId,
             limit: limit * 2,
             categoryIds,
             categoryPaths,
             excludeCategoryIds,
-          });
+            signal: (ctx as any).signal,
+          }));
+          const ids = [...new Set(vectorResults.flatMap(hit => hit.candidateId ? [hit.candidateId] : []))];
+          if (ids.length) {
+            const rows = this.inMemoryProducts ?? (db ? await this.productCollection(db, this.indexedProducts(tenantId, mapping)).find({ $and: [buildCatalogueBaseFilter(mapping, tenantId).filter, { $or: mapping.identifierPaths.map(path => ({ [path]: { $in: ids } })) }] }).limit(ids.length).toArray() : []);
+            vectorResults = vectorResults.flatMap(hit => {
+              if (!hit.candidateId) return [hit];
+              const doc = rows.find((row: any) => mapping.identifierPaths.some(path => String(readPath(row, path) ?? '') === hit.candidateId));
+              return doc ? [{ ...hit, doc }] : [];
+            });
+          }
         } catch (err: any) {
           console.warn('[CatalogSearchHandler] Vector search failed, falling back to keyword only:', err.message);
         }
-      } else if (db && input.queryEmbedding && query) {
-        try {
-          const vectorPipeline: object[] = [
-            {
-              $vectorSearch: {
-                index: 'vector_index',
-                path: 'embedding',
-                queryVector: input.queryEmbedding,
-                numCandidates: Math.max(limit * 3, 20),
-                limit: limit * 2,
-              },
-            },
-            { $addFields: { score: { $meta: 'vectorSearchScore' } } },
-            { $project: { embedding: 0 } },
-          ];
-          const rawVec = await db.collection(COLLECTION_PRODUCTS).aggregate(vectorPipeline).toArray();
-          vectorResults = rawVec.map((d: any) => ({ doc: d, score: d.score || 0 }));
-        } catch {
-          // Fallback silently when vector index is not configured
-        }
       }
+
+      // A semantic index (or an injected search port) supplies candidates, not authority.
+      // Reapply ownership and catalogue scope before merging: a vector query may have
+      // searched a wider corpus, and normalisation below deliberately drops ownership.
+      vectorResults = vectorResults.filter(({ doc }) => {
+        if (!doc || typeof doc !== 'object') return false;
+        const owners = mapping.tenantFields.map((field) => readPath(doc, field)).filter((owner) => owner !== undefined && owner !== null);
+        if (owners.length === 0 || owners.some((owner) => owner !== tenantId)) return false;
+        if (classifyAvailability(doc, mapping) === 'excluded') return false;
+        if (!categoryScopeMatches(mapping, { categoryIds, categoryPaths, excludeCategoryIds }, doc)) return false;
+        if (activeCategory && !typeMatches(activeCategory, textOf(doc, typePaths)) && !typeMatches(activeCategory, textOf(doc, mapping.titlePaths))) return false;
+        if (exactId && !mapping.identifierPaths.some((field) => String(readPath(doc, field) ?? '') === exactId)) return false;
+        if (titleMatch && !mapping.titlePaths.some(path => titleMatch.test(String(readPath(doc, path) ?? '')))) return false;
+        if (activeSpecs?.brand) {
+          const clean = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const wanted = clean(activeSpecs.brand);
+          const actual = [textOf(doc, mapping.brandPaths), String(readAttribute(doc, 'brand', mapping) ?? '')];
+          if (!actual.some((value) => clean(value).includes(wanted))) return false;
+        }
+        return true;
+      });
 
       // Reciprocal Rank Fusion (RRF) reranking when vector results exist
       if (vectorResults.length > 0) {
+        semanticUsed = true;
         const docMap = new Map<string, any>();
         const kwRankMap = new Map<string, number>();
         const vecRankMap = new Map<string, number>();
@@ -1275,6 +1282,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
           return {
             ...normalized.attributes,
             sku: normalized.sku,
+            integrity: normalized.integrity,
             title: normalized.title,
             name: normalized.title,
             brand: doc.brand || doc.Brand || readAttribute(doc, 'brand', mapping) || (normalized.attributes as any)?.brand || (normalized.attributes as any)?.Brand || undefined,
@@ -1287,6 +1295,10 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
             currencyUndeclared: normalized.currencyUndeclared,
             inStock: normalized.inStock,
             attributes: normalized.attributes,
+            specs: normalized.specs,
+            sourceUrl: normalized.sourceUrl,
+            documents: normalized.documents,
+            warrantyDuration: normalized.warrantyDuration,
             availableQuantity: normalized.availableQuantity,
             certifications: normalized.certifications,
             imageUrl: normalized.imageUrl,
@@ -1483,6 +1495,7 @@ export class CatalogSearchHandler implements NativeCapabilityHandler {
     return {
       items,
       total: items.length,
+      retrieval: semanticUsed ? 'hybrid' : 'keyword',
       ...(relaxedConstraints.length > 0 ? { relaxedConstraints } : {}),
       ...(stockFilterDropped ? { stockFilterDropped: true } : {}),
       ...(servedFromIndex ? { source: 'index' } : {}),

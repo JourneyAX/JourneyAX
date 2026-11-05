@@ -7,6 +7,7 @@ import { BusinessPackPublicationService } from './business-pack-publication.serv
 import { PublicationGateValidator } from './publication-gate-validator';
 import { OkfAuthoringService } from './okf-authoring.service';
 import { KnowledgeInsightService } from './knowledge-insight.service';
+import { createIsolatedEvaluationRuntime } from '../../journey-runtime-service/src/evaluation/isolated-runtime';
 
 @Module({
   controllers: [ProjectController],
@@ -14,7 +15,7 @@ import { KnowledgeInsightService } from './knowledge-insight.service';
     ProjectService,
     CapabilityRegistryService,
     JourneyConfigurationService,
-    PublicationGateValidator,
+    { provide: PublicationGateValidator, useFactory: () => new PublicationGateValidator(undefined, undefined, createIsolatedEvaluationRuntime) },
     {
       provide: OkfAuthoringService,
       useFactory: (projectService: ProjectService) => new OkfAuthoringService(

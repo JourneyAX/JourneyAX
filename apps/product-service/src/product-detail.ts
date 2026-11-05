@@ -15,6 +15,7 @@ export interface ProductDetailRelated {
 }
 
 export interface ProductDetail {
+  integrity?: import('@journeyax/business-pack').CatalogIntegrity;
   sku: string;
   title: string;
   brand?: string;
@@ -32,7 +33,7 @@ export interface ProductDetail {
   /** Similar products and other sizes of the same line. */
   related: ProductDetailRelated[];
   /** Branch availability as the record states it. `inStock` is true when at least one branch has it. */
-  availability?: { label: string; inStock: boolean; branchesWithStock: number; branchCount: number };
+  availability?: { label: string; inStock?: boolean; source: 'catalogue'; branchChecked: false; branchesWithStock: number; branchCount: number };
   productUrl?: string;
   /** The catalogue's own rating, only when the record carries one (a few products do). */
   rating?: { value: number; count?: number };
@@ -45,18 +46,8 @@ const MAX_SPECS = 12;
 const MAX_DOCUMENTS = 6;
 export const MAX_RELATED = 4;
 
-/** Measure codes (UN/CEFACT Recommendation 20) as they appear after a number in catalogue specs, spelt out for a customer. */
-const MEASURE_UNITS: Record<string, string> = {
-  MMT: 'mm', CMT: 'cm', MTR: 'm', KMT: 'km', INH: 'in', FOT: 'ft', YRD: 'yd',
-  MMK: 'mm²', CMK: 'cm²', MTK: 'm²', MMQ: 'mm³', CMQ: 'cm³', MTQ: 'm³',
-  MLT: 'mL', LTR: 'L', GLL: 'gal',
-  GRM: 'g', KGM: 'kg', TNE: 't', LBR: 'lb', ONZ: 'oz',
-  ANN: 'years', MON: 'months', DAY: 'days', HUR: 'hours', MIN: 'min', SEC: 's',
-  CEL: '°C', WTT: 'W', KWT: 'kW', VLT: 'V', AMP: 'A', BAR: 'bar', PAL: 'Pa', KPA: 'kPa', NEW: 'N',
-  PCE: 'pieces', SET: 'set', PR: 'pairs', P1: '%',
-};
-
-const MEASURE = /^(-?\d+(?:[.,]\d+)?)\s*([A-Z0-9]{2,3})$/;
+import { humanizeMeasure as displayMeasure } from '@journeyax/shared-types';
+import { normalizeCatalogProduct, readPath, resolveCatalogMapping, type ResolvedCatalogMapping } from '@journeyax/business-pack';
 
 const stripMarkup = (text: unknown): string =>
   String(text ?? '')
@@ -70,21 +61,13 @@ const stripMarkup = (text: unknown): string =>
     .replace(/&gt;/gi, '>');
 
 const tidy = (text: unknown): string => stripMarkup(text).replace(/\s+/g, ' ').trim();
+export function humanizeMeasure(value: unknown): string { return displayMeasure(tidy(value)); }
 
 function clip(text: string, max: number): string {
   if (text.length <= max) return text;
   const cut = text.slice(0, max);
   const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '));
   return `${(stop > max * 0.5 ? cut.slice(0, stop + 1) : cut.slice(0, cut.lastIndexOf(' ')).replace(/[,;:\s]+$/, ''))}…`;
-}
-
-/** "120 CMT" becomes "120 cm"; a value that is not a number and a known code is returned as written. */
-export function humanizeMeasure(value: unknown): string {
-  const raw = tidy(value);
-  const match = raw.match(MEASURE);
-  if (!match) return raw;
-  const unit = MEASURE_UNITS[match[2]];
-  return unit ? `${match[1]} ${unit}` : raw;
 }
 
 const isHttp = (url: unknown): url is string => typeof url === 'string' && /^https?:\/\//i.test(url.trim());
@@ -100,17 +83,19 @@ function documentTitle(doc: any): string {
   }
 }
 
-export function toRelated(doc: any): ProductDetailRelated | undefined {
-  const sku = String(doc?.parentSku ?? doc?.sku ?? '').trim();
-  const title = tidy(doc?.name ?? doc?.title);
+export function toRelated(doc: any, mapping = resolveCatalogMapping()): ProductDetailRelated | undefined {
+  const normalized = normalizeCatalogProduct(doc, mapping, { title: '', category: '' });
+  if (!normalized.integrity.identityConsistent || normalized.availability === 'excluded') return undefined;
+  const sku = normalized.sku.trim();
+  const title = tidy(normalized.title);
   if (!sku || !title) return undefined;
-  const amount = doc?.priceUSD?.min ?? doc?.price?.amount ?? (typeof doc?.price === 'number' ? doc.price : undefined);
+  const amount = normalized.price;
   return {
     sku,
     title,
     price: typeof amount === 'number' ? amount : null,
-    ...(doc?.currency ? { currency: String(doc.currency) } : {}),
-    imageUrl: isHttp(doc?.imageUrl) ? doc.imageUrl : null,
+    ...(normalized.currency ? { currency: normalized.currency } : {}),
+    imageUrl: isHttp(normalized.imageUrl) ? normalized.imageUrl : null,
   };
 }
 
@@ -118,7 +103,14 @@ export function toRelated(doc: any): ProductDetailRelated | undefined {
 export const isRetired = (doc: any): boolean =>
   doc?.discontinued === true || doc?.delisted === true || ['discontinued', 'delisted', 'retired'].includes(String(doc?.status || '').toLowerCase());
 
-export function buildProductDetail(doc: any, linked: { related?: any[]; suggested?: any[] } = {}): ProductDetail {
+export function buildProductDetail(input: any, linked: { related?: any[]; suggested?: any[] } = {}, mapping: ResolvedCatalogMapping = resolveCatalogMapping()): ProductDetail {
+  const canonical = normalizeCatalogProduct(input, mapping, { title: '', category: '' });
+  if (!canonical.integrity.identityConsistent) return { sku: canonical.sku, title: canonical.sku, integrity: canonical.integrity, price: null, features: [], specs: [], documents: [], suggested: [], related: [] };
+  const doc = { ...input, parentSku: canonical.sku, name: canonical.title, description: canonical.description, narrative: undefined, priceUSD: undefined, price: canonical.price, currency: canonical.currency,
+    brand: mapping.brandPaths.map(path => readPath(input, path)).find(value => typeof value === 'string'), brandCode: undefined, category: canonical.category, categoryPath: canonical.categoryTrail,
+    rating: canonical.rating === undefined ? undefined : { value: canonical.rating, count: canonical.ratingCount },
+    stock: canonical.branchesTotal === undefined || canonical.branchesAvailable === undefined ? undefined : { branchCount: canonical.branchesTotal, availableBranchCount: canonical.branchesAvailable },
+    imageUrl: canonical.imageUrl, specs: canonical.specs, documents: canonical.documents, featuresList: [...canonical.highlights, ...canonical.cautions] };
   const amount = doc?.priceUSD?.min ?? doc?.price?.amount ?? (typeof doc?.price === 'number' ? doc.price : undefined);
 
   const features: string[] = [];
@@ -147,11 +139,11 @@ export function buildProductDetail(doc: any, linked: { related?: any[]; suggeste
   for (const entry of Array.isArray(doc?.documents) ? doc.documents : []) {
     if (!entry || !isHttp(entry.url)) continue;
     // A link to the maker's home page is not a document a customer can read about this product.
-    if (String(entry.type || '').toLowerCase() === 'supplier') continue;
+    if (String(entry.kind || entry.type || '').toLowerCase() === 'supplier') continue;
     const url = entry.url.trim();
     if (urls.has(url)) continue;
     urls.add(url);
-    documents.push({ title: documentTitle(entry), url, ...(entry.type ? { kind: String(entry.type) } : {}) });
+    documents.push({ title: documentTitle(entry), url, ...(entry.kind || entry.type ? { kind: String(entry.kind || entry.type) } : {}) });
     if (documents.length >= MAX_DOCUMENTS) break;
   }
 
@@ -162,7 +154,7 @@ export function buildProductDetail(doc: any, linked: { related?: any[]; suggeste
     const out: ProductDetailRelated[] = [];
     for (const candidate of docs) {
       if (isRetired(candidate)) continue;
-      const item = toRelated(candidate);
+      const item = toRelated(candidate, mapping);
       if (!item || shown.has(item.sku)) continue;
       shown.add(item.sku);
       out.push(item);
@@ -179,12 +171,10 @@ export function buildProductDetail(doc: any, linked: { related?: any[]; suggeste
     const branchCount = Number(stock.branchCount);
     const branchesWithStock = Number(stock.availableBranchCount);
     availability = {
-      inStock: branchesWithStock > 0,
+      source: 'catalogue', branchChecked: false,
       branchesWithStock,
       branchCount,
-      label: branchesWithStock > 0
-        ? `Available at ${branchesWithStock} of ${branchCount} branches`
-        : `Not showing as available at any of ${branchCount} branches`,
+      label: `Catalogue lists ${branchesWithStock} of ${branchCount} branches; current stock not checked`,
     };
   }
 
@@ -194,7 +184,7 @@ export function buildProductDetail(doc: any, linked: { related?: any[]; suggeste
   if (firstFeature !== undefined) fullDescription = fullDescription.slice(0, firstFeature).replace(/[\s,;:–-]+$/, '').trim();
   const description = clip(fullDescription, MAX_DESCRIPTION_CHARS);
   const path = Array.isArray(doc?.categoryPath) ? doc.categoryPath.map(String) : undefined;
-  const productUrl = [doc?.web?.productUrl, doc?.url].find(isHttp);
+  const productUrl = canonical.sourceUrl;
   const ratingValue = Number(doc?.rating?.value);
   const ratingCount = Number(doc?.rating?.count);
   const rating: ProductDetail['rating'] = Number.isFinite(ratingValue) && ratingValue > 0 && ratingValue <= 5
@@ -203,6 +193,7 @@ export function buildProductDetail(doc: any, linked: { related?: any[]; suggeste
 
   return {
     sku: self,
+    integrity: canonical.integrity,
     title: tidy(doc?.name ?? doc?.title) || self,
     ...(tidy(doc?.brand ?? doc?.brandCode) ? { brand: tidy(doc?.brand ?? doc?.brandCode) } : {}),
     ...(doc?.category || path?.length ? { category: String(doc?.category || path![path!.length - 1]) } : {}),

@@ -11,9 +11,11 @@ import {
   ForbiddenException,
   BadRequestException,
   Inject,
+  UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
+import { AnalyticsAccessGuard } from './access.guard';
 import {
   AnalyticsEventRecord,
 } from '@journeyax/database';
@@ -55,6 +57,7 @@ function verifyPermission(permissions: string | undefined, userRole: string | un
  * The gateway injects x-user-permissions, x-user-email, x-tenant-id, and x-user-role.
  */
 @Controller('api/v1/analytics')
+@UseGuards(AnalyticsAccessGuard)
 export class AnalyticsController {
   constructor(@Inject(AnalyticsService) private readonly analyticsService: AnalyticsService) {}
 

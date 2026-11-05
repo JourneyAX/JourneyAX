@@ -1,9 +1,10 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query,
-  NotFoundException, BadRequestException, Inject,
+  NotFoundException, BadRequestException, Inject, UseGuards,
 } from '@nestjs/common';
 import { OrganizationService } from './organization.service';
 import { CreateOrgDto } from './organization.types';
+import { OrganizationAccessGuard } from './access.guard';
 
 /**
  * OrganizationController
@@ -25,6 +26,7 @@ import { CreateOrgDto } from './organization.types';
  *   GET    /api/v1/organizations/health
  */
 @Controller('api/v1/organizations')
+@UseGuards(OrganizationAccessGuard)
 export class OrganizationController {
   constructor(
     @Inject(OrganizationService)

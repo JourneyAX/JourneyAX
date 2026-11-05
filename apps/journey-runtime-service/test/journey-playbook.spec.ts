@@ -20,6 +20,7 @@ import { deriveJourneyChecklist } from '../src/agent/journey-checklist';
 import { buildPlaceMakersStack, TENANT as PM_TENANT, ENVIRONMENT as PM_ENV } from './helpers/placemakers-stack';
 import { buildAbercrombieStack, ABERCROMBIE_TENANT, ABERCROMBIE_ENV } from './helpers/abercrombie-stack';
 import { readHistory } from '../src/conversation/history';
+import { ModelGateway } from '../src/kernel/model.gateway';
 
 test('P4: Journey as data, not code', async (t) => {
   await t.test('1. Schema & Normalization: JourneyPlaybookSchema and AgentDefinitionSchema', () => {
@@ -239,91 +240,29 @@ test('P4: Journey as data, not code', async (t) => {
     assert.match(derived.nextStep, /Continue with: Quote Finalization/i);
   });
 
-  await t.test('5. Multi-Tenant Fixture 1 (PlaceMakers): Selection event triggers playbook follow-up and checklist inspection', async () => {
-    const stack = await buildPlaceMakersStack({ agentMode: true });
-    const service = stack.serviceFor({ servePacks: true });
-    const workspaceId = 'ws-pm-playbook';
-
-    // Step A: Customer performs addToQuote action event
-    const turn1 = await service.executeTurn({
-      tenantId: PM_TENANT,
-      environmentId: PM_ENV,
-      workspaceId,
-      turnId: 'turn-pm-pb-1',
-      customerEvent: {
-        type: 'addToQuote',
-        payload: {
-          sku: '1000100',
-          title: '100x50 H1.2 Framing Timber 4.8m',
-          quantity: 20,
-        },
-        sourceCard: {
-          cardType: 'products',
-        },
-      },
-    });
-
-    assert.ok(turn1.assistantMessage && turn1.assistantMessage.length > 0);
-    assert.match(turn1.assistantMessage!, /added.*quote/i, 'agent acknowledges adding product to quote');
-    assert.match(turn1.assistantMessage!, /product\(s\) selected/i, 'reports checklist progress');
-
-    // Step B: Follow-up question asking for progress/checklist
-    const turn2 = await service.executeTurn({
-      tenantId: PM_TENANT,
-      environmentId: PM_ENV,
-      workspaceId,
-      turnId: 'turn-pm-pb-2',
-      message: 'What is our current project progress and what should we do next?',
-    });
-
-    assert.ok(turn2.assistantMessage && turn2.assistantMessage.length > 0);
-    assert.match(turn2.assistantMessage!, /product\(s\) selected/i, 'checklist confirms items selected');
-    assert.match(turn2.assistantMessage!, /continue with/i, 'provides clear next stage guidance');
-
-    // Verify workspace facts maintain customer events and history turns
-    const history = readHistory(turn2.workspace.facts);
-    assert.ok(history.length >= 2, 'conversation history recorded across turns');
-  });
-
-  await t.test('6. Multi-Tenant Fixture 2 (Abercrombie): Apparel selection event triggers playbook follow-up with distinct stages', async () => {
-    const stack = await buildAbercrombieStack();
-    const service = stack.serviceFor();
-    const workspaceId = 'ws-anf-playbook';
-
-    // Step A: Customer performs addToCart action event
-    const turn1 = await service.executeTurn({
-      tenantId: ABERCROMBIE_TENANT,
-      environmentId: ABERCROMBIE_ENV,
-      workspaceId,
-      turnId: 'turn-anf-pb-1',
-      customerEvent: {
-        type: 'addToCart',
-        payload: {
-          sku: 'SKU-HOODIE-1',
-          title: 'Essential Popover Hoodie',
-          quantity: 1,
-        },
-        sourceCard: {
-          cardType: 'products',
-        },
-      },
-    });
-
-    assert.ok(turn1.assistantMessage && turn1.assistantMessage.length > 0);
-    assert.match(turn1.assistantMessage!, /added.*cart/i, 'agent acknowledges adding item to bag/cart');
-    assert.match(turn1.assistantMessage!, /product\(s\) selected/i, 'derives checklist progress from event');
-
-    // Step B: Ask for checklist progress
-    const turn2 = await service.executeTurn({
-      tenantId: ABERCROMBIE_TENANT,
-      environmentId: ABERCROMBIE_ENV,
-      workspaceId,
-      turnId: 'turn-anf-pb-2',
-      message: 'Can you show me my shopping progress and checklist?',
-    });
-
-    assert.ok(turn2.assistantMessage && turn2.assistantMessage.length > 0);
-    assert.match(turn2.assistantMessage!, /progress/i, 'assistant replies with progress details');
-    assert.match(turn2.assistantMessage!, /continue with/i, 'assistant gives clear next step guidance');
+  for (const input of [
+    { name: 'PlaceMakers', tenant: PM_TENANT, environment: PM_ENV, build: () => buildPlaceMakersStack({ agentMode: true }), event: 'addToQuote', sku: '1000100' },
+    { name: 'Abercrombie', tenant: ABERCROMBIE_TENANT, environment: ABERCROMBIE_ENV, build: buildAbercrombieStack, event: 'addToCart', sku: 'SKU-HOODIE-1' },
+  ]) await t.test(`${input.name}: a browser selection retains context but cannot fabricate a cart receipt or require a stage follow-up`, async () => {
+    const stack = await input.build();
+    const model = new ModelGateway();
+    const reply = 'I can review that selection with you. What would you like to check?';
+    const requests: any[] = [];
+    model.mockAgentExecutor = async (request, onDelta) => {
+      requests.push(request);
+      if (request.messages.some(message => typeof message.content === 'string' && message.content.includes('Answer with yes or no'))) return { content: 'no', toolCalls: [] };
+      onDelta?.(reply);
+      return { content: reply, toolCalls: [] };
+    };
+    const service = (stack.serviceFor as any)({ servePacks: true, modelGateway: model });
+    const workspaceId = `selection-${input.tenant}`;
+    const turn = await service.executeTurn({ tenantId: input.tenant, environmentId: input.environment, workspaceId, sessionId: workspaceId, turnId: 'selection-1', customerEvent: { type: input.event, payload: { sku: input.sku, quantity: 1 }, sourceCard: { cardType: 'products' } } });
+    assert.ok(requests.length > 0, 'the model chooses the conversational response');
+    assert.equal(turn.assistantMessage, reply);
+    assert.equal(turn.workspace.facts.last_customer_event.value.payload.sku, input.sku);
+    assert.equal(turn.workspace.facts.commerce_cart, undefined, 'an untrusted browser event is not a committed cart');
+    assert.equal(turn.workspace.facts.support_requests, undefined);
+    assert.ok(readHistory(turn.workspace.facts).length > 0, 'selection context persists for follow-up');
+    assert.doesNotMatch(turn.assistantMessage || '', /added.*(?:quote|cart)|now continue with|product\(s\) selected/i);
   });
 });

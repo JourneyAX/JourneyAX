@@ -4,5 +4,7 @@
     "thinBelowChars": 120,
     "minChars": 40,
     "removedShareAbove": 0.5
-  }
+  },
+  "modelUnavailableMessage": "I could not complete that request just now. Please try again.",
+  "supportReceiptMessage": "Support request {ticketId} has been created."
 }

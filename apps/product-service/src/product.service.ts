@@ -1,4 +1,5 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, HttpException, HttpStatus } from '@nestjs/common';
+import { BusinessPackLoader, getVerifiedBusinessPackMetadata, resolveCatalogMapping, normalizeCatalogProduct, buildCatalogueIdentityFilter, readPath, type BusinessPackRelease } from '@journeyax/business-pack';
 import { connectToDatabase } from '@journeyax/database';
 import { getOrSet, cacheKey, invalidateProject, MAX_TTL_SECONDS } from '@journeyax/cache';
 import { createHash } from 'crypto';
@@ -100,6 +101,20 @@ interface SearchResult {
 export class ProductService {
   private db: Db | null = null;
   private openai: OpenAI | null = null;
+  private catalogueLoader?: BusinessPackLoader;
+
+  private async cataloguePack(tenantId: string): Promise<BusinessPackRelease> {
+    const environment = process.env.COMMERCE_ENVIRONMENT || process.env.RUNTIME_ENVIRONMENT || 'production';
+    if (!['dev', 'test', 'staging', 'production'].includes(environment)) throw new HttpException('Catalogue environment is not configured.', HttpStatus.SERVICE_UNAVAILABLE);
+    if (!this.catalogueLoader) {
+      if (!process.env.MONGODB_URI) throw new HttpException('Published catalogue configuration is unavailable.', HttpStatus.SERVICE_UNAVAILABLE);
+      const { db } = await connectToDatabase(process.env.MONGODB_URI, process.env.MONGODB_DB_NAME || DB_NAME);
+      this.catalogueLoader = new BusinessPackLoader({ db });
+    }
+    this.catalogueLoader.invalidate(tenantId, environment as any);
+    try { return await this.catalogueLoader.loadPublished(tenantId, environment as any); }
+    catch { throw new HttpException('Published catalogue configuration is unavailable.', HttpStatus.SERVICE_UNAVAILABLE); }
+  }
 
   /* RenderService composes texture URLs and holds no state or dependency of its
    * own, so injecting it here introduces no cycle. Ink resolution needs it. */
@@ -155,6 +170,23 @@ export class ProductService {
       console.warn(`  [ProductService:Timing] ⚠️ Embedding failed after ${tEmbed}ms, using fallback:`, err);
       return [];
     }
+  }
+
+  /** Semantic discovery returns identifiers only. Catalogue records remain the authority for products, prices and lifecycle. */
+  async semanticProductCandidates(query: string, tenantId: string, limit: number): Promise<{ candidates: Array<{ sku: string; score: number }>; method: 'vector' | 'unavailable' }> {
+    const embedding = await this.embedText(query);
+    if (!embedding.length) return { candidates: [], method: 'unavailable' };
+    const results = await this.vectorSearch(embedding, { query, brand: tenantId, type: 'product', limit });
+    const candidates = new Map<string, number>();
+    for (const { document, score } of results) {
+      // Recheck ownership even when the vector prefilter was applied. Contradictory ownership is not accepted.
+      const owners = [document.metadata?.brand, document.brand, (document as any).projectId].filter(value => value != null);
+      if (!owners.length || owners.some(value => value !== tenantId)) continue;
+      const sku = document.metadata?.sku ?? (document.metadata as any)?.specs?.['Item Code'];
+      if (typeof sku !== 'string' || !sku.trim() || sku.length > 200 || !Number.isFinite(score)) continue;
+      candidates.set(sku.trim(), Math.max(candidates.get(sku.trim()) ?? -Infinity, score));
+    }
+    return { candidates: [...candidates].slice(0, limit).map(([sku, score]) => ({ sku, score })), method: 'vector' };
   }
 
   // ── Hand-authored knowledge ingest ──────────────────────────────────
@@ -2614,7 +2646,7 @@ export class ProductService {
   async getBySkus(brand: string, skus: string[]): Promise<{
     found: string[];
     missing: string[];
-    items: Array<{ sku: string; name: string; price: number | null; currency?: string; category?: string; imageUrl?: string; url?: string; inStock: boolean }>;
+    items: Array<{ sku: string; name: string; price: number | null; currency?: string; category?: string; imageUrl?: string; url?: string; inStock?: boolean }>;
   }> {
     const clean = Array.from(new Set((skus || []).map((s) => String(s || '').trim()).filter(Boolean)));
     if (clean.length === 0) return { found: [], missing: [], items: [] };
@@ -2625,103 +2657,39 @@ export class ProductService {
      * and the project's cache is dropped on ingest and on publish, so a price
      * can never outlive the catalogue it came from. Sorted key: the same set of
      * styles in any order is the same lookup. */
-    return getOrSet(cacheKey(brand, 'pricebook', { skus: [...clean].sort().join(',') }),
-      () => this.readPricebook(brand, clean), { ttlSeconds: 600 });
+    const pack = await this.cataloguePack(brand);
+    const release = getVerifiedBusinessPackMetadata(pack)!;
+    return getOrSet(cacheKey(brand, 'pricebook', { skus: [...clean].sort().join(','), release: release.checksum }),
+      () => this.readPricebook(brand, clean, pack), { ttlSeconds: 600 });
   }
 
-  private async readPricebook(brand: string, clean: string[]): Promise<{
-    found: string[];
-    missing: string[];
-    items: Array<{ sku: string; name: string; price: number | null; currency?: string; category?: string; imageUrl?: string; url?: string; inStock: boolean; colors?: { name: string; hex?: string }[]; sizes?: string[]; rating?: { value: number; count?: number }; completeTheLook?: { name: string; productId?: string; image?: string; price?: string }[]; originalPrice?: number }>;
-  }> {
-    const col = await this.getCollection();
-    // Tenant-scoped (isolation) + match by catalogue SKU (metadata.sku or Item Code spec).
-    /* Never pull whole documents here.
-     *
-     * Each one carries a 1536-dimension embedding and its full text, and a
-     * style can have dozens of chunks — so pricing ONE jersey shipped megabytes
-     * across the wire and took nine seconds, in the step where the customer is
-     * watching a total appear. This is the same trap already documented for the
-     * design-knowledge upsert (AUG-43), landed here in the money path. Ask for
-     * the handful of fields the pricebook actually reads. */
-    const docs = await col
-      .find({
-        $and: [
-          { $or: [{ 'metadata.brand': brand }, { brand }] },
-          { $or: [{ 'metadata.sku': { $in: clean } }, { 'metadata.specs.Item Code': { $in: clean } }] },
-        ],
-      } as any, {
-        projection: {
-          title: 1, sourceUrl: 1,
-          'metadata.sku': 1, 'metadata.name': 1, 'metadata.price': 1, 'metadata.currency': 1,
-          'metadata.category': 1, 'metadata.images': 1, 'metadata.imageUrl': 1, 'metadata.url': 1,
-          'metadata.availability': 1,
-          'metadata.specs.Item Code': 1,
-        },
-      })
-      .toArray();
-
-    // A SKU can have several chunks — keep the first doc that carries a price.
+  private async readPricebook(brand: string, clean: string[], pack: BusinessPackRelease): Promise<any> {
+    const mapping = resolveCatalogMapping(pack.catalogMapping);
+    const db = await this.getDb();
+    const cap = clean.length * 4 + 1;
+    const rows = await db.collection('products').find(buildCatalogueIdentityFilter(mapping, brand, clean)).limit(cap).toArray();
+    if (rows.length >= cap) throw new HttpException('The catalogue identity lookup is incomplete.', HttpStatus.SERVICE_UNAVAILABLE);
     const bySku = new Map<string, any>();
-    for (const d of docs) {
-      const meta: any = (d as any).metadata || {};
-      const specs = meta.specs || {};
-      const sku = String(meta.sku || specs['Item Code'] || '').trim();
-      if (!sku || !clean.includes(sku)) continue;
-      const existing = bySku.get(sku);
-      const hasPrice = typeof meta.price === 'number' && meta.price > 0;
-      if (!existing || (hasPrice && !(typeof existing.price === 'number' && existing.price > 0))) {
-        const images = Array.isArray(meta.images) ? meta.images : [];
-        bySku.set(sku, {
-          sku,
-          name: (d as any).title || meta.name || sku,
-          price: typeof meta.price === 'number' ? meta.price : null,
-          currency: meta.currency,
-          category: meta.category,
-          imageUrl: images[0] || meta.imageUrl || '',
-          url: meta.url || (d as any).sourceUrl,
-          // No live inventory system yet: catalogue presence ⇒ in stock, unless
-          // the source platform reported the SKU unavailable (metadata.availability,
-          // written by setAvailability). A future inventory-service reservation
-          // replaces this (never hard-coded copy).
-          inStock: meta.availability !== false,
-        });
-      }
+    for (const sku of clean) {
+      const matches = rows.filter(raw => {
+        const owners = mapping.tenantFields.map(path => readPath(raw, path)).filter(value => value != null);
+        return owners.length && owners.every(owner => owner === brand) && mapping.identifierPaths.some(path => String(readPath(raw, path) ?? '') === sku);
+      });
+      // Count all owned matches first. A conflicted/retired duplicate must not make another row authoritative.
+      if (matches.length !== 1) continue;
+      const raw: any = matches[0], item = normalizeCatalogProduct(raw, mapping, { title: '', category: '' });
+      if (item.sku !== sku || !item.integrity.identityConsistent || item.availability === 'excluded') continue;
+      const look = (Array.isArray(raw.completeTheLook) ? raw.completeTheLook : []).slice(0, 12).filter((entry: any) => entry && typeof entry.name === 'string').map((entry: any) => ({ name: entry.name,
+        ...(typeof entry.productId === 'string' ? { productId: entry.productId } : {}), ...(typeof entry.image === 'string' ? { image: entry.image } : {}), ...(typeof entry.price === 'string' ? { price: entry.price } : {}) }));
+      bySku.set(item.sku, { sku: item.sku, name: item.title, price: item.price ?? null, currency: item.currency,
+        category: item.category, imageUrl: item.imageUrl, url: item.sourceUrl, integrity: item.integrity,
+        ...(Array.isArray(raw.colors) ? { colors: raw.colors.slice(0, 200) } : {}),
+        ...(Array.isArray(raw.sizes) ? { sizes: raw.sizes.slice(0, 200) } : {}),
+        ...(item.rating === undefined ? {} : { rating: { value: item.rating, ...(item.ratingCount === undefined ? {} : { count: item.ratingCount }) } }),
+        ...(look.length ? { completeTheLook: look } : {}),
+        ...(typeof raw.leadTimeDays === 'number' ? { leadTimeDays: raw.leadTimeDays } : {}) });
     }
-
-    /* Attach the production lead time (C6). It lives on the products
-       collection keyed by parent style, so a variant SKU (style.colour.size)
-       is reduced to its style before the lookup. Read-only enrichment: a SKU
-       with no window simply has none, never a fabricated zero. */
-    if (bySku.size) {
-      const styleOf = (sku: string) => String(sku).toUpperCase().split('.')[0];
-      const styles = [...new Set([...bySku.keys()].map(styleOf))];
-      const db = await this.getDb();
-      const rows = await db.collection('products').find(
-        { projectId: brand, parentSku: { $in: styles } },
-        { projection: { parentSku: 1, leadTimeDays: 1, colors: 1, sizes: 1, rating: 1, completeTheLook: 1, originalPrice: 1, imageUrl: 1 } },
-      ).toArray();
-      const byStyle = new Map(rows.map((r: any) => [String(r.parentSku).toUpperCase(), r]));
-      for (const [sku, item] of bySku) {
-        const r: any = byStyle.get(styleOf(sku));
-        if (!r) continue;
-        if (typeof r.leadTimeDays === 'number') item.leadTimeDays = r.leadTimeDays;
-        // The product record is the authority for its picture; the search corpus keeps whatever link it was indexed with.
-        if (typeof r.imageUrl === 'string' && r.imageUrl) item.imageUrl = r.imageUrl;
-        // ANF-98: the variant axis lives on the products collection — surface it so
-        // grounded cards get real colour swatches + size pills.
-        if (Array.isArray(r.colors) && r.colors.length) item.colors = r.colors;
-        if (Array.isArray(r.sizes) && r.sizes.length) item.sizes = r.sizes;
-        if (r.rating) item.rating = r.rating;
-        // ANF-99: "Wear It With" complete-the-look strip (denormalised outfit items).
-        if (Array.isArray(r.completeTheLook) && r.completeTheLook.length) item.completeTheLook = r.completeTheLook.slice(0, 12);
-        if (r.originalPrice?.min) item.originalPrice = r.originalPrice.min;
-      }
-    }
-
-    const found = Array.from(bySku.keys());
-    const missing = clean.filter((s) => !bySku.has(s));
-    return { found, missing, items: Array.from(bySku.values()) };
+    return { found: [...bySku.keys()], missing: clean.filter(sku => !bySku.has(sku)), items: [...bySku.values()] };
   }
 
   // ── Stats ───────────────────────────────────────────────────────────
@@ -2870,21 +2838,28 @@ export class ProductService {
     const brand = (projectId || '').toLowerCase().trim();
     const clean = String(sku || '').trim();
     if (!brand || !clean) return null;
-    return getOrSet(cacheKey(brand, 'product-detail', { sku: clean }), async () => {
+    const pack = await this.cataloguePack(brand);
+    const mapping = resolveCatalogMapping(pack.catalogMapping);
+    const release = getVerifiedBusinessPackMetadata(pack)!;
+    return getOrSet(cacheKey(brand, 'product-detail', { sku: clean, release: release.checksum }), async () => {
       const db = await this.getDb();
       const products = db.collection('products');
-      const doc = await products.findOne({ projectId: brand, $or: [{ parentSku: clean }, { sku: clean }] });
+      const matches = await products.find(buildCatalogueIdentityFilter(mapping, brand, [clean])).limit(2).toArray();
+      if (matches.length > 1) return { sku: clean, title: clean, integrity: { status: 'review_required', identityConsistent: false, fitVerified: false, issues: [{ code: 'ambiguous_identifier', field: 'identity', paths: mapping.identifierPaths }] }, price: null, features: [], specs: [], documents: [], suggested: [], related: [] };
+      const doc = matches[0];
       if (!doc || isRetired(doc)) return null;
+      const owners = mapping.tenantFields.map(path => readPath(doc, path)).filter(value => value != null);
+      if (!owners.length || owners.some(owner => owner !== brand)) return null;
       const skusOf = (list: unknown): string[] => (Array.isArray(list) ? list : []).map((entry: any) => String(typeof entry === 'string' ? entry : entry?.sku ?? '')).filter((s: string) => s && s !== clean).slice(0, MAX_RELATED * 3);
       const suggestedSkus = skusOf(doc.accessories);
       const relatedSkus = skusOf(doc.related);
       const wanted = [...new Set([...suggestedSkus, ...relatedSkus])];
       const found = wanted.length
-        ? await products.find({ projectId: brand, parentSku: { $in: wanted } }, { projection: { parentSku: 1, name: 1, priceUSD: 1, currency: 1, imageUrl: 1, discontinued: 1, delisted: 1, status: 1 } }).toArray()
+        ? await products.find(buildCatalogueIdentityFilter(mapping, brand, wanted)).limit(wanted.length * 4 + 1).toArray()
         : [];
       // Each list keeps the order the record gives it in.
-      const inOrder = (skus: string[]) => skus.map((sku) => found.find((d: any) => d.parentSku === sku)).filter(Boolean);
-      return buildProductDetail(doc, { suggested: inOrder(suggestedSkus), related: inOrder(relatedSkus) });
+      const inOrder = (skus: string[]) => skus.flatMap((sku) => { if (found.length >= wanted.length * 4 + 1) return []; const matches = found.filter((d: any) => { const owners = mapping.tenantFields.map(path => readPath(d, path)).filter(value => value != null); return owners.length > 0 && owners.every(owner => owner === brand) && mapping.identifierPaths.some(path => String(readPath(d, path) ?? '') === sku); }); return matches.length === 1 ? matches : []; });
+      return buildProductDetail(doc, { suggested: inOrder(suggestedSkus), related: inOrder(relatedSkus) }, mapping);
     }, { ttlSeconds: 600 });
   }
 

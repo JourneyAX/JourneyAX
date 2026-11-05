@@ -10,11 +10,11 @@ import { GatewayModule } from './gateway.module';
 import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
-  const app = await NestFactory.create(GatewayModule);
+  const app = await NestFactory.create(GatewayModule, { bodyParser: false });
   app.getHttpAdapter().getInstance().disable('x-powered-by');
 
   // Allow large payloads (chat history can be verbose)
-  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.json({ limit: '10mb', verify: (req: any, _res, body) => { req.rawBody = body; } }));
 
   app.enableCors({
     origin: [

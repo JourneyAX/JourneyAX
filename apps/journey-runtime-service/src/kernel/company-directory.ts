@@ -129,6 +129,6 @@ export class CompanyDirectory {
 export function defaultCompanyDirectory(): CompanyDirectory {
   return new CompanyDirectory({
     baseUrl: () => process.env.PROJECT_SERVICE_URL || undefined,
-    headers: async () => (process.env.INTERNAL_API_KEY ? { 'x-internal-key': process.env.INTERNAL_API_KEY } : {}),
+    headers: async (): Promise<Record<string, string>> => (process.env.INTERNAL_API_KEY ? { 'x-internal-key': process.env.INTERNAL_API_KEY } : {}),
   });
 }

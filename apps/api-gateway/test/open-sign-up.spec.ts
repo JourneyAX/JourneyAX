@@ -158,6 +158,8 @@ async function main() {
     assert.equal(projectAllowed('second-shop', 'buyer', 'shopfront'), false);
     assert.equal(projectAllowed('shopfront', 'buyer', 'shopfront'), true);
     assert.equal(projectAllowed('second-shop', 'admin', 'platform'), true, 'the seeded admin keeps its reach');
+    assert.equal(projectAllowed('second-shop', 'buyer', 'platform'), false, 'a platform tenant alone is not an administrator grant');
+    assert.equal(projectAllowed('second-shop', 'admin', 'shopfront'), false, 'a tenant admin is still tenant-scoped');
   });
 
   suite.finish();

@@ -27,6 +27,7 @@ import {
   EventPrefetchSchema,
   ProductGuidesSchema,
   CustomerAccountSchema,
+  CustomerProfilesSchema,
   ContentPagesSchema,
   CheckoutReviewSchema,
   AccessoryHelperSchema,
@@ -44,7 +45,11 @@ import {
   FormsSchema,
   PluginsSchema,
   ConnectorsSchema,
+  AgentModeSchema,
+  OperationalDesksSchema,
+  SupportHandoffSchema,
 } from '@journeyax/business-pack';
+import { JaxOntologyReleaseSchema } from '@journeyax/jax-iq';
 import { BusinessPackPublicationService } from './business-pack-publication.service';
 import { buildAccessPreview, type AccessPreview, type AccessPreviewInput } from './access-preview';
 import { PersonaLibraryStore, PERSONA_LIBRARY_COLLECTION } from './persona-library';
@@ -404,15 +409,17 @@ export class ProjectService {
     return this.SEEDS.find(s => s.projectId === pid) ?? null;
   }
 
-  async listProjects(orgId?: string, status?: ProjectStatus): Promise<ProjectConfig[]> {
+  async listProjects(orgId?: string, status?: ProjectStatus, projectId?: string): Promise<ProjectConfig[]> {
     if (!this.isConnected) {
       return this.SEEDS.filter(s =>
+        (!projectId || s.projectId === projectId) &&
         (!orgId || s.orgId === orgId) &&
         (!status || s.status === status)
       );
     }
 
     const filter: any = {};
+    if (projectId) filter.projectId = projectId;
     if (orgId)  filter.orgId  = orgId;
     if (status) filter.status = status;
 
@@ -503,6 +510,12 @@ export class ProjectService {
     const pid = projectId.toLowerCase();
     const $set: any = { updatedAt: new Date().toISOString() };
 
+    if (dto.evaluationGate !== undefined) {
+      const gate = dto.evaluationGate;
+      if (!gate || typeof gate !== 'object' || Array.isArray(gate) || typeof gate.required !== 'boolean' || Object.keys(gate).some(key => key !== 'required')) return { success: false, message: 'Evaluation policy accepts only a required boolean; results are produced by the server.' };
+      $set.evaluationGate = { required: gate.required };
+    }
+
     /* The stored project, needed to preserve secrets an edit did not resend.
      *  Read once when integrations or notifications are being written. */
     const current: any = ((dto as any).integrations || (dto as any).notifications)
@@ -527,9 +540,9 @@ export class ProjectService {
     if ((dto as any).console) $set.console = (dto as any).console;
     // Tenant settings that ride in the pack's extensions: only these keys, each checked against its schema.
     if ((dto as any).extensions && typeof (dto as any).extensions === 'object') {
-      const allowed: Record<string, { safeParse: (value: unknown) => any }> = { quantityHelper: QuantityHelperSchema, visualiser: VisualiserSchema, eventPrefetch: EventPrefetchSchema, productGuides: ProductGuidesSchema, customerAccount: CustomerAccountSchema, contentPages: ContentPagesSchema, checkoutReview: CheckoutReviewSchema, accessoryHelper: AccessoryHelperSchema, buyerFeedback: BuyerFeedbackSchema, branchStock: BranchStockSchema, payment: PaymentSchema, brandTheme: BrandThemeSchema, voice: VoiceSchema, welcome: WelcomeSchema, dashboard: DashboardSchema, questionCards: QuestionCardsSchema, agentAccess: AgentAccessSchema, skillAccess: SkillAccessSchema, toolStates: ToolStatesSchema, forms: FormsSchema, plugins: PluginsSchema, connectors: ConnectorsSchema };
+      const allowed: Record<string, { safeParse: (value: unknown) => any }> = { quantityHelper: QuantityHelperSchema, visualiser: VisualiserSchema, eventPrefetch: EventPrefetchSchema, productGuides: ProductGuidesSchema, customerAccount: CustomerAccountSchema, contentPages: ContentPagesSchema, checkoutReview: CheckoutReviewSchema, accessoryHelper: AccessoryHelperSchema, buyerFeedback: BuyerFeedbackSchema, branchStock: BranchStockSchema, payment: PaymentSchema, brandTheme: BrandThemeSchema, voice: VoiceSchema, welcome: WelcomeSchema, dashboard: DashboardSchema, questionCards: QuestionCardsSchema, agentAccess: AgentAccessSchema, skillAccess: SkillAccessSchema, toolStates: ToolStatesSchema, forms: FormsSchema, plugins: PluginsSchema, connectors: ConnectorsSchema, agentMode: AgentModeSchema, jaxOntology: JaxOntologyReleaseSchema, operationalDesks: OperationalDesksSchema, supportHandoff: SupportHandoffSchema };
       for (const [key, value] of Object.entries((dto as any).extensions)) {
-        const schema = allowed[key];
+        const schema = key === 'customerProfiles' ? CustomerProfilesSchema : allowed[key];
         if (!schema) return { success: false, message: `Unknown pack extension '${key}' (allowed: ${Object.keys(allowed).join(', ')}).` };
         const parsed = schema.safeParse(value);
         if (!parsed.success) return { success: false, message: `Invalid ${key}: ${parsed.error.issues.slice(0, 3).map((i: any) => `${i.path.join('.')}: ${i.message}`).join('; ')}` };
@@ -776,14 +789,15 @@ export class ProjectService {
    * The config the RUNTIME consumes: the active published snapshot.
    * In production, fails closed: never falls back to uncommitted/draft records.
    */
-  async getPublishedConfig(projectId: string): Promise<(ProjectConfig & { published?: boolean }) | null> {
+  async getPublishedConfig(projectId: string, environmentId = 'production'): Promise<(ProjectConfig & { published?: boolean }) | null> {
+    if (!['dev', 'test', 'staging', 'production'].includes(environmentId)) throw new Error('Unsupported publication environment.');
     const pid = projectId.toLowerCase();
     const draft = await this.getProject(pid);
     if (!draft) return null;
-    const active = (draft as any).activeVersion;
+    const active = environmentId === 'production' ? (draft as any).activeVersion : (draft as any).environmentVersions?.[environmentId]?.version;
 
     if (!active || !this.isConnected) {
-      if (process.env.NODE_ENV === 'production') {
+      if (environmentId !== 'production' || process.env.NODE_ENV === 'production') {
         return null;
       }
       return { ...draft, published: false };
@@ -791,10 +805,10 @@ export class ProjectService {
 
     try {
       const snap = await this.versionsCol.findOne({ projectId: pid, version: active });
-      if (snap) return { ...snap.config, published: true };
+      if (snap && ((snap as any).environmentId || 'production') === environmentId) return { ...snap.config, published: true };
     } catch {}
 
-    if (process.env.NODE_ENV === 'production') {
+    if (environmentId !== 'production' || process.env.NODE_ENV === 'production') {
       return null;
     }
     return { ...draft, published: false };
@@ -1322,7 +1336,22 @@ export function redactSecrets<T extends { integrations?: any; ai?: any }>(config
     }
   }
 
-  return out;
+  // Legacy/untyped extensions can hold credential-shaped fields outside the
+  // original integration/AI paths. Redact those recursively on every public read,
+  // while retaining references and the existing configured/hint fields.
+  const scrub = (value: any): any => {
+    if (Array.isArray(value)) return value.map(scrub);
+    if (!value || typeof value !== 'object' || value instanceof Date) return value;
+    const clean: Record<string, any> = {};
+    for (const [key, field] of Object.entries(value)) {
+      if (/^(?:(?:proxy[-_])?authorization|(?:set[-_])?cookie)$/i.test(key)) { clean[`${key}Configured`] = Boolean(field); continue; }
+      const secretField = /(?:api_?key|client_?secret|access_?token|auth_?token|private_?key|webhook_?secret|password|passwd|secret_?key|^secret$|^(?:proxy[-_])?authorization$|^(?:set[-_])?cookie$)/i.test(key);
+      if (secretField && typeof field === 'string' && field && !/^(?:tenant-secret|vault):\/\//.test(field)) { clean[`${key}Configured`] = true; continue; }
+      clean[key] = scrub(field);
+    }
+    return clean;
+  };
+  return scrub(out);
 }
 
 /**

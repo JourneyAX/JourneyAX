@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { McpClientPool, StaticMcpServerDirectory } from '@journeyax/capability-sdk';
+import { McpClientPool, StaticMcpServerDirectory, MemoryActionLedger } from '@journeyax/capability-sdk';
+import { PackRepository, publishBusinessPack, compileAgentCommerceCapabilities, type BusinessPackRelease } from '@journeyax/business-pack';
+import { MemoryDb } from '@journeyax/test-support';
+import { rawLegacyFixture } from '../../../packages/business-pack/test/fixtures/legacy-pack.fixture';
 import { ModelGateway, type AgentExecutionRequest } from '../src/kernel/model.gateway';
 import { AgentTurnLoop } from '../src/agent/agent-loop';
 import { CapabilityGateway } from '../src/kernel/capability.gateway';
@@ -24,17 +27,22 @@ delete process.env.MONGODB_URI;
 const TENANT = 'placemakers';
 const ENVIRONMENT = 'production';
 const KEY = 'e2e-real-connectors-key-6c1f0a9d2b7e4c35';
+const COMMAND_SECRET = 'e2e-only-command-authority-over-32-characters';
+const CONNECTION_REF = 'e2e-real-source-connection';
+const oldCommandSecret = process.env.JAX_COMMAND_SIGNING_SECRET;
 const VENDOR_SECRET = 'vendor-client-secret-never-seen-by-the-model-77';
 const DRAFT = JSON.parse(readFileSync(path.resolve(__dirname, '../../../docs/agent-instructions/placemakers-draft.json'), 'utf8'));
 // The pack as published switches the real systems on one at a time, as each vendor account is ready. This test is about all four fitting
 // together, so it works on a copy of the draft's connectors with all four on.
 const REAL_IDS = ['commercetools', 'salesforce', 'google-analytics', 'power-bi'];
-const ALL_REAL_ON = { ...DRAFT.extensions.connectors, connectors: DRAFT.extensions.connectors.connectors.map((c: any) => (REAL_IDS.includes(c.connectorId) ? { ...c, enabled: true } : c)) };
+const ALL_REAL_ON = { ...DRAFT.extensions.connectors, connectors: DRAFT.extensions.connectors.connectors.map((c: any) => (REAL_IDS.includes(c.connectorId) ? { ...c, enabled: true, connectionRef: CONNECTION_REF } : c)) };
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 
 let server: RealConnectorServer;
 let gateway: CapabilityGateway;
 let approvals: ApprovalService;
+let pool: McpClientPool;
+const publishedPacks = new Map<boolean, BusinessPackRelease>();
 const audit: any[] = [];
 let shop: Awaited<ReturnType<typeof mockVendor>>;
 let analytics: Awaited<ReturnType<typeof mockVendor>>;
@@ -48,6 +56,7 @@ let cartVersion = 1;
 type Step = (req: AgentExecutionRequest, round: number) => { content?: string; toolCalls?: Array<{ id: string; name: string; arguments: Record<string, any> }> };
 
 before(async () => {
+  process.env.JAX_COMMAND_SIGNING_SECRET = COMMAND_SECRET;
   shop = await mockVendor((request) => {
     if (request.path === '/oauth/token') return { json: { access_token: 'ct-token', expires_in: 3600 } };
     if (shopBroken) return { status: 503, json: { message: 'upstream down' } };
@@ -74,25 +83,52 @@ before(async () => {
     SALESFORCE_INSTANCE_URL: crm.url, SALESFORCE_CLIENT_ID: 'sf', SALESFORCE_CLIENT_SECRET: VENDOR_SECRET,
   };
   const deps = realDeps();
-  server = new RealConnectorServer({ connectors: [commercetools(env, deps), googleAnalytics(env, deps), salesforce(env, deps)], tenants: [TENANT], apiKey: KEY, warn: () => {} });
+  server = new RealConnectorServer({ connectors: [commercetools(env, deps), googleAnalytics(env, deps), salesforce(env, deps)], tenants: [TENANT], environmentId: ENVIRONMENT, connectionRef: CONNECTION_REF, commandScopeSecret: COMMAND_SECRET, apiKey: KEY, warn: () => {} });
   const base = await server.listen(0);
-  const pool = new McpClientPool({
+  pool = new McpClientPool({
     directory: new StaticMcpServerDirectory(Object.fromEntries(server.connectorIds().map((id) => [id, `${base}/mcp/${id}`]))),
     secrets: { resolve: async () => KEY },
     nodeEnv: 'test',
   });
-  gateway = new CapabilityGateway({ mcpClients: pool, connectorAudit: (event) => audit.push(event) });
+  const db = new MemoryDb();
+  await db.collection('tenant_connections').insertOne({ tenantId: TENANT, environmentId: ENVIRONMENT, connectionRef: CONNECTION_REF, provider: 'connectors-real', status: 'active', enabled: true });
+  gateway = new CapabilityGateway({ db, mcpClients: pool, actionLedger: new MemoryActionLedger(), connectorAudit: (event) => audit.push(event) });
   approvals = new ApprovalService(new ApprovalStore({ explicitMemory: true }));
+  for (const withSkills of [false, true]) {
+    const content = draftRelease(withSkills);
+    const published = await publishBusinessPack(db as any, content);
+    publishedPacks.set(withSkills, await new PackRepository(db as any).loadPinnedPack(TENANT, ENVIRONMENT, content.manifest.version, published.checksum));
+  }
 });
-after(async () => { await server.close(); await shop.close(); await analytics.close(); await crm.close(); });
+after(async () => {
+  await pool?.closeAll(); await server?.close(); await shop?.close(); await analytics?.close(); await crm?.close();
+  if (oldCommandSecret === undefined) delete process.env.JAX_COMMAND_SIGNING_SECRET; else process.env.JAX_COMMAND_SIGNING_SECRET = oldCommandSecret;
+});
 
 const agents = DRAFT.agents.map((a: any) => ({ ...a, modelPolicyRef: 'default' }));
-const release = (withSkills = false) => {
-  const pack: any = connectorPack(ALL_REAL_ON, { tenantId: TENANT, environmentId: ENVIRONMENT, agents });
+const draftRelease = (withSkills = false) => {
+  const connector = connectorPack(ALL_REAL_ON, { tenantId: TENANT, environmentId: ENVIRONMENT, agents });
+  const pack: any = structuredClone(rawLegacyFixture);
+  pack.manifest.version = withSkills ? '1.0.1' : '1.0.0';
+  pack.agents = connector.agents.map(agent => ({ ...agent, ...(!withSkills ? { skills: [] } : {}) }));
+  pack.extensions = connector.extensions;
+  pack.modelPolicy.defaultPolicy = 'default';
+  pack.modelPolicy.policies = pack.modelPolicy.policies.map((policy: any) => ({ ...policy, policyId: 'default' }));
   // The plugins and who has them are the draft's own, so a connector a plugin names is the person's only if they have that plugin.
-  pack.extensions = { ...pack.extensions, plugins: DRAFT.extensions.plugins, agentAccess: DRAFT.extensions.agentAccess };
+  pack.extensions = { ...pack.extensions, plugins: DRAFT.extensions.plugins, agentAccess: DRAFT.extensions.agentAccess, forms: DRAFT.extensions.forms, skills: DRAFT.skills };
   // The staff playbooks are the draft's skills with the draft's access rows; most tests leave them out so the advisor's prompt stays as it was.
   if (withSkills) pack.extensions = { ...pack.extensions, skills: DRAFT.skills, skillAccess: DRAFT.extensions.skillAccess };
+  const declared = new Set(pack.capabilities.toolDefinitions.map((tool: any) => tool.toolId));
+  for (const name of new Set(pack.agents.flatMap((agent: any) => agent.allowedTools)) as Set<string>) if (!declared.has(name)) {
+    pack.capabilities.toolDefinitions.push({ toolId: name, version: '1.0.0', displayName: name, description: 'Isolated platform-tool declaration; connector actions still use their own published read/write contracts and policy.', inputSchema: {}, outputSchema: {}, sideEffect: 'read', risk: 'low', timeoutPolicy: { timeoutMs: 10000, retryAttempts: 0 }, idempotencyPolicy: { required: false, ttlSeconds: 86400 }, approvalPolicy: { requiresApproval: false, ttlMinutes: 60 }, dataClassification: 'internal' });
+    pack.capabilities.toolBindings.push({ toolId: name, tenantId: TENANT, environmentId: ENVIRONMENT, bindingVersion: '1.0.0', enabled: true, executor: { type: 'native_capability', nativeHandler: name }, policy: { requiredRole: 'operator', requiresConfirmation: false, idempotencyRequired: false, timeoutMs: 10000, retryAttempts: 0 } });
+  }
+  pack.capabilities = compileAgentCommerceCapabilities(pack.capabilities, pack.agents, { tenantId: TENANT, environmentId: ENVIRONMENT });
+  return pack;
+};
+const release = (withSkills = false): BusinessPackRelease => {
+  const pack = publishedPacks.get(withSkills);
+  if (!pack) throw new Error('The isolated fixture release must be published and verified first.');
   return pack;
 };
 
@@ -149,9 +185,8 @@ describe('The real connectors, end to end with a scripted model and pretend vend
     assert.deepEqual(await names(people.admin), ['ace-erp', 'commercetools', 'google-analytics', 'marketing-cloud', 'power-bi', 'salesforce', 'zendesk']);
     const sales = await menu(people.sales);
     assert.ok(!sales.find((entry) => entry.connector === 'commercetools')!.sample);
-    // The pack asks the assistant not to announce sample data, so the sample systems carry no label either.
-    assert.ok(!sales.find((entry) => entry.connector === 'marketing-cloud')!.sample, 'Marketing Cloud is not announced as sample data');
-    assert.ok(!sales.find((entry) => entry.connector === 'ace-erp')!.sample, 'the ERP is not announced as sample data');
+    assert.equal(sales.find((entry) => entry.connector === 'marketing-cloud')!.sample, true, 'the marketing fixture cannot be presented as a real source');
+    assert.equal(sales.find((entry) => entry.connector === 'ace-erp')!.sample, true, 'the ERP fixture stays truthfully labelled');
     for (const parked of ['sap-commerce', 'mulesoft', 'salsify', 'bloomreach', 'uxcam', 'location']) assert.ok(!(await names(people.admin)).includes(parked), parked);
   });
 
@@ -197,6 +232,8 @@ describe('The real connectors, end to end with a scripted model and pretend vend
     assert.equal(vendorWrites(), before + 1, 'the kept call ran, once');
     const write = shop.seen.filter((request) => request.method === 'POST' && request.path.includes('/carts/')).pop()!;
     assert.deepEqual(write.body.actions, [{ action: 'addLineItem', sku: '5009060', quantity: 2 }]);
+    await turn([() => ({ content: 'Already handled.' })], { ...people.sales, workspace: shared, message: '', customerEvent: { type: 'confirmTool', payload: { confirmationId: held.confirmationId, decision: 'allow' } } });
+    assert.equal(vendorWrites(), before + 1, 'replaying the spent review cannot repeat a source mutation');
   });
 
   test('a tool the person\'s team may not use is blocked before anything is sent: not listed, not callable, and the vendor never hears of it', async () => {

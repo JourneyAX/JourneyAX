@@ -3,6 +3,8 @@ import type { ExecutionContext } from '@journeyax/capability-sdk';
 import type { AgentToolDefinition } from '../kernel/model.gateway';
 import type { PersonCompany } from '../kernel/company-directory';
 import type { AgentToolContext } from './agent-tools';
+import { iqQueryForSource, iqRecordsView } from '@journeyax/jax-iq';
+import { executeIqTool, iqEnabled } from './iq-tools';
 
 /**
  * What a signed-in business customer may ask about their own company: who they are on the account, what is owed, where their deliveries are, and
@@ -68,9 +70,8 @@ const MAY_SEE_BALANCE: ReadonlySet<PersonCompany['role']> = new Set(['account_ad
 
 /** The tools of the accounts connector these lookups use; the pack names them (they are the connector's, not the platform's). */
 export interface CustomerAccountConnectorTools { balance: string; deliveries: string; price: string }
-export interface CustomerAccountSettings { enabled: boolean; connector: string; tools: CustomerAccountConnectorTools }
+export interface CustomerAccountSettings { enabled: boolean; connector: string; tools: CustomerAccountConnectorTools; pricingFields?: Record<string, string> }
 
-const DEFAULT_CONNECTOR_TOOLS: CustomerAccountConnectorTools = { balance: 'account_balance', deliveries: 'list_deliveries', price: 'trade_price' };
 
 /** The pack's `extensions.customerAccount`: off unless it says `enabled: true`; `connector` and `tools` say which system answers and with which of its tools. */
 export function customerAccountSettings(release: unknown): CustomerAccountSettings {
@@ -78,12 +79,13 @@ export function customerAccountSettings(release: unknown): CustomerAccountSettin
   const named = (value: unknown, fallback: string) => (typeof value === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(value.trim()) ? value.trim() : fallback);
   return {
     enabled: ext?.enabled === true,
-    connector: named(ext?.connector, 'ace-erp'),
+    connector: named(ext?.connector, ''),
     tools: {
-      balance: named(ext?.tools?.balance, DEFAULT_CONNECTOR_TOOLS.balance),
-      deliveries: named(ext?.tools?.deliveries, DEFAULT_CONNECTOR_TOOLS.deliveries),
-      price: named(ext?.tools?.price, DEFAULT_CONNECTOR_TOOLS.price),
+      balance: named(ext?.tools?.balance, ''),
+      deliveries: named(ext?.tools?.deliveries, ''),
+      price: named(ext?.tools?.price, ''),
     },
+    pricingFields: ext?.pricingFields,
   };
 }
 
@@ -108,8 +110,10 @@ const asObject = (value: unknown): Record<string, any> => {
 const pickCompany = (companies: readonly PersonCompany[], asked: unknown): { company: PersonCompany } | { error: string; companies: string[] } => {
   const wanted = typeof asked === 'string' ? asked.trim().toLowerCase() : '';
   if (wanted) {
-    const found = companies.find((company) => company.name.toLowerCase() === wanted || company.id.toLowerCase() === wanted || company.name.toLowerCase().includes(wanted));
-    if (found) return { company: found };
+    const exact = companies.filter(company => company.name.toLowerCase() === wanted || company.id.toLowerCase() === wanted);
+    const matches = exact.length ? exact : companies.filter(company => company.name.toLowerCase().includes(wanted));
+    if (matches.length === 1) return { company: matches[0] };
+    if (matches.length > 1) return { error: 'More than one of your companies matches. Which one do you mean?', companies: matches.map(company => company.name) };
     return { error: 'That is not one of your companies. I can only look up your own.', companies: companies.map((company) => company.name) };
   }
   if (companies.length === 1) return { company: companies[0] };
@@ -120,7 +124,6 @@ const pickCompany = (companies: readonly PersonCompany[], asked: unknown): { com
 const shopCurrency = (ctx: AgentToolContext): string | undefined => (ctx.release as any)?.profile?.primaryCurrency;
 
 const money = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : undefined);
-const TIERS = ['bronze', 'silver', 'gold'] as const;
 
 /** Runs one customer-account tool. Everything it returns has been cut down to what a customer may see. */
 export async function executeCustomerAccountTool(
@@ -134,14 +137,22 @@ export async function executeCustomerAccountTool(
   // Offered only to a customer with a company; refused again here, so a call made some other way gets nothing.
   if (!settings.enabled || companies.length === 0) return { ok: false, error: 'Your account details are not available in this chat. A colleague can help with them.' };
   const runtime = ctx.connectorRuntime;
-  if (!runtime || typeof (runtime as any).callRead !== 'function') return { ok: false, error: 'Your account details cannot be reached just now. A colleague can help.' };
+  if (!iqEnabled(ctx.release) && (!runtime || typeof (runtime as any).callRead !== 'function')) return { ok: false, error: 'Your account details cannot be reached just now. A colleague can help.' };
 
   const chosen = pickCompany(companies, args.company);
   if ('error' in chosen) return { ok: false, ...chosen };
   const company = chosen.company;
   const read = async (tool: string, input: Record<string, unknown>) => {
+    if (iqEnabled(ctx.release)) {
+      const route = iqQueryForSource((ctx.release.extensions as any).jaxOntology, settings.connector, tool, input);
+      if (!route.covered || !route.query) return { ok: false as const, status: 'blocked', code: 'not_configured' };
+      const { operation, ...queryArgs } = route.query;
+      const result = await executeIqTool(`jaxiq_${operation}`, queryArgs, { ...ctx, ...execContext, principal: { audience: 'shopper', groups: [] }, companies: [company], readSourceIds: ctx.readSourceIds ?? new Set() } as any);
+      if (result.ok === false || result.status === 'partial' || result.status === 'ambiguous') return { ok: false as const, status: 'failed', code: result.ok === false ? result.code : 'source_unavailable' };
+      return { ok: true as const, result: iqRecordsView(result), sample: result.sources.some(source => source.sample), notice: result.sources.some(source => source.sample) ? 'Demonstration data.' : undefined };
+    }
     // The account id is the one the server holds for this login; whatever the model supplied is not used.
-    const answer = await runtime.callRead(ctx.release as any, execContext, settings.connector, tool, input);
+    const answer = await runtime!.callRead(ctx.release as any, execContext, settings.connector, tool, input);
     ctx.usedConnectorIds?.add(settings.connector);
     // What the accounts system says it supports (declared in the pack for that tool) may be quoted in the reply, as for any connector tool.
     if (answer.ok) for (const name of (answer as any).claimClasses ?? []) { const parsed = ClaimClassSchema.safeParse(name); if (parsed.success) ctx.allowedClaimClasses.add(parsed.data); }
@@ -169,8 +180,8 @@ export async function executeCustomerAccountTool(
       ok: true,
       company: company.name,
       balance: money(record.balance),
-      overdue: money(record.overdue) ?? 0,
-      currency: typeof record.currency === 'string' ? record.currency : shopCurrency(ctx),
+      overdue: money(record.overdue),
+      currency: typeof record.currency === 'string' ? record.currency : undefined,
       paymentTerms: typeof record.terms === 'string' ? record.terms : undefined,
       lastPaymentOn: typeof record.lastPaymentAt === 'string' ? record.lastPaymentAt : undefined,
       ...sampleNote(answer),
@@ -203,8 +214,10 @@ export async function executeCustomerAccountTool(
   if (!sku) return { ok: false, error: 'Give the SKU of the product.' };
   const account = await read(settings.tools.balance, { accountId: company.id });
   const tier = String(asObject(asObject(account.ok ? account.result : {}).record).tier || '').toLowerCase();
-  if (!account.ok || !(TIERS as readonly string[]).includes(tier)) return { ok: false, error: 'I could not read your account pricing just now. A colleague can give you your price.' };
-  const price = await read(settings.tools.price, { sku });
+  const priceField = settings.pricingFields?.[tier];
+  if (!account.ok || !priceField || !/^[A-Za-z][A-Za-z0-9_]*$/.test(priceField)) return { ok: false, error: 'I could not read your account pricing just now. A colleague can give you your price.' };
+  // IQ binds account-specific pricing to the server-linked company; the model never selects an account id.
+  const price = await read(settings.tools.price, { sku, ...(iqEnabled(ctx.release) ? { accountId: company.id } : {}) });
   if (!price.ok) return { ok: false, error: `I could not find a price for ${sku}. Check the SKU, or a colleague can quote it.` };
   const record = asObject(asObject(price.result).record);
   return {
@@ -215,7 +228,7 @@ export async function executeCustomerAccountTool(
     unit: record.unitOfMeasure,
     currency: record.currency ?? shopCurrency(ctx),
     retailPrice: money(record.retailPrice),
-    yourPrice: money(record[`${tier}Price`]),
+    yourPrice: money(record[priceField]),
     yourTier: tier,
     ...sampleNote(price),
   };

@@ -14,6 +14,8 @@ import {
   ModelPolicySchema,
   compileModelPolicy,
   DEFAULT_PLATFORM_CARD_TYPES,
+  compileAgentCommerceCapabilities,
+  compileCommerceSettings,
 } from '@journeyax/business-pack';
 import { CapabilityRegistryService, STANDARD_TOOL_SCHEMAS } from './capability-registry.service';
 import { ReleaseValidationPort } from './release-validation.port';
@@ -191,6 +193,7 @@ export class BusinessPackPublicationService {
       : doc.persona?.journeyDefinition
       ? (Array.isArray(doc.persona.journeyDefinition) ? doc.persona.journeyDefinition : [doc.persona.journeyDefinition])
       : [];
+
 
     if (journeyList.length === 0) {
       return {
@@ -381,15 +384,19 @@ export class BusinessPackPublicationService {
       stageBindings,
     };
 
+    let commerceSettings: Record<string, unknown> | undefined;
+    try { commerceSettings = compileCommerceSettings(doc.pricing, (doc as any).extensions?.commerce); }
+    catch (error: any) { return { success: false, message: error.message }; }
+
     // Compile Experience (Cards & Themes)
     const themeFromDoc = (doc.uiTheme as any)?.theme || doc.theme;
     const tokens = doc.uiTheme?.tokens;
-    // An empty `cardTemplates: {}` means "no overrides", not "allow no cards": an explicit empty allow-list suppresses
-    // every card at runtime, so only a non-empty set narrows the platform defaults.
+    // No template overrides uses the platform catalogue. An explicit allow-list,
+    // including an empty one, and disabled Studio cards remain authoritative.
     const templateTypes = doc.cardTemplates ? Object.keys(doc.cardTemplates) : [];
-    const allowedCardTypes = (doc.experience?.cards?.allowedCardTypes?.length ? doc.experience.cards.allowedCardTypes : undefined)
+    const allowedCardTypes = ((Array.isArray(doc.experience?.cards?.allowedCardTypes) ? doc.experience.cards.allowedCardTypes : undefined)
       || (templateTypes.length > 0 ? templateTypes : undefined)
-      || [...DEFAULT_PLATFORM_CARD_TYPES];
+      || [...DEFAULT_PLATFORM_CARD_TYPES]).filter((type: string) => doc.uiTheme?.cards?.[type]?.enabled !== false);
 
     const compiledExperience = {
       version: '1.0.0',
@@ -402,6 +409,7 @@ export class BusinessPackPublicationService {
       },
       cards: {
         allowedCardTypes,
+        ...(doc.experience?.cards?.productCardMode ? { productCardMode: doc.experience.cards.productCardMode } : {}),
         defaultCardRenderer: doc.experience?.cards?.defaultCardRenderer || '@journeyax/ui-cards',
         ...(doc.cardTemplates ? { templates: doc.cardTemplates } : {}),
       },
@@ -429,6 +437,10 @@ export class BusinessPackPublicationService {
           },
         ]
       : [];
+
+    const hasBlockingEvaluations = compiledEvaluations.some((suite: any) => suite.blockingOnPublish !== false);
+    if ((doc as any).evaluationGate?.required === true && !hasBlockingEvaluations) return { success: false, message: 'Publish blocked by evaluation gate: Configure a blocking evaluation suite for this release.' };
+    if (hasBlockingEvaluations && !this.releaseValidator) return { success: false, message: 'Publish blocked by evaluation gate: An isolated release validator is required for blocking suites.' };
 
     const defaultEntities = doc.business?.entityModel
       ? [
@@ -583,15 +595,15 @@ export class BusinessPackPublicationService {
       agents: compiledAgents,
       journeys: validatedJourneys,
       rules: Array.isArray(doc.rules) ? doc.rules : [],
-      capabilities: compiledCapabilities,
+      capabilities: compileAgentCommerceCapabilities(compiledCapabilities as any, compiledAgents, { tenantId: pid, environmentId }),
       experience: compiledExperience,
-      // Studio compilation has never published evaluation suites in the release content;
-      // stated explicitly because the schema no longer injects a default.
-      evaluations: [] as any[],
+      // Freeze exactly the merchant-authored suites that the publication gate must execute.
+      evaluations: compiledEvaluations,
       extensions: {
         ...((doc as any).spacePlanner ? { spacePlanner: (doc as any).spacePlanner } : {}),
         ...(doc.persona ? { persona: doc.persona } : {}),
         ...((doc as any).extensions || {}),
+        ...(commerceSettings ? { commerce: commerceSettings } : {}),
       },
     };
 

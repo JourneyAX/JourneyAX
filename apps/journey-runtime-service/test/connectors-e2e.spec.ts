@@ -129,7 +129,7 @@ describe('Connectors, end to end with a scripted model', () => {
     assert.deepEqual(issues.filter((i) => i.severity === 'error'), [], 'the publication gate finds no error in the draft');
     const warned = new Set(issues.filter((i) => i.severity === 'warning').map((i) => /connectors\[(\d+)\]/.exec(i.path)?.[1]).filter(Boolean).map(Number));
     current.connectors.forEach((connector, index) => {
-      if (['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'zendesk'].includes(connector.connectorId)) {
+      if (['commercetools', 'salesforce', 'google-analytics', 'power-bi', 'zendesk', 'sap-s4hana'].includes(connector.connectorId)) {
         assert.equal(connector.sample, false, `${connector.connectorId} is real`);
         assert.equal(warned.has(index), false, `${connector.connectorId} raises no sample-data warning`);
       } else assert.equal(connector.sample, true, `${connector.connectorId} is still sample data until a real system stands behind it`);
@@ -172,18 +172,18 @@ describe('Connectors, end to end with a scripted model', () => {
     assert.ok(reply && reply.includes(String(row.available)) && reply.includes(String(price.goldPrice)), `the answer reached the customer: ${reply}`);
   });
 
-  test('a pack that does not want sample data announced gets no sample label in the instructions and no notice in the answers; the default still announces it', async () => {
+  test('sample provenance cannot be hidden by a presentation preference', async () => {
     const row = seed('ace-erp', 'stock').find((r) => r.available > 0)!;
     const ask = (registry: unknown) => turn([
       () => ({ toolCalls: [call('c1', 'call_connector_tool', { connector: 'ace-erp', tool: 'stock_by_branch', arguments: { sku: row.sku } })] }),
       () => ({ content: 'Looked.' }),
     ], { ...staff, registry });
     const quiet = await ask({ ...JSON.parse(JSON.stringify(SAMPLE_REGISTRY)), announceSample: false });
-    assert.ok(!/sample/i.test(quiet.requests[0].systemPrompt ?? ''), 'nothing about sample data in the instructions');
+    assert.ok((quiet.requests[0].systemPrompt ?? '').includes('(sample data)'), 'the model still sees that this is a demonstration source');
     assert.equal(quiet.toolResults[0].body.ok, true);
-    assert.equal(quiet.toolResults[0].body.notice, undefined, 'no notice in the answer');
-    assert.equal(quiet.toolResults[0].body.sample, undefined);
-    assert.ok(!JSON.stringify(quiet.toolResults[0].body.result).includes('"sample"'), 'the records carry no sample mark either');
+    assert.match(quiet.toolResults[0].body.notice, /sample data/);
+    assert.equal(quiet.toolResults[0].body.sample, true);
+    assert.ok(JSON.stringify(quiet.toolResults[0].body.result).includes('"sample":true'), 'the records retain their provenance');
     const loud = await ask(SAMPLE_REGISTRY);
     assert.ok((loud.requests[0].systemPrompt ?? '').includes('(sample data)'), 'by default the instructions say which systems hold sample data');
     assert.ok((loud.requests[0].systemPrompt ?? '').includes('If a result is marked sample, say it is sample data.'));

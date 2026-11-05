@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { signGatewayAssertion, verifyGatewayAssertion } from '@journeyax/database';
-import { cleanDisabledConnectors, principalIdFor, verifiedIdentity } from '../src/identity';
+import { chatEnvironment, cleanDisabledConnectors, principalIdFor, verifiedIdentity } from '../src/identity';
 import { CanonicalRuntimeAdapter } from '../src/runtime/canonical-runtime.adapter';
 import { JourneyCoordinator } from '../src/orchestration/journey-coordinator';
 
@@ -27,6 +27,14 @@ async function main() {
   assert.equal(verifiedIdentity('not-an-assertion', 'placemakers'), undefined);
   assert.equal(verifiedIdentity(undefined, 'placemakers'), undefined);
   assert.equal(verifiedIdentity(staff, 'placemakers', ''), undefined, 'with no signing secret nobody is verified');
+  const testScope = sign({ sub: 'staff-test', role: 'consultant', environmentId: 'test' });
+  process.env.COMMERCE_ENVIRONMENT = 'test';
+  assert.equal(chatEnvironment(testScope, 'placemakers', 'test'), 'test');
+  assert.throws(() => chatEnvironment(testScope, 'placemakers', 'production'), /does not match/);
+  assert.throws(() => chatEnvironment(undefined, 'placemakers', 'test'), /does not match/);
+  assert.throws(() => chatEnvironment(testScope, 'other-tenant', 'test'));
+  assert.equal(chatEnvironment(undefined, 'placemakers'), 'production');
+  delete process.env.COMMERCE_ENVIRONMENT;
   assert.deepEqual(cleanDisabledConnectors(['sap-commerce', 'sap-commerce', 'bad id!', 7, 'ace-erp']), ['sap-commerce', 'ace-erp']);
   assert.equal(cleanDisabledConnectors('sap-commerce'), undefined);
   assert.equal(cleanDisabledConnectors([]), undefined);
@@ -38,7 +46,8 @@ async function main() {
   assert.equal(principalIdFor(undefined, 'hemi@harlow.example'), 'anonymous', 'a guest who sends a login as an id is anonymous');
   assert.equal(principalIdFor({ sub: 'guest@anonymous', role: 'customer', groups: [] }, 'hemi@harlow.example'), 'anonymous');
   assert.equal(principalIdFor({ sub: 'anonymous', role: 'customer', groups: [] }, 'hemi@harlow.example'), 'anonymous');
-  assert.equal(principalIdFor(undefined, 'sess_42'), 'sess_42', 'a plain session or demo id is still carried');
+  assert.equal(principalIdFor(undefined, 'sess_42'), 'anonymous', 'browser session claims never become authenticated identities');
+  assert.equal(principalIdFor({ sub: 'staff-42', role: 'staff', groups: [] }, 'other-id'), 'staff-42');
   assert.equal(principalIdFor(undefined, undefined), 'anonymous');
   assert.equal(principalIdFor(undefined, 42), 'anonymous');
 
@@ -48,11 +57,14 @@ async function main() {
     let raw = '';
     req.on('data', (c) => { raw += c; });
     req.on('end', () => {
-      const identity = verifyGatewayAssertion(String(req.headers['x-gateway-assertion']), SECRET, { expectedTenantId: 'placemakers' });
+      const identity = verifyGatewayAssertion(String(req.headers['x-gateway-assertion']), SECRET, { expectedTenantId: 'placemakers', expectedEnvironmentId: String(req.url).split('/')[4] });
       seen.push({ method: req.method || '', url: req.url || '', identity, body: raw ? JSON.parse(raw) : undefined });
       if ((req.url || '').endsWith('/connectors')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ connectors: identity.groups?.includes('customer-service') ? [{ connector: 'salesforce', name: 'Salesforce' }] : [], packVersion: '9.9.9' }));
+      } else if ((req.url || '').endsWith('/dashboard')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ dashboard: { title: 'Current environment only' } }));
       } else {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.end('event: done\ndata: {"response":"ok"}\n\n');
@@ -75,6 +87,15 @@ async function main() {
     assert.deepEqual(shopper.connectors, [], 'no identity is a shopper, who gets none');
     assert.equal(seen[1].identity.role, 'customer');
     assert.equal((seen[1].identity.groups ?? []).length, 0);
+
+    process.env.COMMERCE_ENVIRONMENT = 'test';
+    await adapter.listConnectors('placemakers', { sub: 'staff-test', role: 'consultant', groups: ['customer-service'] });
+    assert.equal(seen.at(-1)!.url, '/api/v1/placemakers/test/runtime/connectors');
+    assert.equal(seen.at(-1)!.identity.environmentId, 'test');
+    await adapter.getDashboard('placemakers', { sub: 'staff-test', role: 'consultant', groups: ['customer-service'] });
+    assert.equal(seen.at(-1)!.url, '/api/v1/placemakers/test/runtime/dashboard');
+    assert.equal(seen.at(-1)!.identity.environmentId, 'test', 'a development/test dashboard cannot silently read the production release');
+    delete process.env.COMMERCE_ENVIRONMENT;
 
     // a turn through the coordinator carries the verified role, groups and switched-off connectors to the runtime
     const coordinator = new JourneyCoordinator({ resolveActivation: async () => ({ action: 'CANONICAL' }) } as any, adapter);

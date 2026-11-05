@@ -3,6 +3,8 @@ import type { ConnectorRuntime } from '../kernel/connector.runtime';
 import type { PersonCompany } from '../kernel/company-directory';
 import { dashboardFormat } from '../agent/record-cards';
 import { customerAccountRecords, customerAccountSettings, executeCustomerAccountTool } from '../agent/customer-account';
+import { iqQueryForSource, iqRecordsView, type IqClient } from '@journeyax/jax-iq';
+import { executeIqTool, iqEnabled } from '../agent/iq-tools';
 
 /**
  * The corner tile and the dashboard for one signed-in person. The pack says which connector tools feed which figures (`extensions.dashboard`);
@@ -18,6 +20,7 @@ export interface DashboardDeps {
   /** How long one call may take before its figure is left blank, in ms. */
   callTimeoutMs?: number;
   now?: () => Date;
+  iqClient?: IqClient;
 }
 
 export interface DashboardRequest {
@@ -56,8 +59,27 @@ export class DashboardViewService {
   }
 
   private async outcomeOf(request: DashboardRequest, call: DashboardCall): Promise<CallOutcome> {
+    if (call.blocked) return { ok: false, reason: 'blocked' };
+    if (iqEnabled(request.release)) {
+      const route = iqQueryForSource(request.release.extensions!.jaxOntology, call.connector, call.tool, call.args);
+      if (route.covered) {
+        if (!route.query) return { ok: false, reason: 'blocked' };
+        const { operation, ...args } = route.query;
+        const result = await executeIqTool(`jaxiq_${operation}`, args, {
+          ...this.contextFor(request), principalId: request.person.userId || 'anonymous', principal: request.person,
+          companies: request.companies, readSourceIds: new Set<string>(), iqClient: this.deps.iqClient,
+        } as any);
+        if (result.ok === false) return { ok: false, reason: result.code === 'refused_by_rule' ? 'blocked' : 'unavailable' };
+        // Verified rows from a paged list remain useful. Preserve the cut flag so
+        // dashboard counts/sums are explicitly lower bounds, never whole-backlog totals.
+        if (result.status === 'ambiguous') return { ok: false, reason: 'unavailable' };
+        const paged = result.pages?.some(page => page.more) === true;
+        if (result.status === 'partial' && (!paged || result.records.some(record => record.facts.some(fact => fact.status !== 'ok')))) return { ok: false, reason: 'unavailable' };
+        return { ok: true, data: { ...(iqRecordsView(result) as object), returned: result.records.length, ...(paged ? { more: true } : {}) } };
+      }
+    }
     const now = (this.deps.now?.() ?? new Date()).getTime();
-    const cacheKey = `${request.tenantId}|${request.person.userId ?? ''}|${call.key}`;
+    const cacheKey = JSON.stringify([request.tenantId, request.environmentId, request.release, request.person.userId ?? '', request.person.audience, [...request.person.groups].sort(), request.companies ?? [], call.key]);
     const kept = this.cache.get(cacheKey);
     if (kept && now - kept.at < (this.deps.cacheMs ?? DEFAULT_CACHE_MS)) return kept.outcome;
 

@@ -2,16 +2,8 @@ import 'reflect-metadata';
 import { resolve } from 'path';
 import { config } from 'dotenv';
 
-/* Load env vars from monorepo root .env — and let the FILE win.
- *
- * dotenv's default is to keep any variable already present in the process
- * environment. Under turbo, that environment is inherited from a supervisor
- * started hours or days ago: fix a key in .env, restart the service, and the
- * child still carries the supervisor's stale value — which is how embeddings
- * stayed broken through a key rotation and every search silently degraded to
- * regex. In this stack .env IS the configuration of record, so it overrides. */
-const devEnvFile = process.env.JOURNEYAX_ENV_FILE;
-config({ path: devEnvFile || resolve(__dirname, '../../../.env'), override: !devEnvFile });
+// Explicit deployment/test settings take precedence; a root .env must never redirect an isolated run.
+config({ path: process.env.JOURNEYAX_ENV_FILE || resolve(__dirname, '../../../.env'), override: false });
 
 import { NestFactory } from '@nestjs/core';
 import * as bodyParser from 'body-parser';

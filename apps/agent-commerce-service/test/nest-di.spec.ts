@@ -10,7 +10,9 @@ import { OrderService } from '../src/commerce/order.service';
 import { RosterService } from '../src/commerce/roster.service';
 import { SchoolResearchService } from '../src/commerce/school-research.service';
 import { WhatsAppService } from '../src/commerce/whatsapp.service';
-import { CareService } from '../src/care/care.service';
+import { PaymentRecoveryWorkerService } from '../src/commerce/payment-recovery-worker.service';
+import { CartController } from '../src/commerce/cart.controller';
+import { OperationalDesksController } from '../src/desks/operational-desks.controller';
 
 async function runTests() {
   console.log('🧪 Running Nest Dependency Injection & Application Context Suite...');
@@ -55,7 +57,9 @@ async function runTests() {
     RosterService,
     SchoolResearchService,
     WhatsAppService,
-    CareService,
+    PaymentRecoveryWorkerService,
+    CartController,
+    OperationalDesksController,
   ];
 
   for (const provider of providers) {

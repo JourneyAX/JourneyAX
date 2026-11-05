@@ -1,6 +1,8 @@
 import type { ReplyStyle, TurnKind } from '../turn/fact-semantics';
 import type { ClaimClass } from '@journeyax/knowledge';
-import { validateOkfGeneratedClaims } from './okf-claim-validator';
+import { validateOkfGeneratedClaims, type CatalogueWarrantyFact } from './okf-claim-validator';
+import { repairSourceLinks } from './source-links';
+import { ProductMeasurementEvidence } from './product-measurement-evidence';
 
 export interface ShapeContext {
   style: ReplyStyle;
@@ -8,6 +10,8 @@ export interface ShapeContext {
   companyNames: string[];
   /** Internal identifiers the system uses (concept and category ids); they never belong in a customer's reply. */
   internalIds: string[];
+  /** Authorised staff can discuss source record references formatted as inline code. Internal platform IDs remain hidden. */
+  allowCodeFormatting?: boolean;
   /** A question card is on screen, so the reply must not ask anything of its own. */
   questionCardShown: boolean;
   /** The kind of turn being handled (fact, card, answer, recommend, howto). */
@@ -21,6 +25,7 @@ export interface CompiledShapeContext {
   companyNames: string[];
   compiledIds: RegExp[];
   compiledPhrases: RegExp[];
+  allowCodeFormatting?: boolean;
   questionCardShown: boolean;
   turnKind?: TurnKind;
 }
@@ -95,6 +100,7 @@ export function compileShapeContext(context: ShapeContext): CompiledShapeContext
     companyNames: names,
     compiledIds: ids,
     compiledPhrases: phrases,
+    allowCodeFormatting: context.allowCodeFormatting,
     questionCardShown: context.questionCardShown,
     turnKind: context.turnKind,
   };
@@ -139,7 +145,7 @@ export function shapeSentence(
   const reason =
     isToolNarration
       ? 'tool narration'
-      : trimmed.includes('`') || lower.includes('concept://') || ctx.compiledIds.some((id) => id.test(trimmed))
+      : (!ctx.allowCodeFormatting && trimmed.includes('`')) || lower.includes('concept://') || ctx.compiledIds.some((id) => id.test(trimmed))
       ? 'internal id'
       : questionDisallowed
       ? 'second question'
@@ -236,6 +242,12 @@ export class IncrementalSentenceShaper {
   private readonly voiceRules: Array<{ pattern: RegExp; replacement: string }>;
   private knownNames: string[] | undefined;
   private productNames: string[] | undefined;
+  private knownNumbers: ReadonlySet<string> | undefined;
+  private exactClaimStatements: ReadonlyMap<ClaimClass, ReadonlySet<string>> | undefined;
+  private catalogueWarrantyFacts: readonly CatalogueWarrantyFact[] | undefined;
+  private catalogueMisses: ReadonlySet<string> | undefined;
+  private sourceUrls: ReadonlySet<string> | undefined;
+  private readonly productMeasurements = new ProductMeasurementEvidence();
 
   constructor(
     shapeContext: ShapeContext,
@@ -251,6 +263,13 @@ export class IncrementalSentenceShaper {
   updateAllowedClaims(claims: ClaimClass[] | Set<ClaimClass>): void {
     this.allowedClaims = claims;
   }
+
+  updateNumericEvidence(values: ReadonlySet<string>): void { this.knownNumbers = values; }
+  updateExactClaimStatements(values: ReadonlyMap<ClaimClass, ReadonlySet<string>> | undefined): void { this.exactClaimStatements = values; }
+  updateCatalogueWarrantyFacts(values: readonly CatalogueWarrantyFact[] | undefined): void { this.catalogueWarrantyFacts = values; }
+  updateCatalogueMisses(values: ReadonlySet<string> | undefined): void { this.catalogueMisses = values; }
+  updateSourceUrls(values: ReadonlySet<string>): void { this.sourceUrls = values; }
+  updateProductEvidence(products: any[], customerText: string): void { this.productMeasurements.update(products, customerText); }
 
   /** The product and group names the tools have returned so far, which the claim guard reads past (see `ClaimContext`). */
   updateKnownNames(known: { names: string[]; productNames: string[] }): void {
@@ -274,7 +293,7 @@ export class IncrementalSentenceShaper {
   processDelta(chunk: string): void {
     this.buffer += chunk;
     // The whitespace between pieces is kept (one capture group), so a new line is told apart from the next sentence of the same line.
-    const parts = this.buffer.split(/((?<!\b\d+[.!?])(?<=[.!?])\s+|[ \t]*\n\s*)/);
+    const parts = splitStreamingUnits(this.buffer);
     if (parts.length > 1) {
       for (let i = 0; i + 1 < parts.length; i += 2) {
         this.processSentence(parts[i], this.whitespaceBefore);
@@ -286,7 +305,8 @@ export class IncrementalSentenceShaper {
 
   flush(): void {
     if (this.buffer.trim()) {
-      this.processSentence(this.buffer, this.whitespaceBefore);
+      if (hasIncompleteTail(this.buffer)) this.withheldSentences.push(this.buffer.trim());
+      else this.processSentence(this.buffer, this.whitespaceBefore);
       this.buffer = '';
     }
   }
@@ -318,10 +338,18 @@ export class IncrementalSentenceShaper {
       return;
     }
     sentence = applyVoiceRules(sentence, this.voiceRules);
+    if (this.sourceUrls) sentence = repairSourceLinks(sentence, this.sourceUrls).trim();
+    if (!sentence) return;
 
     if (this.isOkfRelease) {
+      const measurementProblem = this.productMeasurements.check(sentence, startsLine && kind === 'heading');
+      if (measurementProblem) {
+        this.withheldSentences.push(sentence); this.withheldClasses.add('catalog_fact');
+        console.warn(`[ClaimGuard] withheld product measurement during stream (${measurementProblem}).`);
+        this.lineStartCarried = this.lineStartCarried || startsLine; return;
+      }
       const allowed = this.allowedClaims instanceof Set ? Array.from(this.allowedClaims) : this.allowedClaims;
-      const claimResult = validateOkfGeneratedClaims(sentence, allowed, this.packOrOptions, { knownNames: this.knownNames, productNames: this.productNames });
+      const claimResult = validateOkfGeneratedClaims(sentence, allowed, this.packOrOptions, { knownNames: this.knownNames, productNames: this.productNames, knownNumbers: this.knownNumbers, exactClaimStatements: this.exactClaimStatements, catalogueWarrantyFacts: this.catalogueWarrantyFacts, catalogueMisses: this.catalogueMisses });
       if (!claimResult.valid) {
         this.withheldSentences.push(sentence);
         for (const claim of claimResult.forbidden) this.withheldClasses.add(claim);
@@ -362,6 +390,31 @@ export class IncrementalSentenceShaper {
   getEmittedSentences(): string[] {
     return this.emittedSentences;
   }
+}
+
+/** Keep abbreviations, parenthetical examples and Markdown links together when validating streamed text. */
+export function splitStreamingUnits(text: string): string[] {
+  const parts: string[] = []; let start = 0; let round = 0; let square = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '(') round++; else if (char === ')') round = Math.max(0, round - 1);
+    if (char === '[') square++; else if (char === ']') square = Math.max(0, square - 1);
+    if (round || square) continue;
+    const unit = text.slice(start, i + 1);
+    const newline = char === '\n';
+    const end = /[.!?]/.test(char) && /\s/.test(text[i + 1] || '') && !/^\s*\d+[.)]$/.test(unit) && !/\b(?:e\.g|i\.e|etc|mr|mrs|ms|dr|prof|vs|approx)\.$/i.test(unit);
+    if (!newline && !end) continue;
+    const boundary = newline ? i : i + 1; let next = newline ? i + 1 : i + 1;
+    while (next < text.length && /\s/.test(text[next])) next++;
+    parts.push(text.slice(start, boundary), text.slice(boundary, next)); start = next; i = next - 1;
+  }
+  parts.push(text.slice(start)); return parts;
+}
+
+function hasIncompleteTail(text: string): boolean {
+  let round = 0; let square = 0;
+  for (const char of text) { if (char === '(') round++; if (char === ')') round--; if (char === '[') square++; if (char === ']') square--; }
+  return round > 0 || square > 0 || /\b(?:e\.g\.|i\.e\.|such as|for example|including)\s*[:(,]*\s*$/i.test(text);
 }
 
 /** The shop's own phrase swaps (pack `extensions.voice.rewrites`), compiled once; a rule that does not compile is left out. */

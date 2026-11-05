@@ -117,17 +117,17 @@ async function getIdToken(audience: string): Promise<string | undefined> {
 // Header helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Who the signed identity says is asking. The login the auth guard verified wins: `x-user-email` is set by the guard on every request, from the
- * verified token (a person who is not signed in gets `guest@anonymous`), so it is never the browser's word. A person who is not signed in may
- * still name themselves with `x-user-id` (a session id, say), but never with something shaped like a login: services look a customer's company
- * up by login, so a guest who sends `x-user-id: someone@company` must not become that person.
- */
+/** The auth guard owns x-user-email, including opaque login subjects. Browser identity headers cannot override it. */
 export function signedSubject(headers: Record<string, any>): string {
   const verified = String(headers['x-user-email'] || '').trim();
-  if (verified && verified.includes('@') && verified.toLowerCase() !== 'guest@anonymous') return verified;
-  const claimed = String(headers['x-user-id'] || headers['x-principal-id'] || '').trim();
-  return claimed && !claimed.includes('@') ? claimed : 'anonymous';
+  return verified && !['anonymous', 'guest', 'guest@anonymous'].includes(verified.toLowerCase()) ? verified : 'anonymous';
+}
+
+/** Only the tenant-scoped provider callback forwards signed bytes instead of reserialising JSON. */
+export function paymentWebhookTransport(method: string, path: string, headers: Record<string, any>, rawBody?: Buffer): { body: Buffer; signature: string } | undefined {
+  if (method !== 'POST' || !/^\/api\/v1\/[^/]+\/commerce\/stripe\/(?:(?:dev|test|staging|production)\/)?webhook(?:\?|$)/.test(path)) return undefined;
+  if (!Buffer.isBuffer(rawBody) || typeof headers['stripe-signature'] !== 'string' || !headers['stripe-signature'] || headers['stripe-signature'].length > 2000) throw new Error('An exact signed payment webhook body is required.');
+  return { body: rawBody, signature: headers['stripe-signature'] };
 }
 
 /**
@@ -282,7 +282,9 @@ function ttlForPath(path: string): number {
  * the next person who asked for the same path (the connector menu showed staff systems to a login that should not see them). The prefix
  * list above cannot catch these: a tenant-scoped path starts with the tenant (`/api/v1/placemakers/commerce/...`), not with the domain.
  */
-const NO_CACHE_DOMAINS: ReadonlySet<string> = new Set(['commerce', 'runtime']);
+// Cache entries have no caller identity. Only the public catalogue may share them;
+// control-plane, analytics and operational reads must reach their permission guard.
+const PUBLIC_CACHE_DOMAINS: ReadonlySet<string> = new Set(['products']);
 
 /** Is this the open registration route? Tolerates a query string, repeated or trailing slashes and capital letters, which the web server would route the same way. */
 export function isRegistrationPath(path: string): boolean {
@@ -293,8 +295,7 @@ export function isCacheable(method: string, path: string): boolean {
   if (method !== 'GET') return false;
   if (NO_CACHE_PREFIXES.some(p => path.startsWith(p))) return false;
   const { domain } = parseRoute(path);
-  if (domain && NO_CACHE_DOMAINS.has(domain)) return false;
-  return true;
+  return !!domain && PUBLIC_CACHE_DOMAINS.has(domain);
 }
 
 async function cacheGet(key: string): Promise<any | null> {
@@ -349,6 +350,20 @@ async function cacheInvalidateDomain(tenantId: string, domain: string): Promise<
  */
 @Injectable()
 export class GatewayService {
+  private environmentFor(path: string): string {
+    const route = parseRoute(path);
+    const segments = path.split(/[?#]/)[0].split('/').filter(Boolean);
+    // parseRoute supplies a legacy production default even when no environment
+    // appears in the URL. That default must not override deployment configuration.
+    if (route.projectId && segments[3] !== route.domain && route.environmentId) {
+      if (!['dev', 'test', 'staging', 'production'].includes(route.environmentId)) throw new Error('Unsupported route environment.');
+      return route.environmentId;
+    }
+    if (route.domain !== 'commerce') return 'production';
+    const environment = process.env.COMMERCE_ENVIRONMENT || 'production';
+    if (!['dev', 'test', 'staging', 'production'].includes(environment)) throw new Error('COMMERCE_ENVIRONMENT must name a supported deployment environment.');
+    return environment;
+  }
   /** Looks up a member of staff's groups (the project member's teams) so they can be signed into the identity assertion. */
   private readonly groupDirectory = new GroupDirectory({
     baseUrl: () => SERVICE_REGISTRY['projects'],
@@ -391,30 +406,31 @@ export class GatewayService {
    * Validate that a tenant is active. Caches the result to avoid spamming the project service.
    * The platform's own tenants always pass; anything else must be a project the project service knows.
    */
-  private async validateTenant(tenantId: string): Promise<boolean> {
+  private async validateTenant(tenantId: string, environmentId = 'production'): Promise<boolean> {
     if (isPlatformTenantId(tenantId)) return true;
-    return this.isActiveProject(tenantId);
+    return this.isActiveProject(tenantId, environmentId);
   }
 
   /**
    * Is there a project with this id? The project service answers for it (cached for a minute). Unlike `validateTenant`, the platform's
    * own tenants get no free pass here: they are not projects.
    */
-  private async isActiveProject(tenantId: string): Promise<boolean> {
-    const key = `tenant_status:${tenantId}`;
+  private async isActiveProject(tenantId: string, environmentId = 'production'): Promise<boolean> {
+    const key = `tenant_status:${tenantId}:${environmentId}`;
     const cached = await cacheGet(key);
     if (cached !== null) {
       return cached.active === true;
     }
 
     const projectServiceUrl = SERVICE_REGISTRY['projects'];
-    if (!projectServiceUrl) return true;
+    if (!projectServiceUrl) return false;
 
     try {
       const googleIdToken = await getIdToken(projectServiceUrl);
-      const res = await fetch(`${projectServiceUrl}/api/v1/projects/${encodeURIComponent(tenantId)}/published`, {
+      const res = await fetch(`${projectServiceUrl}/api/v1/projects/${encodeURIComponent(tenantId)}/published${environmentId === 'production' ? '' : `?environmentId=${encodeURIComponent(environmentId)}`}`, {
         headers: {
           'X-Tenant-ID': tenantId,
+          ...(environmentId !== 'production' && process.env.INTERNAL_API_KEY ? { 'X-Internal-Key': process.env.INTERNAL_API_KEY } : {}),
           ...authorizationHeader(googleIdToken, undefined)
         }
       });
@@ -422,17 +438,13 @@ export class GatewayService {
         cacheSet(key, { active: false }, 60); // fire-and-forget
         return false;
       }
-      const data = await res.json();
-      // If the API returns published config, it means it's active. 
-      // It returns fallback draft if not published. We just check if it returned 200 OK.
+      await res.json();
+      // Only a successful published-snapshot read authorises this deployment.
       cacheSet(key, { active: true }, 60);
       return true;
     } catch (e) {
       console.warn(`[Gateway] Error validating tenant ${tenantId}:`, (e as Error).message);
-      if (process.env.NODE_ENV === 'production') {
-        return false; // Fail closed in production
-      }
-      return true;
+      return false;
     }
   }
 
@@ -462,6 +474,7 @@ export class GatewayService {
     path: string,
     headers: Record<string, any>,
     body?: any,
+    rawBody?: Buffer,
   ): Promise<{ status: number; data: any; headers?: Record<string, string> }> {
     const resolved = resolveService(path);
     if (!resolved) {
@@ -494,7 +507,7 @@ export class GatewayService {
           data: { error: 'Bad Request', message: 'Tenant identifier is required (URL projectId or x-tenant-id header).' },
         };
       }
-      const isValid = await this.validateTenant(tenantId);
+      const isValid = await this.validateTenant(tenantId, this.environmentFor(path));
       if (!isValid) {
         return {
           status: 403,
@@ -551,7 +564,7 @@ export class GatewayService {
     const assertionSecret = process.env.GATEWAY_ASSERTION_SECRET;
 
     if (assertionSecret) {
-      Object.assign(gatewayHeaders, await this.assertionHeaders(tenantId, parsed.environmentId || 'production', headers));
+      Object.assign(gatewayHeaders, await this.assertionHeaders(tenantId, this.environmentFor(path), headers));
     } else if (process.env.NODE_ENV === 'production' && parsed.domain === 'runtime') {
       throw new Error('GATEWAY_ASSERTION_SECRET must be configured in production for runtime calls.');
     }
@@ -561,7 +574,11 @@ export class GatewayService {
       headers: gatewayHeaders,
     };
 
-    if (method !== 'GET' && method !== 'HEAD' && body && Object.keys(body).length > 0) {
+    const paymentTransport = paymentWebhookTransport(method, path, headers, rawBody);
+    if (paymentTransport) {
+      gatewayHeaders['stripe-signature'] = paymentTransport.signature;
+      fetchOptions.body = paymentTransport.body as any;
+    } else if (method !== 'GET' && method !== 'HEAD' && body && Object.keys(body).length > 0) {
       fetchOptions.body = JSON.stringify(body);
     }
 
@@ -625,7 +642,7 @@ export class GatewayService {
         res.status(400).json({ error: 'Bad Request', message: 'Tenant identifier is required (URL projectId or x-tenant-id header).' });
         return;
       }
-      const isValid = await this.validateTenant(tenantId);
+      const isValid = await this.validateTenant(tenantId, this.environmentFor(path));
       if (!isValid) {
         res.status(403).json({ error: 'Forbidden', message: 'Project does not exist or is disabled.' });
         return;
@@ -634,7 +651,7 @@ export class GatewayService {
 
     const googleIdToken = await getIdToken(resolved.baseUrl);
     // The streaming path signs the same identity as the plain one: without it the runtime would treat every streamed turn as a shopper's.
-    const signedIdentity = tenantId ? await this.assertionHeaders(tenantId, parseRoute(path).environmentId || 'production', headers) : {};
+    const signedIdentity = tenantId ? await this.assertionHeaders(tenantId, this.environmentFor(path), headers) : {};
 
     const upstream = await fetch(downstreamUrl, {
       method,

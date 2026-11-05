@@ -491,6 +491,8 @@ export interface ProjectConfig {
   agents?: any[];
   rules?: any[];
   evaluations?: any[];
+  /** Publication policy only. A caller can never supply a passing result. */
+  evaluationGate?: { required: boolean };
   experience?: any;
   vocabulary?: any;
   entities?: any;
@@ -671,6 +673,7 @@ export interface UpdateProjectDto {
   agents?: any[];
   rules?: any[];
   evaluations?: any[];
+  evaluationGate?: { required: boolean };
   experience?: any;
   vocabulary?: any;
   entities?: any;

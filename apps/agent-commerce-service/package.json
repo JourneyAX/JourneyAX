@@ -6,7 +6,8 @@
     "build": "tsc",
     "dev": "node ../../scripts/dev/watch-service.mjs",
     "start": "node dist/main.js",
-    "test": "for f in test/*.spec.ts; do npx tsx \"$f\" || exit 1; done"
+    "test": "for f in test/*.spec.ts; do npx tsx \"$f\" || exit 1; done && npm run test:payment-recovery",
+    "test:payment-recovery": "tsx --tsconfig tsconfig.json --test test/payment-recovery.spec.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.134.0",

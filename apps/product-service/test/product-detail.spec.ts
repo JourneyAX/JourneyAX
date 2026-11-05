@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { buildProductDetail, humanizeMeasure, toRelated } from '../src/product-detail';
+import { buildProductDetail as buildCanonicalDetail, humanizeMeasure, toRelated as canonicalRelated } from '../src/product-detail';
+import { resolveCatalogMapping } from '@journeyax/business-pack';
+const mapping = resolveCatalogMapping({ pricing: { sources: [{ path: 'priceUSD', rangeKey: 'min', unit: 'major', currencyPath: 'currency' }] }, descriptionPaths: ['description', 'narrative'] });
+const buildProductDetail = (doc: any, linked?: any) => buildCanonicalDetail(doc, linked, mapping);
+const toRelated = (doc: any) => canonicalRelated(doc, mapping);
 
 let passed = 0;
 function check(name: string, fn: () => void) {
@@ -64,10 +68,10 @@ check('a maker\'s home page and a link that is not http are not documents; the s
 });
 
 check('availability is stated as the record states it', () => {
-  assert.deepEqual(buildProductDetail(board).availability, { label: 'Available at 2 of 88 branches', inStock: true, branchesWithStock: 2, branchCount: 88 });
+  assert.deepEqual(buildProductDetail(board).availability, { label: 'Catalogue lists 2 of 88 branches; current stock not checked', source: 'catalogue', branchChecked: false, branchesWithStock: 2, branchCount: 88 });
   const none = buildProductDetail({ ...board, stock: { branchCount: 10, availableBranchCount: 0 } }).availability;
-  assert.equal(none?.inStock, false);
-  assert.match(none!.label, /Not showing as available at any of 10 branches/);
+  assert.equal(none?.inStock, undefined);
+  assert.match(none!.label, /Catalogue lists 0 of 10 branches; current stock not checked/);
   assert.equal(buildProductDetail({ ...board, stock: undefined }).availability, undefined, 'no stock facts, no availability line');
 });
 
